@@ -19,15 +19,14 @@ import { Theme } from "@/constants/theme";
 import { PRESET_COLORS } from "@/constants/colors";
 import type {
   ClothingCategory,
-  Season,
   Occasion,
-  FabricWeight,
+  FabricType,
 } from "@/models/types";
 import {
   CATEGORY_LABELS,
-  SEASON_LABELS,
+  SUBCATEGORIES,
   OCCASION_LABELS,
-  FABRIC_WEIGHT_LABELS,
+  FABRIC_TYPE_LABELS,
 } from "@/models/types";
 
 export default function EditItemScreen() {
@@ -37,10 +36,10 @@ export default function EditItemScreen() {
 
   const [name, setName] = useState("");
   const [category, setCategory] = useState<ClothingCategory>("tops");
+  const [subCategory, setSubCategory] = useState<string | undefined>(undefined);
   const [colorIdx, setColorIdx] = useState(0);
-  const [seasons, setSeasons] = useState<Season[]>([]);
   const [occasions, setOccasions] = useState<Occasion[]>([]);
-  const [fabricWeight, setFabricWeight] = useState<FabricWeight>("medium");
+  const [fabricType, setFabricType] = useState<FabricType>("cotton");
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [brand, setBrand] = useState("");
   const [favorite, setFavorite] = useState(false);
@@ -51,21 +50,16 @@ export default function EditItemScreen() {
     if (!item) return;
     setName(item.name);
     setCategory(item.category);
+    setSubCategory(item.subCategory);
     const cIdx = PRESET_COLORS.findIndex((c) => c.hex === item.color);
     setColorIdx(cIdx >= 0 ? cIdx : 0);
-    setSeasons(item.seasons);
     setOccasions(item.occasions);
-    setFabricWeight(item.fabricWeight);
+    setFabricType(item.fabricType);
     setImageUri(item.imageUri);
     setBrand(item.brand ?? "");
     setFavorite(item.favorite);
     setCreatedAt(item.createdAt);
   }, [id, items]);
-
-  const toggleSeason = (s: Season) =>
-    setSeasons((prev) =>
-      prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]
-    );
 
   const toggleOccasion = (o: Occasion) =>
     setOccasions((prev) =>
@@ -91,11 +85,11 @@ export default function EditItemScreen() {
       id,
       name: name.trim(),
       category,
+      subCategory,
       color: color.hex,
       colorName: color.name,
-      seasons,
       occasions,
-      fabricWeight,
+      fabricType,
       imageUri,
       brand: brand.trim() || undefined,
       favorite,
@@ -117,6 +111,8 @@ export default function EditItemScreen() {
       },
     ]);
   };
+
+  const subcats = SUBCATEGORIES[category];
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -148,6 +144,7 @@ export default function EditItemScreen() {
         placeholderTextColor={Theme.colors.textLight}
       />
 
+      {/* Category */}
       <Text style={styles.sectionTitle}>Category</Text>
       <View style={styles.chipRow}>
         {(Object.keys(CATEGORY_LABELS) as ClothingCategory[]).map((cat) => (
@@ -155,11 +152,34 @@ export default function EditItemScreen() {
             key={cat}
             label={CATEGORY_LABELS[cat]}
             selected={category === cat}
-            onPress={() => setCategory(cat)}
+            onPress={() => {
+              setCategory(cat);
+              setSubCategory(undefined);
+            }}
           />
         ))}
       </View>
 
+      {/* Subcategory */}
+      {subcats.length > 0 && (
+        <>
+          <Text style={styles.sectionTitle}>Type</Text>
+          <View style={styles.chipRow}>
+            {subcats.map((sc) => (
+              <Chip
+                key={sc.value}
+                label={sc.label}
+                selected={subCategory === sc.value}
+                onPress={() =>
+                  setSubCategory(subCategory === sc.value ? undefined : sc.value)
+                }
+              />
+            ))}
+          </View>
+        </>
+      )}
+
+      {/* Color */}
       <Text style={styles.sectionTitle}>
         Color — {PRESET_COLORS[colorIdx].name}
       </Text>
@@ -171,18 +191,7 @@ export default function EditItemScreen() {
         ))}
       </View>
 
-      <Text style={styles.sectionTitle}>Seasons</Text>
-      <View style={styles.chipRow}>
-        {(Object.keys(SEASON_LABELS) as Season[]).map((s) => (
-          <Chip
-            key={s}
-            label={SEASON_LABELS[s]}
-            selected={seasons.includes(s)}
-            onPress={() => toggleSeason(s)}
-          />
-        ))}
-      </View>
-
+      {/* Occasion */}
       <Text style={styles.sectionTitle}>Occasions</Text>
       <View style={styles.chipRow}>
         {(Object.keys(OCCASION_LABELS) as Occasion[]).map((o) => (
@@ -195,14 +204,15 @@ export default function EditItemScreen() {
         ))}
       </View>
 
-      <Text style={styles.sectionTitle}>Fabric Weight</Text>
+      {/* Fabric Type */}
+      <Text style={styles.sectionTitle}>Fabric Type</Text>
       <View style={styles.chipRow}>
-        {(Object.keys(FABRIC_WEIGHT_LABELS) as FabricWeight[]).map((fw) => (
+        {(Object.keys(FABRIC_TYPE_LABELS) as FabricType[]).map((ft) => (
           <Chip
-            key={fw}
-            label={FABRIC_WEIGHT_LABELS[fw]}
-            selected={fabricWeight === fw}
-            onPress={() => setFabricWeight(fw)}
+            key={ft}
+            label={FABRIC_TYPE_LABELS[ft]}
+            selected={fabricType === ft}
+            onPress={() => setFabricType(ft)}
           />
         ))}
       </View>

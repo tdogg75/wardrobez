@@ -13,7 +13,7 @@ import { useOutfits } from "@/hooks/useOutfits";
 import { useClothingItems } from "@/hooks/useClothingItems";
 import { ColorDot } from "@/components/ColorDot";
 import { Theme } from "@/constants/theme";
-import { CATEGORY_LABELS, SEASON_LABELS, OCCASION_LABELS } from "@/models/types";
+import { CATEGORY_LABELS, OCCASION_LABELS } from "@/models/types";
 
 export default function OutfitDetailScreen() {
   const router = useRouter();
@@ -101,19 +101,6 @@ export default function OutfitDetailScreen() {
       )}
 
       {/* Tags */}
-      {outfit.seasons.length > 0 && (
-        <>
-          <Text style={styles.sectionTitle}>Seasons</Text>
-          <View style={styles.tagRow}>
-            {outfit.seasons.map((s) => (
-              <View key={s} style={styles.tag}>
-                <Text style={styles.tagText}>{SEASON_LABELS[s]}</Text>
-              </View>
-            ))}
-          </View>
-        </>
-      )}
-
       {outfit.occasions.length > 0 && (
         <>
           <Text style={styles.sectionTitle}>Occasions</Text>

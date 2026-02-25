@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
 import type { Outfit } from "@/models/types";
 import {
   getOutfits,
@@ -6,7 +6,17 @@ import {
   deleteOutfit as removeOutfit,
 } from "@/services/storage";
 
-export function useOutfits() {
+interface OutfitsContextValue {
+  outfits: Outfit[];
+  loading: boolean;
+  reload: () => Promise<void>;
+  addOrUpdate: (outfit: Outfit) => Promise<void>;
+  remove: (id: string) => Promise<void>;
+}
+
+const OutfitsContext = createContext<OutfitsContextValue | null>(null);
+
+export function OutfitsProvider({ children }: { children: React.ReactNode }) {
   const [outfits, setOutfits] = useState<Outfit[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -37,5 +47,21 @@ export function useOutfits() {
     [reload]
   );
 
-  return { outfits, loading, reload, addOrUpdate, remove };
+  const value: OutfitsContextValue = {
+    outfits,
+    loading,
+    reload,
+    addOrUpdate,
+    remove,
+  };
+
+  return React.createElement(OutfitsContext.Provider, { value }, children);
+}
+
+export function useOutfits(): OutfitsContextValue {
+  const ctx = useContext(OutfitsContext);
+  if (!ctx) {
+    throw new Error("useOutfits must be used within an OutfitsProvider");
+  }
+  return ctx;
 }

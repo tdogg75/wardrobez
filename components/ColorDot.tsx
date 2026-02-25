@@ -8,6 +8,7 @@ interface ColorDotProps {
 }
 
 export function ColorDot({ color, size = 32, selected = false }: ColorDotProps) {
+  const isWhite = color.toUpperCase() === "#FFFFFF";
   return (
     <View
       style={[
@@ -18,8 +19,8 @@ export function ColorDot({ color, size = 32, selected = false }: ColorDotProps) 
           borderRadius: size / 2,
           backgroundColor: color,
         },
+        !selected && isWhite && styles.whiteBorder,
         selected && styles.selected,
-        color.toUpperCase() === "#FFFFFF" && styles.whiteBorder,
       ]}
     />
   );

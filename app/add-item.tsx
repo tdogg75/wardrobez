@@ -8,6 +8,7 @@ import {
   Image,
   StyleSheet,
   Alert,
+  ActivityIndicator,
 } from "react-native";
 import { useRouter } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
@@ -17,17 +18,17 @@ import { Chip } from "@/components/Chip";
 import { ColorDot } from "@/components/ColorDot";
 import { Theme } from "@/constants/theme";
 import { PRESET_COLORS } from "@/constants/colors";
+import { searchProduct } from "@/services/productSearch";
 import type {
   ClothingCategory,
-  Season,
   Occasion,
-  FabricWeight,
+  FabricType,
 } from "@/models/types";
 import {
   CATEGORY_LABELS,
-  SEASON_LABELS,
+  SUBCATEGORIES,
   OCCASION_LABELS,
-  FABRIC_WEIGHT_LABELS,
+  FABRIC_TYPE_LABELS,
 } from "@/models/types";
 
 function generateId(): string {
@@ -40,17 +41,13 @@ export default function AddItemScreen() {
 
   const [name, setName] = useState("");
   const [category, setCategory] = useState<ClothingCategory>("tops");
+  const [subCategory, setSubCategory] = useState<string | undefined>(undefined);
   const [colorIdx, setColorIdx] = useState(0);
-  const [seasons, setSeasons] = useState<Season[]>([]);
   const [occasions, setOccasions] = useState<Occasion[]>([]);
-  const [fabricWeight, setFabricWeight] = useState<FabricWeight>("medium");
+  const [fabricType, setFabricType] = useState<FabricType>("cotton");
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [brand, setBrand] = useState("");
-
-  const toggleSeason = (s: Season) =>
-    setSeasons((prev) =>
-      prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]
-    );
+  const [searching, setSearching] = useState(false);
 
   const toggleOccasion = (o: Occasion) =>
     setOccasions((prev) =>
@@ -69,13 +66,33 @@ export default function AddItemScreen() {
     }
   };
 
+  const handleAutoFill = async () => {
+    if (!name.trim()) {
+      Alert.alert("Enter a name", "Please enter the item name first so we can search for it.");
+      return;
+    }
+    setSearching(true);
+    try {
+      const result = await searchProduct(name.trim(), brand.trim() || undefined);
+      if (result) {
+        if (result.category) setCategory(result.category);
+        if (result.subCategory) setSubCategory(result.subCategory);
+        if (result.colorIndex !== undefined) setColorIdx(result.colorIndex);
+        if (result.fabricType) setFabricType(result.fabricType);
+        Alert.alert("Auto-filled!", "We found some info and filled in the details. Review and adjust as needed.");
+      } else {
+        Alert.alert("No results", "We couldn't find details for this item. Please fill in manually.");
+      }
+    } catch {
+      Alert.alert("Search failed", "Something went wrong. Please fill in manually.");
+    } finally {
+      setSearching(false);
+    }
+  };
+
   const handleSave = async () => {
     if (!name.trim()) {
       Alert.alert("Missing name", "Please enter a name for this item.");
-      return;
-    }
-    if (seasons.length === 0) {
-      Alert.alert("Missing season", "Please select at least one season.");
       return;
     }
     if (occasions.length === 0) {
@@ -88,11 +105,11 @@ export default function AddItemScreen() {
       id: generateId(),
       name: name.trim(),
       category,
+      subCategory,
       color: color.hex,
       colorName: color.name,
-      seasons,
       occasions,
-      fabricWeight,
+      fabricType,
       imageUri,
       brand: brand.trim() || undefined,
       favorite: false,
@@ -101,6 +118,8 @@ export default function AddItemScreen() {
 
     router.back();
   };
+
+  const subcats = SUBCATEGORIES[category];
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -136,6 +155,22 @@ export default function AddItemScreen() {
         onChangeText={setBrand}
       />
 
+      {/* Auto-fill Button */}
+      <Pressable
+        style={[styles.autoFillBtn, searching && styles.autoFillBtnDisabled]}
+        onPress={handleAutoFill}
+        disabled={searching}
+      >
+        {searching ? (
+          <ActivityIndicator size="small" color={Theme.colors.primary} />
+        ) : (
+          <Ionicons name="search-outline" size={18} color={Theme.colors.primary} />
+        )}
+        <Text style={styles.autoFillBtnText}>
+          {searching ? "Searching..." : "Auto-fill from Web"}
+        </Text>
+      </Pressable>
+
       {/* Category */}
       <Text style={styles.sectionTitle}>Category</Text>
       <View style={styles.chipRow}>
@@ -144,10 +179,32 @@ export default function AddItemScreen() {
             key={cat}
             label={CATEGORY_LABELS[cat]}
             selected={category === cat}
-            onPress={() => setCategory(cat)}
+            onPress={() => {
+              setCategory(cat);
+              setSubCategory(undefined);
+            }}
           />
         ))}
       </View>
+
+      {/* Subcategory */}
+      {subcats.length > 0 && (
+        <>
+          <Text style={styles.sectionTitle}>Type</Text>
+          <View style={styles.chipRow}>
+            {subcats.map((sc) => (
+              <Chip
+                key={sc.value}
+                label={sc.label}
+                selected={subCategory === sc.value}
+                onPress={() =>
+                  setSubCategory(subCategory === sc.value ? undefined : sc.value)
+                }
+              />
+            ))}
+          </View>
+        </>
+      )}
 
       {/* Color */}
       <Text style={styles.sectionTitle}>
@@ -158,19 +215,6 @@ export default function AddItemScreen() {
           <Pressable key={c.hex} onPress={() => setColorIdx(i)} style={styles.colorBtn}>
             <ColorDot color={c.hex} size={36} selected={colorIdx === i} />
           </Pressable>
-        ))}
-      </View>
-
-      {/* Season */}
-      <Text style={styles.sectionTitle}>Seasons</Text>
-      <View style={styles.chipRow}>
-        {(Object.keys(SEASON_LABELS) as Season[]).map((s) => (
-          <Chip
-            key={s}
-            label={SEASON_LABELS[s]}
-            selected={seasons.includes(s)}
-            onPress={() => toggleSeason(s)}
-          />
         ))}
       </View>
 
@@ -187,15 +231,15 @@ export default function AddItemScreen() {
         ))}
       </View>
 
-      {/* Fabric Weight */}
-      <Text style={styles.sectionTitle}>Fabric Weight</Text>
+      {/* Fabric Type */}
+      <Text style={styles.sectionTitle}>Fabric Type</Text>
       <View style={styles.chipRow}>
-        {(Object.keys(FABRIC_WEIGHT_LABELS) as FabricWeight[]).map((fw) => (
+        {(Object.keys(FABRIC_TYPE_LABELS) as FabricType[]).map((ft) => (
           <Chip
-            key={fw}
-            label={FABRIC_WEIGHT_LABELS[fw]}
-            selected={fabricWeight === fw}
-            onPress={() => setFabricWeight(fw)}
+            key={ft}
+            label={FABRIC_TYPE_LABELS[ft]}
+            selected={fabricType === ft}
+            onPress={() => setFabricType(ft)}
           />
         ))}
       </View>
@@ -255,6 +299,26 @@ const styles = StyleSheet.create({
     color: Theme.colors.text,
     borderWidth: 1,
     borderColor: Theme.colors.border,
+  },
+  autoFillBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    marginTop: Theme.spacing.md,
+    paddingVertical: 12,
+    borderRadius: Theme.borderRadius.sm,
+    backgroundColor: Theme.colors.primary + "12",
+    borderWidth: 1,
+    borderColor: Theme.colors.primary + "30",
+  },
+  autoFillBtnDisabled: {
+    opacity: 0.6,
+  },
+  autoFillBtnText: {
+    fontSize: Theme.fontSize.md,
+    fontWeight: "600",
+    color: Theme.colors.primary,
   },
   chipRow: {
     flexDirection: "row",
