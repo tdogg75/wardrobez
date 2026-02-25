@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
 import type { ClothingItem, ClothingCategory } from "@/models/types";
 import {
   getClothingItems,
@@ -6,7 +6,19 @@ import {
   deleteClothingItem as deleteItem,
 } from "@/services/storage";
 
-export function useClothingItems() {
+interface ClothingItemsContextValue {
+  items: ClothingItem[];
+  loading: boolean;
+  reload: () => Promise<void>;
+  addOrUpdate: (item: ClothingItem) => Promise<void>;
+  remove: (id: string) => Promise<void>;
+  getByCategory: (category: ClothingCategory) => ClothingItem[];
+  getById: (id: string) => ClothingItem | null;
+}
+
+const ClothingItemsContext = createContext<ClothingItemsContextValue | null>(null);
+
+export function ClothingItemsProvider({ children }: { children: React.ReactNode }) {
   const [items, setItems] = useState<ClothingItem[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -47,5 +59,23 @@ export function useClothingItems() {
     [items]
   );
 
-  return { items, loading, reload, addOrUpdate, remove, getByCategory, getById };
+  const value: ClothingItemsContextValue = {
+    items,
+    loading,
+    reload,
+    addOrUpdate,
+    remove,
+    getByCategory,
+    getById,
+  };
+
+  return React.createElement(ClothingItemsContext.Provider, { value }, children);
+}
+
+export function useClothingItems(): ClothingItemsContextValue {
+  const ctx = useContext(ClothingItemsContext);
+  if (!ctx) {
+    throw new Error("useClothingItems must be used within a ClothingItemsProvider");
+  }
+  return ctx;
 }

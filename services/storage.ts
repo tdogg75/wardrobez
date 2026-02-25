@@ -1,17 +1,53 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import type { ClothingItem, Outfit } from "@/models/types";
+import type { ClothingItem, Outfit, FabricType } from "@/models/types";
 
 const KEYS = {
   CLOTHING_ITEMS: "wardrobez:clothing_items",
   OUTFITS: "wardrobez:outfits",
 } as const;
 
+// --- Data Migration ---
+
+const WEIGHT_TO_FABRIC: Record<string, FabricType> = {
+  light: "cotton",
+  medium: "polyester",
+  heavy: "wool",
+};
+
+function migrateClothingItem(item: any): ClothingItem {
+  const migrated = { ...item };
+
+  // Migrate fabricWeight -> fabricType
+  if (!migrated.fabricType && migrated.fabricWeight) {
+    migrated.fabricType = WEIGHT_TO_FABRIC[migrated.fabricWeight] ?? "other";
+    delete migrated.fabricWeight;
+  }
+
+  // Remove seasons if present
+  delete migrated.seasons;
+
+  // Migrate "dresses" category -> "tops"
+  if (migrated.category === "dresses") {
+    migrated.category = "tops";
+    migrated.subCategory = "blouse";
+  }
+
+  return migrated as ClothingItem;
+}
+
+function migrateOutfit(outfit: any): Outfit {
+  const migrated = { ...outfit };
+  delete migrated.seasons;
+  return migrated as Outfit;
+}
+
 // --- Clothing Items ---
 
 export async function getClothingItems(): Promise<ClothingItem[]> {
   const raw = await AsyncStorage.getItem(KEYS.CLOTHING_ITEMS);
   if (!raw) return [];
-  return JSON.parse(raw) as ClothingItem[];
+  const items = JSON.parse(raw) as any[];
+  return items.map(migrateClothingItem);
 }
 
 export async function saveClothingItem(item: ClothingItem): Promise<void> {
@@ -44,7 +80,8 @@ export async function deleteClothingItem(id: string): Promise<void> {
 export async function getOutfits(): Promise<Outfit[]> {
   const raw = await AsyncStorage.getItem(KEYS.OUTFITS);
   if (!raw) return [];
-  return JSON.parse(raw) as Outfit[];
+  const outfits = JSON.parse(raw) as any[];
+  return outfits.map(migrateOutfit);
 }
 
 export async function saveOutfit(outfit: Outfit): Promise<void> {

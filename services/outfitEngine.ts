@@ -1,8 +1,8 @@
 import type {
   ClothingItem,
   ClothingCategory,
-  Season,
   Occasion,
+  FabricType,
   Outfit,
 } from "@/models/types";
 import { hexToHSL } from "@/constants/colors";
@@ -50,26 +50,31 @@ function colorCompatibility(hex1: string, hex2: string): number {
   return 0.4;
 }
 
-// --- Fabric / Weight Rules ---
+// --- Fabric Compatibility ---
+
+const FORMAL_FABRICS: FabricType[] = ["silk", "wool", "cashmere", "leather", "satin"];
+const CASUAL_FABRICS: FabricType[] = ["cotton", "denim", "linen", "nylon", "polyester", "fleece"];
 
 function fabricCompatibility(items: ClothingItem[]): number {
-  const weights = items.map((i) => i.fabricWeight);
-  const hasHeavy = weights.includes("heavy");
-  const hasLight = weights.includes("light");
+  const types = items.map((i) => i.fabricType);
+  const uniqueTypes = new Set(types);
 
-  // Mixing extremes (heavy coat with light tank) is fine — layering
-  // All heavy = 0.6 (too bulky), all light = fine
-  if (weights.every((w) => w === "heavy")) return 0.6;
-  if (hasHeavy && hasLight) return 0.85;
-  return 0.9;
-}
+  // Single fabric type = great cohesion
+  if (uniqueTypes.size === 1) return 0.9;
 
-// --- Season Logic ---
+  // Check if mixing formal and casual fabrics
+  const hasFormal = types.some((t) => FORMAL_FABRICS.includes(t));
+  const hasCasual = types.some((t) => CASUAL_FABRICS.includes(t));
 
-function seasonScore(items: ClothingItem[], targetSeason: Season): number {
-  if (items.length === 0) return 0;
-  const matchCount = items.filter((i) => i.seasons.includes(targetSeason)).length;
-  return matchCount / items.length;
+  if (hasFormal && hasCasual) {
+    const formalCount = types.filter((t) => FORMAL_FABRICS.includes(t)).length;
+    const casualCount = types.filter((t) => CASUAL_FABRICS.includes(t)).length;
+    const balance = Math.min(formalCount, casualCount) / Math.max(formalCount, casualCount);
+    return 0.6 + balance * 0.2; // 0.6 to 0.8
+  }
+
+  // All formal or all casual
+  return 0.85;
 }
 
 // --- Occasion Logic ---
@@ -84,17 +89,16 @@ function occasionScore(items: ClothingItem[], targetOccasion: Occasion): number 
 
 type OutfitCombo = ClothingItem[];
 
-function getCategoryCombinations(items: ClothingItem[]): ClothingCategory[][] {
+function getCategoryCombinations(): ClothingCategory[][] {
   return [
     ["tops", "bottoms"],
     ["tops", "bottoms", "outerwear"],
     ["tops", "bottoms", "shoes"],
     ["tops", "bottoms", "outerwear", "shoes"],
     ["tops", "bottoms", "accessories"],
-    ["dresses"],
-    ["dresses", "outerwear"],
-    ["dresses", "shoes"],
-    ["dresses", "outerwear", "shoes"],
+    ["tops", "bottoms", "outerwear", "shoes", "accessories"],
+    ["swimwear"],
+    ["swimwear", "accessories"],
   ];
 }
 
@@ -131,12 +135,11 @@ export interface SuggestionResult {
 export function suggestOutfits(
   allItems: ClothingItem[],
   options: {
-    season?: Season;
     occasion?: Occasion;
     maxResults?: number;
   } = {}
 ): SuggestionResult[] {
-  const { season, occasion, maxResults = 5 } = options;
+  const { occasion, maxResults = 5 } = options;
 
   // Group items by category
   const byCategory = new Map<ClothingCategory, ClothingItem[]>();
@@ -147,7 +150,7 @@ export function suggestOutfits(
   }
 
   const allCombos: OutfitCombo[] = [];
-  for (const categorySet of getCategoryCombinations(allItems)) {
+  for (const categorySet of getCategoryCombinations()) {
     const combos = pickOnePerCategory(byCategory, categorySet);
     allCombos.push(...combos);
   }
@@ -157,7 +160,7 @@ export function suggestOutfits(
     let score = 0;
     const reasons: string[] = [];
 
-    // Color harmony (average pairwise)
+    // Color harmony (average pairwise) — 40% weight
     let colorScore = 0;
     let colorPairs = 0;
     for (let i = 0; i < combo.length; i++) {
@@ -168,32 +171,23 @@ export function suggestOutfits(
     }
     if (colorPairs > 0) {
       const avgColor = colorScore / colorPairs;
-      score += avgColor * 35; // 35% weight
+      score += avgColor * 40;
       if (avgColor > 0.8) reasons.push("Great color harmony");
       else if (avgColor > 0.6) reasons.push("Good color pairing");
     }
 
-    // Fabric compatibility
+    // Fabric compatibility — 30% weight
     const fabric = fabricCompatibility(combo);
-    score += fabric * 20; // 20% weight
+    score += fabric * 30;
     if (fabric > 0.8) reasons.push("Well-balanced fabrics");
 
-    // Season match
-    if (season) {
-      const ss = seasonScore(combo, season);
-      score += ss * 25; // 25% weight
-      if (ss > 0.7) reasons.push(`Perfect for ${season}`);
-    } else {
-      score += 15; // neutral bonus if no season filter
-    }
-
-    // Occasion match
+    // Occasion match — 30% weight
     if (occasion) {
       const os = occasionScore(combo, occasion);
-      score += os * 20; // 20% weight
+      score += os * 30;
       if (os > 0.7) reasons.push(`Great for ${occasion.replace("_", " ")}`);
     } else {
-      score += 10;
+      score += 15; // neutral bonus if no occasion filter
     }
 
     return { items: combo, score, reasons };
@@ -224,17 +218,14 @@ export function outfitToSaveable(
   suggestion: SuggestionResult,
   name: string
 ): Omit<Outfit, "id" | "createdAt"> {
-  const allSeasons = new Set<Season>();
   const allOccasions = new Set<Occasion>();
   for (const item of suggestion.items) {
-    item.seasons.forEach((s) => allSeasons.add(s));
     item.occasions.forEach((o) => allOccasions.add(o));
   }
 
   return {
     name,
     itemIds: suggestion.items.map((i) => i.id),
-    seasons: [...allSeasons],
     occasions: [...allOccasions],
     rating: Math.round(suggestion.score / 20), // normalize to 1-5
     suggested: true,

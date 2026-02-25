@@ -2,7 +2,7 @@ import React from "react";
 import { View, Text, Pressable, Image, StyleSheet } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import type { ClothingItem } from "@/models/types";
-import { CATEGORY_LABELS } from "@/models/types";
+import { CATEGORY_LABELS, SUBCATEGORIES } from "@/models/types";
 import { ColorDot } from "./ColorDot";
 import { Theme } from "@/constants/theme";
 
@@ -39,7 +39,12 @@ export function ClothingCard({ item, onPress, onToggleFavorite }: ClothingCardPr
         </Text>
         <View style={styles.meta}>
           <ColorDot color={item.color} size={14} />
-          <Text style={styles.category}>{CATEGORY_LABELS[item.category]}</Text>
+          <Text style={styles.category}>
+            {CATEGORY_LABELS[item.category]}
+            {item.subCategory
+              ? ` · ${SUBCATEGORIES[item.category]?.find((s) => s.value === item.subCategory)?.label ?? item.subCategory}`
+              : ""}
+          </Text>
         </View>
       </View>
     </Pressable>
