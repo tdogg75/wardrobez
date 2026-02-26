@@ -1,6 +1,7 @@
 export type ClothingCategory =
   | "tops"
   | "bottoms"
+  | "dresses"
   | "outerwear"
   | "shoes"
   | "accessories"
@@ -37,7 +38,7 @@ export interface ClothingItem {
   colorName: string;
   occasions: Occasion[];
   fabricType: FabricType;
-  imageUri: string | null;
+  imageUris: string[]; // multiple images (online, personal, etc.)
   brand?: string;
   favorite: boolean;
   createdAt: number;
@@ -56,6 +57,7 @@ export interface Outfit {
 export const CATEGORY_LABELS: Record<ClothingCategory, string> = {
   tops: "Tops",
   bottoms: "Bottoms",
+  dresses: "Dresses",
   outerwear: "Outerwear",
   shoes: "Shoes",
   accessories: "Accessories",
@@ -79,7 +81,16 @@ export const SUBCATEGORIES: Record<ClothingCategory, { value: string; label: str
     { value: "jeans", label: "Jeans" },
     { value: "leggings", label: "Leggings" },
     { value: "casual_pants", label: "Casual Pants" },
+    { value: "skirt", label: "Skirt" },
+    { value: "shorts", label: "Shorts" },
     { value: "other", label: "Other" },
+  ],
+  dresses: [
+    { value: "formal_dress", label: "Formal" },
+    { value: "work_dress", label: "Work" },
+    { value: "casual_dress", label: "Casual" },
+    { value: "sundress", label: "Sundress" },
+    { value: "cover_up", label: "Cover-Up" },
   ],
   outerwear: [
     { value: "parka", label: "Parka" },

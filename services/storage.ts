@@ -26,10 +26,15 @@ function migrateClothingItem(item: any): ClothingItem {
   // Remove seasons if present
   delete migrated.seasons;
 
-  // Migrate "dresses" category -> "tops"
-  if (migrated.category === "dresses") {
-    migrated.category = "tops";
-    migrated.subCategory = "blouse";
+  // Migrate imageUri (string | null) -> imageUris (string[])
+  if (migrated.imageUri !== undefined && migrated.imageUris === undefined) {
+    migrated.imageUris = migrated.imageUri ? [migrated.imageUri] : [];
+    delete migrated.imageUri;
+  }
+
+  // Ensure imageUris is always an array
+  if (!Array.isArray(migrated.imageUris)) {
+    migrated.imageUris = [];
   }
 
   return migrated as ClothingItem;

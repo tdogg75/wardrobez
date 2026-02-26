@@ -1,11 +1,24 @@
 import type { ClothingCategory, FabricType } from "@/models/types";
 import { PRESET_COLORS } from "@/constants/colors";
 
-interface ProductSearchResult {
+export interface ProductSearchResult {
   category?: ClothingCategory;
   subCategory?: string;
   fabricType?: FabricType;
   colorIndex?: number;
+}
+
+export interface OnlineProductOption {
+  id: string;
+  name: string;
+  store: string;
+  price: string;
+  color: string; // hex
+  colorName: string;
+  imageUri: string | null; // URL or null for placeholder
+  category?: ClothingCategory;
+  subCategory?: string;
+  fabricType?: FabricType;
 }
 
 const SUBCATEGORY_KEYWORDS: Record<
@@ -30,12 +43,24 @@ const SUBCATEGORY_KEYWORDS: Record<
   slacks: { category: "bottoms", subCategory: "dress_pants" },
   trousers: { category: "bottoms", subCategory: "dress_pants" },
   jeans: { category: "bottoms", subCategory: "jeans" },
-  denim: { category: "bottoms", subCategory: "jeans" },
   leggings: { category: "bottoms", subCategory: "leggings" },
   chinos: { category: "bottoms", subCategory: "casual_pants" },
   joggers: { category: "bottoms", subCategory: "casual_pants" },
-  shorts: { category: "bottoms", subCategory: "other" },
-  skirt: { category: "bottoms", subCategory: "other" },
+  shorts: { category: "bottoms", subCategory: "shorts" },
+  skirt: { category: "bottoms", subCategory: "skirt" },
+  "formal dress": { category: "dresses", subCategory: "formal_dress" },
+  "evening dress": { category: "dresses", subCategory: "formal_dress" },
+  "gown": { category: "dresses", subCategory: "formal_dress" },
+  "work dress": { category: "dresses", subCategory: "work_dress" },
+  "office dress": { category: "dresses", subCategory: "work_dress" },
+  "sheath dress": { category: "dresses", subCategory: "work_dress" },
+  "casual dress": { category: "dresses", subCategory: "casual_dress" },
+  sundress: { category: "dresses", subCategory: "sundress" },
+  "sun dress": { category: "dresses", subCategory: "sundress" },
+  "cover-up": { category: "dresses", subCategory: "cover_up" },
+  "cover up": { category: "dresses", subCategory: "cover_up" },
+  "beach dress": { category: "dresses", subCategory: "cover_up" },
+  dress: { category: "dresses", subCategory: "casual_dress" },
   parka: { category: "outerwear", subCategory: "parka" },
   "spring jacket": { category: "outerwear", subCategory: "spring_jacket" },
   "light jacket": { category: "outerwear", subCategory: "spring_jacket" },
@@ -129,19 +154,50 @@ const COLOR_KEYWORDS: Record<string, string> = {
   indigo: "#000080",
 };
 
-/**
- * Infers clothing item attributes from a product name and optional brand.
- * Uses keyword matching — no network required.
- */
-export async function searchProduct(
-  name: string,
-  brand?: string
-): Promise<ProductSearchResult | null> {
-  const text = `${name} ${brand ?? ""}`.toLowerCase().trim();
-  const result: ProductSearchResult = {};
-  let matchCount = 0;
+// Simulated store names and price ranges for realistic product results
+const STORES = [
+  { name: "Nordstrom", priceRange: [45, 200] },
+  { name: "Zara", priceRange: [25, 120] },
+  { name: "H&M", priceRange: [15, 70] },
+  { name: "ASOS", priceRange: [20, 100] },
+  { name: "Macy's", priceRange: [30, 150] },
+  { name: "Uniqlo", priceRange: [15, 80] },
+  { name: "Target", priceRange: [12, 50] },
+  { name: "Banana Republic", priceRange: [40, 160] },
+];
 
-  // Check subcategory keywords (longest match first for specificity)
+// Color variations for generating realistic product options
+const COLOR_VARIATIONS: Record<string, { hex: string; name: string }[]> = {
+  "#000000": [
+    { hex: "#000000", name: "Black" },
+    { hex: "#1A1A2E", name: "Jet Black" },
+    { hex: "#2C2C2C", name: "Charcoal Black" },
+  ],
+  "#FFFFFF": [
+    { hex: "#FFFFFF", name: "White" },
+    { hex: "#FFFFF0", name: "Ivory" },
+    { hex: "#FAF0E6", name: "Linen White" },
+  ],
+  "#4169E1": [
+    { hex: "#4169E1", name: "Royal Blue" },
+    { hex: "#1E90FF", name: "Dodger Blue" },
+    { hex: "#4682B4", name: "Steel Blue" },
+  ],
+  "#DC143C": [
+    { hex: "#DC143C", name: "Crimson" },
+    { hex: "#B22222", name: "Firebrick" },
+    { hex: "#FF4500", name: "Red-Orange" },
+  ],
+  default: [
+    { hex: "#000000", name: "Black" },
+    { hex: "#808080", name: "Gray" },
+    { hex: "#FFFFFF", name: "White" },
+  ],
+};
+
+function inferAttributes(text: string): ProductSearchResult {
+  const result: ProductSearchResult = {};
+
   const sortedKeys = Object.keys(SUBCATEGORY_KEYWORDS).sort(
     (a, b) => b.length - a.length
   );
@@ -150,24 +206,20 @@ export async function searchProduct(
       const match = SUBCATEGORY_KEYWORDS[keyword];
       result.category = match.category;
       result.subCategory = match.subCategory;
-      matchCount++;
       break;
     }
   }
 
-  // Check fabric keywords (longest match first)
   const sortedFabricKeys = Object.keys(FABRIC_KEYWORDS).sort(
     (a, b) => b.length - a.length
   );
   for (const keyword of sortedFabricKeys) {
     if (text.includes(keyword)) {
       result.fabricType = FABRIC_KEYWORDS[keyword];
-      matchCount++;
       break;
     }
   }
 
-  // Check color keywords (longest match first)
   const sortedColorKeys = Object.keys(COLOR_KEYWORDS).sort(
     (a, b) => b.length - a.length
   );
@@ -177,12 +229,99 @@ export async function searchProduct(
       const idx = PRESET_COLORS.findIndex((c) => c.hex === hex);
       if (idx >= 0) {
         result.colorIndex = idx;
-        matchCount++;
       }
       break;
     }
   }
 
+  return result;
+}
+
+/**
+ * Infers clothing item attributes from a product name and optional brand.
+ * Uses keyword matching — no network required.
+ */
+export async function searchProduct(
+  name: string,
+  brand?: string
+): Promise<ProductSearchResult | null> {
+  const text = `${name} ${brand ?? ""}`.toLowerCase().trim();
+  const result = inferAttributes(text);
+
+  const matchCount =
+    (result.category ? 1 : 0) +
+    (result.fabricType ? 1 : 0) +
+    (result.colorIndex !== undefined ? 1 : 0);
+
   if (matchCount === 0) return null;
   return result;
+}
+
+/**
+ * Simulates an online product search returning multiple options with details.
+ * In production, this would call a real product API (Google Shopping, etc.).
+ */
+export async function searchProductsOnline(
+  name: string,
+  brand?: string
+): Promise<OnlineProductOption[]> {
+  const text = `${name} ${brand ?? ""}`.toLowerCase().trim();
+  const attrs = inferAttributes(text);
+
+  // Determine base color
+  let baseColor = "#808080";
+  let baseColorName = "Gray";
+  if (attrs.colorIndex !== undefined) {
+    baseColor = PRESET_COLORS[attrs.colorIndex].hex;
+    baseColorName = PRESET_COLORS[attrs.colorIndex].name;
+  }
+
+  // Get color variations
+  const variations =
+    COLOR_VARIATIONS[baseColor] || COLOR_VARIATIONS["default"];
+
+  // Generate 3-5 simulated product options from different "stores"
+  const shuffledStores = [...STORES].sort(() => Math.random() - 0.5);
+  const numResults = Math.min(4, Math.max(3, shuffledStores.length));
+  const options: OnlineProductOption[] = [];
+
+  // Capitalize first letter of each word
+  const titleCase = (s: string) =>
+    s.replace(/\b\w/g, (c) => c.toUpperCase());
+
+  const baseName = titleCase(name.trim());
+
+  for (let i = 0; i < numResults; i++) {
+    const store = shuffledStores[i];
+    const colorVar = variations[i % variations.length];
+    const price =
+      store.priceRange[0] +
+      Math.floor(
+        Math.random() * (store.priceRange[1] - store.priceRange[0])
+      );
+
+    // Create name variations
+    let productName = baseName;
+    if (i === 1 && brand) productName = `${titleCase(brand)} ${baseName}`;
+    if (i === 2) productName = `${colorVar.name} ${baseName}`;
+    if (i === 3) productName = `${baseName} - ${colorVar.name}`;
+
+    options.push({
+      id: `search_${Date.now()}_${i}`,
+      name: productName,
+      store: store.name,
+      price: `$${price}.99`,
+      color: colorVar.hex,
+      colorName: colorVar.name,
+      imageUri: null, // No real image - UI will show color placeholder
+      category: attrs.category,
+      subCategory: attrs.subCategory,
+      fabricType: attrs.fabricType,
+    });
+  }
+
+  // Simulate network delay
+  await new Promise((r) => setTimeout(r, 800));
+
+  return options;
 }
