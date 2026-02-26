@@ -62,6 +62,7 @@ export default function SuggestScreen() {
       rating: Math.min(5, Math.max(1, Math.round(suggestion.score / 20))),
       createdAt: Date.now(),
       suggested: true,
+      wornDates: [],
     });
 
     Alert.alert("Saved!", `${name} has been added to your outfits.`);

@@ -1,9 +1,24 @@
+import { useEffect } from "react";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { ClothingItemsProvider } from "@/hooks/useClothingItems";
 import { OutfitsProvider } from "@/hooks/useOutfits";
+import {
+  requestNotificationPermission,
+  scheduleDailyReminder,
+} from "@/services/notifications";
 
 export default function RootLayout() {
+  useEffect(() => {
+    // Schedule daily 9pm reminder on app launch
+    (async () => {
+      const granted = await requestNotificationPermission();
+      if (granted) {
+        await scheduleDailyReminder();
+      }
+    })();
+  }, []);
+
   return (
     <ClothingItemsProvider>
       <OutfitsProvider>

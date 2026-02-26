@@ -10,7 +10,6 @@ import {
   Alert,
   ActivityIndicator,
   Modal,
-  FlatList,
 } from "react-native";
 import { useRouter } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
@@ -19,6 +18,7 @@ import { useClothingItems } from "@/hooks/useClothingItems";
 import { Chip } from "@/components/Chip";
 import { ColorDot } from "@/components/ColorDot";
 import { ColorWheelPicker } from "@/components/ColorWheelPicker";
+import { ImageColorDropper } from "@/components/ImageColorDropper";
 import { Theme } from "@/constants/theme";
 import {
   PRESET_COLORS,
@@ -28,9 +28,7 @@ import {
   findClosestPresetIndex,
 } from "@/constants/colors";
 import {
-  searchProductsOnline,
   fetchProductFromUrl,
-  type OnlineProductOption,
 } from "@/services/productSearch";
 import type {
   ClothingCategory,
@@ -58,8 +56,8 @@ export default function AddItemScreen() {
   const [imageUris, setImageUris] = useState<string[]>([]);
   const [brand, setBrand] = useState("");
   const [productUrl, setProductUrl] = useState("");
-  const [searching, setSearching] = useState(false);
   const [fetchingUrl, setFetchingUrl] = useState(false);
+  const [cost, setCost] = useState("");
 
   // HSL fine-tuning
   const [hslAdjust, setHslAdjust] = useState<{ h: number; s: number; l: number } | null>(null);
@@ -69,9 +67,9 @@ export default function AddItemScreen() {
   const [secondaryColorIdx, setSecondaryColorIdx] = useState<number | null>(null);
   const [showSecondaryColor, setShowSecondaryColor] = useState(false);
 
-  // Product search results state
-  const [searchResults, setSearchResults] = useState<OnlineProductOption[]>([]);
-  const [showSearchModal, setShowSearchModal] = useState(false);
+  // Color dropper
+  const [showDropper, setShowDropper] = useState(false);
+  const [dropperTarget, setDropperTarget] = useState<"primary" | "secondary">("primary");
 
   // Computed final color
   const finalColor = useMemo(() => {
@@ -118,27 +116,6 @@ export default function AddItemScreen() {
     setShowColorPicker(true);
   };
 
-  const handleSearchOnline = async () => {
-    if (!name.trim()) {
-      Alert.alert("Enter a name", "Please enter the item name first so we can search for it.");
-      return;
-    }
-    setSearching(true);
-    try {
-      const results = await searchProductsOnline(name.trim(), brand.trim() || undefined);
-      if (results.length > 0) {
-        setSearchResults(results);
-        setShowSearchModal(true);
-      } else {
-        Alert.alert("No results", "We couldn't find any matching products. Please fill in manually.");
-      }
-    } catch {
-      Alert.alert("Search failed", "Something went wrong. Please fill in manually.");
-    } finally {
-      setSearching(false);
-    }
-  };
-
   const handleFetchUrl = async () => {
     const url = productUrl.trim();
     if (!url) {
@@ -162,6 +139,9 @@ export default function AddItemScreen() {
         if (result.imageUri) {
           setImageUris((prev) => [result.imageUri!, ...prev]);
         }
+        if (result.cost != null) {
+          setCost(String(result.cost));
+        }
         Alert.alert("Auto-filled!", "Product info has been applied. Review and adjust as needed.");
       } else {
         Alert.alert("Could not parse", "We couldn't extract info from that URL. Please fill in manually.");
@@ -173,22 +153,17 @@ export default function AddItemScreen() {
     }
   };
 
-  const handleSelectProduct = (product: OnlineProductOption) => {
-    if (product.category) setCategory(product.category);
-    if (product.subCategory) setSubCategory(product.subCategory);
-    if (product.fabricType) setFabricType(product.fabricType);
-
-    const cIdx = findClosestPresetIndex(product.color);
-    setColorIdx(cIdx);
-    const preset = PRESET_COLORS[cIdx];
-    setHslAdjust({ h: preset.hue, s: preset.saturation, l: preset.lightness });
-
-    if (product.imageUri) {
-      setImageUris((prev) => [product.imageUri!, ...prev]);
+  const handleDropperColorPicked = (hex: string) => {
+    const hsl = hexToHSL(hex);
+    if (dropperTarget === "primary") {
+      const idx = findClosestPresetIndex(hex);
+      setColorIdx(idx);
+      setHslAdjust({ h: hsl.h, s: hsl.s, l: hsl.l });
+    } else {
+      const idx = findClosestPresetIndex(hex);
+      setSecondaryColorIdx(idx);
+      setShowSecondaryColor(true);
     }
-
-    setShowSearchModal(false);
-    Alert.alert("Applied!", `Details from ${product.store} have been applied. Review and adjust as needed.`);
   };
 
   const handleSave = async () => {
@@ -196,6 +171,8 @@ export default function AddItemScreen() {
       Alert.alert("Missing name", "Please enter a name for this item.");
       return;
     }
+
+    const parsedCost = cost.trim() ? parseFloat(cost.trim()) : undefined;
 
     await addOrUpdate({
       id: generateId(),
@@ -210,7 +187,10 @@ export default function AddItemScreen() {
       imageUris,
       brand: brand.trim() || undefined,
       productUrl: productUrl.trim() || undefined,
+      cost: parsedCost && !isNaN(parsedCost) ? parsedCost : undefined,
       favorite: false,
+      wearCount: 0,
+      archived: false,
       createdAt: Date.now(),
     });
 
@@ -269,6 +249,7 @@ export default function AddItemScreen() {
 
         {/* Product URL */}
         <Text style={styles.sectionTitle}>Product URL (optional)</Text>
+        <Text style={styles.urlHint}>Paste a product link from your browser to auto-fill details</Text>
         <View style={styles.urlRow}>
           <TextInput
             style={[styles.input, { flex: 1 }]}
@@ -292,21 +273,16 @@ export default function AddItemScreen() {
           </Pressable>
         </View>
 
-        {/* Search Online Button */}
-        <Pressable
-          style={[styles.autoFillBtn, searching && styles.autoFillBtnDisabled]}
-          onPress={handleSearchOnline}
-          disabled={searching}
-        >
-          {searching ? (
-            <ActivityIndicator size="small" color={Theme.colors.primary} />
-          ) : (
-            <Ionicons name="globe-outline" size={18} color={Theme.colors.primary} />
-          )}
-          <Text style={styles.autoFillBtnText}>
-            {searching ? "Searching..." : "Search Online"}
-          </Text>
-        </Pressable>
+        {/* Cost */}
+        <Text style={styles.sectionTitle}>Cost (optional)</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="e.g. 49.99"
+          placeholderTextColor={Theme.colors.textLight}
+          value={cost}
+          onChangeText={setCost}
+          keyboardType="decimal-pad"
+        />
 
         {/* Category */}
         <Text style={styles.sectionTitle}>Category</Text>
@@ -348,11 +324,25 @@ export default function AddItemScreen() {
           <Text style={styles.sectionTitle}>
             Color — {finalColorName}
           </Text>
-          <Pressable style={styles.colorPickerBtn} onPress={openColorPicker}>
-            <View style={[styles.colorPickerSwatch, { backgroundColor: finalColor }]} />
-            <Ionicons name="color-palette-outline" size={18} color={Theme.colors.primary} />
-            <Text style={styles.colorPickerBtnText}>Fine-tune</Text>
-          </Pressable>
+          <View style={{ flexDirection: "row", gap: 6 }}>
+            {imageUris.length > 0 && (
+              <Pressable
+                style={styles.colorPickerBtn}
+                onPress={() => {
+                  setDropperTarget("primary");
+                  setShowDropper(true);
+                }}
+              >
+                <Ionicons name="eyedrop-outline" size={16} color={Theme.colors.primary} />
+                <Text style={styles.colorPickerBtnText}>Dropper</Text>
+              </Pressable>
+            )}
+            <Pressable style={styles.colorPickerBtn} onPress={openColorPicker}>
+              <View style={[styles.colorPickerSwatch, { backgroundColor: finalColor }]} />
+              <Ionicons name="color-palette-outline" size={18} color={Theme.colors.primary} />
+              <Text style={styles.colorPickerBtnText}>Fine-tune</Text>
+            </Pressable>
+          </View>
         </View>
         <View style={styles.colorGrid}>
           {PRESET_COLORS.map((c, i) => (
@@ -546,67 +536,15 @@ export default function AddItemScreen() {
         </View>
       </Modal>
 
-      {/* Product Search Results Modal */}
-      <Modal
-        visible={showSearchModal}
-        animationType="slide"
-        presentationStyle="pageSheet"
-        onRequestClose={() => setShowSearchModal(false)}
-      >
-        <View style={styles.modalContainer}>
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Select a Match</Text>
-            <Pressable onPress={() => setShowSearchModal(false)}>
-              <Ionicons name="close" size={24} color={Theme.colors.text} />
-            </Pressable>
-          </View>
-          <Text style={styles.modalSubtitle}>
-            Choose the product that best matches your item, or tap "None of these" below.
-          </Text>
-
-          <FlatList
-            data={searchResults}
-            keyExtractor={(item) => item.id}
-            contentContainerStyle={styles.resultsList}
-            renderItem={({ item: product }) => (
-              <Pressable
-                style={styles.resultCard}
-                onPress={() => handleSelectProduct(product)}
-              >
-                <View style={[styles.resultImage, { backgroundColor: product.color + "30" }]}>
-                  {product.imageUri ? (
-                    <Image source={{ uri: product.imageUri }} style={styles.resultImg} />
-                  ) : (
-                    <View style={styles.resultColorPlaceholder}>
-                      <View style={[styles.resultColorSwatch, { backgroundColor: product.color }]} />
-                      <Ionicons name="shirt-outline" size={32} color={product.color} />
-                    </View>
-                  )}
-                </View>
-                <View style={styles.resultInfo}>
-                  <Text style={styles.resultName} numberOfLines={2}>{product.name}</Text>
-                  <Text style={styles.resultStore}>{product.store}</Text>
-                  <View style={styles.resultMeta}>
-                    <Text style={styles.resultPrice}>{product.price}</Text>
-                    <View style={styles.resultColorDot}>
-                      <ColorDot color={product.color} size={16} />
-                      <Text style={styles.resultColorName}>{product.colorName}</Text>
-                    </View>
-                  </View>
-                </View>
-                <Ionicons name="chevron-forward" size={20} color={Theme.colors.textLight} />
-              </Pressable>
-            )}
-          />
-
-          <Pressable
-            style={styles.noneBtn}
-            onPress={() => setShowSearchModal(false)}
-          >
-            <Text style={styles.noneBtnText}>None of these</Text>
-          </Pressable>
-        </View>
-      </Modal>
+      {/* Image Color Dropper */}
+      {imageUris.length > 0 && (
+        <ImageColorDropper
+          imageUri={imageUris[0]}
+          visible={showDropper}
+          onColorPicked={handleDropperColorPicked}
+          onClose={() => setShowDropper(false)}
+        />
+      )}
     </>
   );
 }
@@ -703,25 +641,14 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  autoFillBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    marginTop: Theme.spacing.md,
-    paddingVertical: 12,
-    borderRadius: Theme.borderRadius.sm,
-    backgroundColor: Theme.colors.primary + "12",
-    borderWidth: 1,
-    borderColor: Theme.colors.primary + "30",
+  urlHint: {
+    fontSize: Theme.fontSize.xs,
+    color: Theme.colors.textLight,
+    marginBottom: Theme.spacing.sm,
+    fontStyle: "italic",
   },
   autoFillBtnDisabled: {
     opacity: 0.6,
-  },
-  autoFillBtnText: {
-    fontSize: Theme.fontSize.md,
-    fontWeight: "600",
-    color: Theme.colors.primary,
   },
   chipRow: {
     flexDirection: "row",
@@ -806,12 +733,6 @@ const styles = StyleSheet.create({
     fontSize: Theme.fontSize.xl,
     fontWeight: "700",
     color: Theme.colors.text,
-  },
-  modalSubtitle: {
-    fontSize: Theme.fontSize.sm,
-    color: Theme.colors.textSecondary,
-    paddingHorizontal: Theme.spacing.md,
-    marginBottom: Theme.spacing.md,
   },
   // Color Picker Modal
   colorPickerContent: {
@@ -914,98 +835,5 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontSize: Theme.fontSize.lg,
     fontWeight: "700",
-  },
-  // Search results
-  resultsList: {
-    paddingHorizontal: Theme.spacing.md,
-    paddingBottom: Theme.spacing.md,
-  },
-  resultCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: Theme.colors.surface,
-    borderRadius: Theme.borderRadius.md,
-    padding: Theme.spacing.sm,
-    marginBottom: Theme.spacing.sm,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  resultImage: {
-    width: 72,
-    height: 90,
-    borderRadius: Theme.borderRadius.sm,
-    overflow: "hidden",
-  },
-  resultImg: {
-    width: "100%",
-    height: "100%",
-    resizeMode: "cover",
-  },
-  resultColorPlaceholder: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  resultColorSwatch: {
-    position: "absolute",
-    top: 6,
-    right: 6,
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "rgba(0,0,0,0.1)",
-  },
-  resultInfo: {
-    flex: 1,
-    marginLeft: Theme.spacing.sm,
-  },
-  resultName: {
-    fontSize: Theme.fontSize.md,
-    fontWeight: "600",
-    color: Theme.colors.text,
-    marginBottom: 2,
-  },
-  resultStore: {
-    fontSize: Theme.fontSize.sm,
-    color: Theme.colors.primary,
-    fontWeight: "500",
-    marginBottom: 4,
-  },
-  resultMeta: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-  },
-  resultPrice: {
-    fontSize: Theme.fontSize.md,
-    fontWeight: "700",
-    color: Theme.colors.text,
-  },
-  resultColorDot: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-  },
-  resultColorName: {
-    fontSize: Theme.fontSize.xs,
-    color: Theme.colors.textSecondary,
-  },
-  noneBtn: {
-    marginHorizontal: Theme.spacing.md,
-    marginBottom: Theme.spacing.xl,
-    paddingVertical: 14,
-    borderRadius: Theme.borderRadius.md,
-    borderWidth: 1,
-    borderColor: Theme.colors.border,
-    alignItems: "center",
-  },
-  noneBtnText: {
-    fontSize: Theme.fontSize.md,
-    fontWeight: "600",
-    color: Theme.colors.textSecondary,
   },
 });

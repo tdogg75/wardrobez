@@ -6,7 +6,8 @@ export type ClothingCategory =
   | "jackets"
   | "shoes"
   | "accessories"
-  | "swimwear";
+  | "swimwear"
+  | "jewelry";
 
 export type Occasion =
   | "casual"
@@ -35,6 +36,8 @@ export type FabricType =
   | "fleece"
   | "other";
 
+export type ArchiveReason = "donated" | "sold" | "worn_out" | "given_away";
+
 export interface ClothingItem {
   id: string;
   name: string;
@@ -48,7 +51,12 @@ export interface ClothingItem {
   imageUris: string[]; // multiple images (online, personal, etc.)
   brand?: string;
   productUrl?: string; // link to the product page
+  cost?: number;
   favorite: boolean;
+  wearCount: number;
+  archived: boolean;
+  archiveReason?: ArchiveReason;
+  archivedAt?: number;
   createdAt: number;
   // Legacy field - kept for migration but no longer used in UI
   occasions?: Occasion[];
@@ -63,6 +71,9 @@ export interface Outfit {
   rating: number; // 1-5
   createdAt: number;
   suggested: boolean; // was this AI-suggested?
+  wornDates: string[]; // ISO date strings for each time worn
+  hasRemovedItems?: boolean;
+  removedItemNotified?: boolean;
 }
 
 export const CATEGORY_LABELS: Record<ClothingCategory, string> = {
@@ -74,6 +85,7 @@ export const CATEGORY_LABELS: Record<ClothingCategory, string> = {
   shoes: "Shoes",
   accessories: "Accessories",
   swimwear: "Swimwear",
+  jewelry: "Jewelry",
 };
 
 export const SUBCATEGORIES: Record<ClothingCategory, { value: string; label: string }[]> = {
@@ -128,13 +140,22 @@ export const SUBCATEGORIES: Record<ClothingCategory, { value: string; label: str
   ],
   accessories: [
     { value: "belts", label: "Belts" },
+    { value: "hats", label: "Hats" },
+    { value: "sunglasses", label: "Sunglasses" },
+  ],
+  jewelry: [
     { value: "watches", label: "Watches" },
     { value: "earrings", label: "Earrings" },
     { value: "necklaces", label: "Necklaces" },
     { value: "bracelets", label: "Bracelets" },
     { value: "rings", label: "Rings" },
   ],
-  swimwear: [],
+  swimwear: [
+    { value: "one_piece", label: "One Piece" },
+    { value: "swim_top", label: "Swim Top" },
+    { value: "swim_bottom", label: "Swim Bottom" },
+    { value: "cover_up", label: "Cover-Up" },
+  ],
 };
 
 export const OCCASION_LABELS: Record<Occasion, string> = {
@@ -165,4 +186,11 @@ export const FABRIC_TYPE_LABELS: Record<FabricType, string> = {
   satin: "Satin",
   fleece: "Fleece",
   other: "Other",
+};
+
+export const ARCHIVE_REASON_LABELS: Record<ArchiveReason, string> = {
+  donated: "Donated",
+  sold: "Sold",
+  worn_out: "Worn Out",
+  given_away: "Given Away",
 };

@@ -4,6 +4,8 @@ import {
   getOutfits,
   saveOutfit,
   deleteOutfit as removeOutfit,
+  logOutfitWorn,
+  markOutfitNotified,
 } from "@/services/storage";
 
 interface OutfitsContextValue {
@@ -12,6 +14,9 @@ interface OutfitsContextValue {
   reload: () => Promise<void>;
   addOrUpdate: (outfit: Outfit) => Promise<void>;
   remove: (id: string) => Promise<void>;
+  logWorn: (outfitId: string) => Promise<void>;
+  markNotified: (outfitId: string) => Promise<void>;
+  updateRating: (outfitId: string, rating: number) => Promise<void>;
 }
 
 const OutfitsContext = createContext<OutfitsContextValue | null>(null);
@@ -47,12 +52,41 @@ export function OutfitsProvider({ children }: { children: React.ReactNode }) {
     [reload]
   );
 
+  const logWorn = useCallback(
+    async (outfitId: string) => {
+      await logOutfitWorn(outfitId);
+      await reload();
+    },
+    [reload]
+  );
+
+  const markNotified = useCallback(
+    async (outfitId: string) => {
+      await markOutfitNotified(outfitId);
+      await reload();
+    },
+    [reload]
+  );
+
+  const updateRating = useCallback(
+    async (outfitId: string, rating: number) => {
+      const outfit = outfits.find((o) => o.id === outfitId);
+      if (!outfit) return;
+      await saveOutfit({ ...outfit, rating });
+      await reload();
+    },
+    [outfits, reload]
+  );
+
   const value: OutfitsContextValue = {
     outfits,
     loading,
     reload,
     addOrUpdate,
     remove,
+    logWorn,
+    markNotified,
+    updateRating,
   };
 
   return React.createElement(OutfitsContext.Provider, { value }, children);

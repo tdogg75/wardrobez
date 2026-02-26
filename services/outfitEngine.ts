@@ -187,14 +187,15 @@ function getItemSeasonalFit(item: ClothingItem, season: Season): number {
     return 0.5;
   }
 
-  // Color-based seasonal reasoning (be reasonable, not strict)
+  // Color-based seasonal reasoning — only penalize genuine faux pas
+  // Don't restrict dark colors in summer or light colors in winter (except white pants)
   const { l } = hexToHSL(item.color);
   if (season === "winter") {
     // White pants in winter is a faux pas (but white tops are fine)
     if (item.category === "bottoms" && l > 90) return 0.3;
   }
 
-  // Default: most items work in most seasons
+  // Default: most items work in most seasons — don't be strict on colors
   return 0.9;
 }
 
@@ -229,6 +230,18 @@ function isDress(item: ClothingItem): boolean {
   return item.category === "dresses";
 }
 
+function isSwimOnePiece(item: ClothingItem): boolean {
+  return item.category === "swimwear" && item.subCategory === "one_piece";
+}
+
+function isSwimTop(item: ClothingItem): boolean {
+  return item.category === "swimwear" && item.subCategory === "swim_top";
+}
+
+function isSwimBottom(item: ClothingItem): boolean {
+  return item.category === "swimwear" && item.subCategory === "swim_bottom";
+}
+
 /**
  * Validates outfit combos against styling rules.
  */
@@ -240,6 +253,20 @@ function isValidCombo(combo: ClothingItem[]): boolean {
 
   if (hasDress && hasBottoms) return false;
   if (hasBlazer && !hasShirtUnderneath && !hasDress) return false;
+
+  // Swimwear rules:
+  // One piece can't combine with swim tops or swim bottoms
+  const hasOnePiece = combo.some(isSwimOnePiece);
+  const hasSwimTop = combo.some(isSwimTop);
+  const hasSwimBottom = combo.some(isSwimBottom);
+
+  if (hasOnePiece && (hasSwimTop || hasSwimBottom)) return false;
+
+  // Swimwear shouldn't combine with regular tops or bottoms
+  const hasSwimwear = combo.some((i) => i.category === "swimwear");
+  const hasTops = combo.some((i) => i.category === "tops");
+  if (hasSwimwear && hasTops) return false;
+  if (hasSwimwear && hasBottoms) return false;
 
   return true;
 }
@@ -281,6 +308,8 @@ function getCategoryCombinations(): ClothingCategory[][] {
     // Swimwear
     ["swimwear"],
     ["swimwear", "accessories"],
+    ["swimwear", "shoes"],
+    ["swimwear", "shoes", "accessories"],
   ];
 }
 
@@ -323,7 +352,7 @@ function enrichWithAccessories(
   const usedSubs = new Set<string>();
 
   for (const item of combo) {
-    if (item.category === "accessories" && item.subCategory) {
+    if ((item.category === "accessories" || item.category === "jewelry") && item.subCategory) {
       usedSubs.add(item.subCategory);
     }
   }
@@ -378,7 +407,10 @@ export function suggestOutfits(
     byCategory.set(item.category, list);
   }
 
-  const allAccessories = byCategory.get("accessories") ?? [];
+  const allAccessories = [
+    ...(byCategory.get("accessories") ?? []),
+    ...(byCategory.get("jewelry") ?? []),
+  ];
 
   const allCombos: OutfitCombo[] = [];
   for (const categorySet of getCategoryCombinations()) {
@@ -479,6 +511,21 @@ export function validateOutfit(items: ClothingItem[]): string[] {
   }
   if (items.length === 0) {
     warnings.push("Select at least one item to create an outfit");
+  }
+
+  // Swimwear warnings
+  const hasOnePiece = items.some(isSwimOnePiece);
+  const hasSwimTop = items.some(isSwimTop);
+  const hasSwimBottom = items.some(isSwimBottom);
+  if (hasOnePiece && (hasSwimTop || hasSwimBottom)) {
+    warnings.push("A one-piece swimsuit doesn't pair with separate swim tops or bottoms");
+  }
+  const hasSwimwear = items.some((i) => i.category === "swimwear");
+  if (hasSwimwear && items.some((i) => i.category === "tops")) {
+    warnings.push("Swimwear doesn't typically pair with regular tops");
+  }
+  if (hasSwimwear && hasBottoms) {
+    warnings.push("Swimwear doesn't typically pair with regular bottoms");
   }
 
   return warnings;
