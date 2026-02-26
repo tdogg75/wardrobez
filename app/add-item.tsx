@@ -18,6 +18,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useClothingItems } from "@/hooks/useClothingItems";
 import { Chip } from "@/components/Chip";
 import { ColorDot } from "@/components/ColorDot";
+import { ColorWheelPicker } from "@/components/ColorWheelPicker";
 import { Theme } from "@/constants/theme";
 import {
   PRESET_COLORS,
@@ -33,13 +34,11 @@ import {
 } from "@/services/productSearch";
 import type {
   ClothingCategory,
-  Occasion,
   FabricType,
 } from "@/models/types";
 import {
   CATEGORY_LABELS,
   SUBCATEGORIES,
-  OCCASION_LABELS,
   FABRIC_TYPE_LABELS,
 } from "@/models/types";
 
@@ -55,7 +54,6 @@ export default function AddItemScreen() {
   const [category, setCategory] = useState<ClothingCategory>("tops");
   const [subCategory, setSubCategory] = useState<string | undefined>(undefined);
   const [colorIdx, setColorIdx] = useState(0);
-  const [occasions, setOccasions] = useState<Occasion[]>([]);
   const [fabricType, setFabricType] = useState<FabricType>("cotton");
   const [imageUris, setImageUris] = useState<string[]>([]);
   const [brand, setBrand] = useState("");
@@ -65,6 +63,7 @@ export default function AddItemScreen() {
 
   // HSL fine-tuning
   const [hslAdjust, setHslAdjust] = useState<{ h: number; s: number; l: number } | null>(null);
+  const [showColorPicker, setShowColorPicker] = useState(false);
 
   // Secondary color
   const [secondaryColorIdx, setSecondaryColorIdx] = useState<number | null>(null);
@@ -90,16 +89,10 @@ export default function AddItemScreen() {
   const secondaryColor = secondaryColorIdx !== null ? PRESET_COLORS[secondaryColorIdx].hex : undefined;
   const secondaryColorName = secondaryColorIdx !== null ? PRESET_COLORS[secondaryColorIdx].name : undefined;
 
-  const toggleOccasion = (o: Occasion) =>
-    setOccasions((prev) =>
-      prev.includes(o) ? prev.filter((x) => x !== o) : [...prev, o]
-    );
-
   const pickImage = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ["images"],
       allowsEditing: true,
-      aspect: [3, 4],
       quality: 0.8,
     });
     if (!result.canceled && result.assets[0]) {
@@ -113,9 +106,16 @@ export default function AddItemScreen() {
 
   const handleSelectPresetColor = (idx: number) => {
     setColorIdx(idx);
-    // Reset HSL adjustment when picking a new preset
     const preset = PRESET_COLORS[idx];
     setHslAdjust({ h: preset.hue, s: preset.saturation, l: preset.lightness });
+  };
+
+  const openColorPicker = () => {
+    if (!hslAdjust) {
+      const preset = PRESET_COLORS[colorIdx];
+      setHslAdjust({ h: preset.hue, s: preset.saturation, l: preset.lightness });
+    }
+    setShowColorPicker(true);
   };
 
   const handleSearchOnline = async () => {
@@ -183,7 +183,6 @@ export default function AddItemScreen() {
     const preset = PRESET_COLORS[cIdx];
     setHslAdjust({ h: preset.hue, s: preset.saturation, l: preset.lightness });
 
-    // Bring in online image
     if (product.imageUri) {
       setImageUris((prev) => [product.imageUri!, ...prev]);
     }
@@ -207,7 +206,6 @@ export default function AddItemScreen() {
       colorName: finalColorName,
       secondaryColor,
       secondaryColorName,
-      occasions,
       fabricType,
       imageUris,
       brand: brand.trim() || undefined,
@@ -346,9 +344,16 @@ export default function AddItemScreen() {
         )}
 
         {/* Primary Color */}
-        <Text style={styles.sectionTitle}>
-          Color — {finalColorName}
-        </Text>
+        <View style={styles.colorHeader}>
+          <Text style={styles.sectionTitle}>
+            Color — {finalColorName}
+          </Text>
+          <Pressable style={styles.colorPickerBtn} onPress={openColorPicker}>
+            <View style={[styles.colorPickerSwatch, { backgroundColor: finalColor }]} />
+            <Ionicons name="color-palette-outline" size={18} color={Theme.colors.primary} />
+            <Text style={styles.colorPickerBtnText}>Fine-tune</Text>
+          </Pressable>
+        </View>
         <View style={styles.colorGrid}>
           {PRESET_COLORS.map((c, i) => (
             <Pressable key={c.hex + i} onPress={() => handleSelectPresetColor(i)} style={styles.colorBtn}>
@@ -356,91 +361,6 @@ export default function AddItemScreen() {
             </Pressable>
           ))}
         </View>
-
-        {/* HSL Fine-Tuning */}
-        {hslAdjust && (
-          <View style={styles.hslSection}>
-            <View style={styles.hslPreview}>
-              <View style={[styles.hslSwatch, { backgroundColor: finalColor }]} />
-              <Text style={styles.hslLabel}>{finalColorName} ({finalColor})</Text>
-            </View>
-            <View style={styles.sliderRow}>
-              <Text style={styles.sliderLabel}>Hue</Text>
-              <Pressable
-                style={styles.sliderBtn}
-                onPress={() => setHslAdjust({ ...hslAdjust, h: Math.max(0, hslAdjust.h - 10) })}
-              >
-                <Ionicons name="remove" size={16} color={Theme.colors.text} />
-              </Pressable>
-              <View style={styles.sliderTrack}>
-                <View
-                  style={[
-                    styles.sliderFill,
-                    { width: `${(hslAdjust.h / 360) * 100}%`, backgroundColor: `hsl(${hslAdjust.h}, 70%, 50%)` },
-                  ]}
-                />
-              </View>
-              <Pressable
-                style={styles.sliderBtn}
-                onPress={() => setHslAdjust({ ...hslAdjust, h: Math.min(360, hslAdjust.h + 10) })}
-              >
-                <Ionicons name="add" size={16} color={Theme.colors.text} />
-              </Pressable>
-              <Text style={styles.sliderValue}>{hslAdjust.h}°</Text>
-            </View>
-            <View style={styles.sliderRow}>
-              <Text style={styles.sliderLabel}>Sat</Text>
-              <Pressable
-                style={styles.sliderBtn}
-                onPress={() => setHslAdjust({ ...hslAdjust, s: Math.max(0, hslAdjust.s - 5) })}
-              >
-                <Ionicons name="remove" size={16} color={Theme.colors.text} />
-              </Pressable>
-              <View style={styles.sliderTrack}>
-                <View
-                  style={[
-                    styles.sliderFill,
-                    { width: `${hslAdjust.s}%`, backgroundColor: `hsl(${hslAdjust.h}, ${hslAdjust.s}%, 50%)` },
-                  ]}
-                />
-              </View>
-              <Pressable
-                style={styles.sliderBtn}
-                onPress={() => setHslAdjust({ ...hslAdjust, s: Math.min(100, hslAdjust.s + 5) })}
-              >
-                <Ionicons name="add" size={16} color={Theme.colors.text} />
-              </Pressable>
-              <Text style={styles.sliderValue}>{hslAdjust.s}%</Text>
-            </View>
-            <View style={styles.sliderRow}>
-              <Text style={styles.sliderLabel}>Light</Text>
-              <Pressable
-                style={styles.sliderBtn}
-                onPress={() => setHslAdjust({ ...hslAdjust, l: Math.max(0, hslAdjust.l - 5) })}
-              >
-                <Ionicons name="remove" size={16} color={Theme.colors.text} />
-              </Pressable>
-              <View style={styles.sliderTrack}>
-                <View
-                  style={[
-                    styles.sliderFill,
-                    { width: `${hslAdjust.l}%`, backgroundColor: `hsl(${hslAdjust.h}, ${hslAdjust.s}%, ${hslAdjust.l}%)` },
-                  ]}
-                />
-              </View>
-              <Pressable
-                style={styles.sliderBtn}
-                onPress={() => setHslAdjust({ ...hslAdjust, l: Math.min(100, hslAdjust.l + 5) })}
-              >
-                <Ionicons name="add" size={16} color={Theme.colors.text} />
-              </Pressable>
-              <Text style={styles.sliderValue}>{hslAdjust.l}%</Text>
-            </View>
-            <Pressable style={styles.resetHslBtn} onPress={() => setHslAdjust(null)}>
-              <Text style={styles.resetHslText}>Reset to preset</Text>
-            </Pressable>
-          </View>
-        )}
 
         {/* Secondary Color */}
         <Pressable
@@ -479,19 +399,6 @@ export default function AddItemScreen() {
           </>
         )}
 
-        {/* Occasion */}
-        <Text style={styles.sectionTitle}>Occasions (optional)</Text>
-        <View style={styles.chipRow}>
-          {(Object.keys(OCCASION_LABELS) as Occasion[]).map((o) => (
-            <Chip
-              key={o}
-              label={OCCASION_LABELS[o]}
-              selected={occasions.includes(o)}
-              onPress={() => toggleOccasion(o)}
-            />
-          ))}
-        </View>
-
         {/* Fabric Type */}
         <Text style={styles.sectionTitle}>Fabric Type</Text>
         <View style={styles.chipRow}>
@@ -510,6 +417,134 @@ export default function AddItemScreen() {
           <Text style={styles.saveBtnText}>Add to Wardrobe</Text>
         </Pressable>
       </ScrollView>
+
+      {/* Color Picker Modal */}
+      <Modal
+        visible={showColorPicker}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowColorPicker(false)}
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Fine-tune Color</Text>
+            <Pressable onPress={() => setShowColorPicker(false)}>
+              <Ionicons name="close" size={24} color={Theme.colors.text} />
+            </Pressable>
+          </View>
+
+          <ScrollView contentContainerStyle={styles.colorPickerContent}>
+            {/* Preview swatch */}
+            <View style={styles.pickerPreview}>
+              <View style={[styles.pickerSwatch, { backgroundColor: finalColor }]} />
+              <View>
+                <Text style={styles.pickerColorName}>{finalColorName}</Text>
+                <Text style={styles.pickerHex}>{finalColor}</Text>
+              </View>
+            </View>
+
+            {/* Color Wheel */}
+            <View style={styles.wheelWrap}>
+              <ColorWheelPicker
+                hue={hslAdjust?.h ?? 0}
+                saturation={hslAdjust?.s ?? 50}
+                lightness={hslAdjust?.l ?? 50}
+                size={240}
+                onColorChange={(h, s, l) => setHslAdjust({ h, s, l: hslAdjust?.l ?? 50 })}
+              />
+            </View>
+
+            {/* HSL Sliders */}
+            {hslAdjust && (
+              <View style={styles.hslSection}>
+                <View style={styles.sliderRow}>
+                  <Text style={styles.sliderLabel}>Hue</Text>
+                  <Pressable
+                    style={styles.sliderBtn}
+                    onPress={() => setHslAdjust({ ...hslAdjust, h: Math.max(0, hslAdjust.h - 10) })}
+                  >
+                    <Ionicons name="remove" size={16} color={Theme.colors.text} />
+                  </Pressable>
+                  <View style={styles.sliderTrack}>
+                    <View
+                      style={[
+                        styles.sliderFill,
+                        { width: `${(hslAdjust.h / 360) * 100}%`, backgroundColor: `hsl(${hslAdjust.h}, 70%, 50%)` },
+                      ]}
+                    />
+                  </View>
+                  <Pressable
+                    style={styles.sliderBtn}
+                    onPress={() => setHslAdjust({ ...hslAdjust, h: Math.min(360, hslAdjust.h + 10) })}
+                  >
+                    <Ionicons name="add" size={16} color={Theme.colors.text} />
+                  </Pressable>
+                  <Text style={styles.sliderValue}>{hslAdjust.h}°</Text>
+                </View>
+                <View style={styles.sliderRow}>
+                  <Text style={styles.sliderLabel}>Sat</Text>
+                  <Pressable
+                    style={styles.sliderBtn}
+                    onPress={() => setHslAdjust({ ...hslAdjust, s: Math.max(0, hslAdjust.s - 5) })}
+                  >
+                    <Ionicons name="remove" size={16} color={Theme.colors.text} />
+                  </Pressable>
+                  <View style={styles.sliderTrack}>
+                    <View
+                      style={[
+                        styles.sliderFill,
+                        { width: `${hslAdjust.s}%`, backgroundColor: `hsl(${hslAdjust.h}, ${hslAdjust.s}%, 50%)` },
+                      ]}
+                    />
+                  </View>
+                  <Pressable
+                    style={styles.sliderBtn}
+                    onPress={() => setHslAdjust({ ...hslAdjust, s: Math.min(100, hslAdjust.s + 5) })}
+                  >
+                    <Ionicons name="add" size={16} color={Theme.colors.text} />
+                  </Pressable>
+                  <Text style={styles.sliderValue}>{hslAdjust.s}%</Text>
+                </View>
+                <View style={styles.sliderRow}>
+                  <Text style={styles.sliderLabel}>Light</Text>
+                  <Pressable
+                    style={styles.sliderBtn}
+                    onPress={() => setHslAdjust({ ...hslAdjust, l: Math.max(0, hslAdjust.l - 5) })}
+                  >
+                    <Ionicons name="remove" size={16} color={Theme.colors.text} />
+                  </Pressable>
+                  <View style={styles.sliderTrack}>
+                    <View
+                      style={[
+                        styles.sliderFill,
+                        { width: `${hslAdjust.l}%`, backgroundColor: `hsl(${hslAdjust.h}, ${hslAdjust.s}%, ${hslAdjust.l}%)` },
+                      ]}
+                    />
+                  </View>
+                  <Pressable
+                    style={styles.sliderBtn}
+                    onPress={() => setHslAdjust({ ...hslAdjust, l: Math.min(100, hslAdjust.l + 5) })}
+                  >
+                    <Ionicons name="add" size={16} color={Theme.colors.text} />
+                  </Pressable>
+                  <Text style={styles.sliderValue}>{hslAdjust.l}%</Text>
+                </View>
+                <Pressable style={styles.resetHslBtn} onPress={() => setHslAdjust(null)}>
+                  <Text style={styles.resetHslText}>Reset to preset</Text>
+                </Pressable>
+              </View>
+            )}
+
+            {/* Done button */}
+            <Pressable
+              style={styles.doneBtn}
+              onPress={() => setShowColorPicker(false)}
+            >
+              <Text style={styles.doneBtnText}>Done</Text>
+            </Pressable>
+          </ScrollView>
+        </View>
+      </Modal>
 
       {/* Product Search Results Modal */}
       <Modal
@@ -692,6 +727,34 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
   },
+  colorHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginTop: Theme.spacing.md,
+    marginBottom: Theme.spacing.sm,
+  },
+  colorPickerBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: Theme.borderRadius.full,
+    backgroundColor: Theme.colors.primary + "12",
+  },
+  colorPickerSwatch: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    borderWidth: 1,
+    borderColor: "rgba(0,0,0,0.1)",
+  },
+  colorPickerBtnText: {
+    fontSize: Theme.fontSize.xs,
+    fontWeight: "600",
+    color: Theme.colors.primary,
+  },
   colorGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -699,81 +762,6 @@ const styles = StyleSheet.create({
   },
   colorBtn: {
     padding: 2,
-  },
-  // HSL Fine-Tuning
-  hslSection: {
-    marginTop: Theme.spacing.md,
-    backgroundColor: Theme.colors.surface,
-    borderRadius: Theme.borderRadius.md,
-    padding: Theme.spacing.md,
-    borderWidth: 1,
-    borderColor: Theme.colors.border,
-  },
-  hslPreview: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    marginBottom: 12,
-  },
-  hslSwatch: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: "rgba(0,0,0,0.1)",
-  },
-  hslLabel: {
-    fontSize: Theme.fontSize.sm,
-    color: Theme.colors.text,
-    fontWeight: "600",
-  },
-  sliderRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    marginBottom: 8,
-  },
-  sliderLabel: {
-    width: 36,
-    fontSize: Theme.fontSize.xs,
-    color: Theme.colors.textSecondary,
-    fontWeight: "600",
-  },
-  sliderBtn: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: Theme.colors.surfaceAlt,
-    justifyContent: "center",
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: Theme.colors.border,
-  },
-  sliderTrack: {
-    flex: 1,
-    height: 8,
-    backgroundColor: Theme.colors.surfaceAlt,
-    borderRadius: 4,
-    overflow: "hidden",
-  },
-  sliderFill: {
-    height: "100%",
-    borderRadius: 4,
-  },
-  sliderValue: {
-    width: 36,
-    fontSize: Theme.fontSize.xs,
-    color: Theme.colors.textSecondary,
-    textAlign: "right",
-  },
-  resetHslBtn: {
-    alignItems: "center",
-    marginTop: 4,
-  },
-  resetHslText: {
-    fontSize: Theme.fontSize.xs,
-    color: Theme.colors.primary,
-    fontWeight: "600",
   },
   // Secondary Color
   secondaryToggle: {
@@ -825,6 +813,109 @@ const styles = StyleSheet.create({
     paddingHorizontal: Theme.spacing.md,
     marginBottom: Theme.spacing.md,
   },
+  // Color Picker Modal
+  colorPickerContent: {
+    padding: Theme.spacing.md,
+    alignItems: "center",
+    paddingBottom: 60,
+  },
+  pickerPreview: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+    marginBottom: 20,
+    alignSelf: "stretch",
+  },
+  pickerSwatch: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    borderWidth: 2,
+    borderColor: "rgba(0,0,0,0.1)",
+  },
+  pickerColorName: {
+    fontSize: Theme.fontSize.lg,
+    fontWeight: "700",
+    color: Theme.colors.text,
+  },
+  pickerHex: {
+    fontSize: Theme.fontSize.sm,
+    color: Theme.colors.textSecondary,
+  },
+  wheelWrap: {
+    marginBottom: 20,
+  },
+  hslSection: {
+    alignSelf: "stretch",
+    backgroundColor: Theme.colors.surface,
+    borderRadius: Theme.borderRadius.md,
+    padding: Theme.spacing.md,
+    borderWidth: 1,
+    borderColor: Theme.colors.border,
+  },
+  sliderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 8,
+  },
+  sliderLabel: {
+    width: 36,
+    fontSize: Theme.fontSize.xs,
+    color: Theme.colors.textSecondary,
+    fontWeight: "600",
+  },
+  sliderBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: Theme.colors.surfaceAlt,
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: Theme.colors.border,
+  },
+  sliderTrack: {
+    flex: 1,
+    height: 8,
+    backgroundColor: Theme.colors.surfaceAlt,
+    borderRadius: 4,
+    overflow: "hidden",
+  },
+  sliderFill: {
+    height: "100%",
+    borderRadius: 4,
+  },
+  sliderValue: {
+    width: 36,
+    fontSize: Theme.fontSize.xs,
+    color: Theme.colors.textSecondary,
+    textAlign: "right",
+  },
+  resetHslBtn: {
+    alignItems: "center",
+    marginTop: 4,
+  },
+  resetHslText: {
+    fontSize: Theme.fontSize.xs,
+    color: Theme.colors.primary,
+    fontWeight: "600",
+  },
+  doneBtn: {
+    height: 48,
+    backgroundColor: Theme.colors.primary,
+    borderRadius: Theme.borderRadius.md,
+    justifyContent: "center",
+    alignItems: "center",
+    marginTop: Theme.spacing.lg,
+    alignSelf: "stretch",
+  },
+  doneBtnText: {
+    color: "#FFFFFF",
+    fontSize: Theme.fontSize.lg,
+    fontWeight: "700",
+  },
+  // Search results
   resultsList: {
     paddingHorizontal: Theme.spacing.md,
     paddingBottom: Theme.spacing.md,

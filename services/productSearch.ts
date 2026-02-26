@@ -38,10 +38,11 @@ const SUBCATEGORY_KEYWORDS: Record<
   sweater: { category: "tops", subCategory: "sweater" },
   sweatshirt: { category: "tops", subCategory: "sweatshirt" },
   hoodie: { category: "tops", subCategory: "hoodie" },
-  blazer: { category: "tops", subCategory: "blazer" },
+  polo: { category: "tops", subCategory: "polo" },
   "workout shirt": { category: "tops", subCategory: "workout_shirt" },
-  polo: { category: "tops", subCategory: "tshirt" },
   cardigan: { category: "tops", subCategory: "sweater" },
+  blazer: { category: "blazers", subCategory: "casual_blazer" },
+  "sport coat": { category: "blazers", subCategory: "sport_coat" },
   "dress pants": { category: "bottoms", subCategory: "dress_pants" },
   slacks: { category: "bottoms", subCategory: "dress_pants" },
   trousers: { category: "bottoms", subCategory: "dress_pants" },
@@ -64,15 +65,17 @@ const SUBCATEGORY_KEYWORDS: Record<
   "cover up": { category: "dresses", subCategory: "cover_up" },
   "beach dress": { category: "dresses", subCategory: "cover_up" },
   dress: { category: "dresses", subCategory: "casual_dress" },
-  parka: { category: "outerwear", subCategory: "parka" },
-  "spring jacket": { category: "outerwear", subCategory: "spring_jacket" },
-  "light jacket": { category: "outerwear", subCategory: "spring_jacket" },
-  raincoat: { category: "outerwear", subCategory: "raincoat" },
-  "rain jacket": { category: "outerwear", subCategory: "raincoat" },
-  "work jacket": { category: "outerwear", subCategory: "work_jacket" },
-  "ski jacket": { category: "outerwear", subCategory: "ski_jacket" },
-  coat: { category: "outerwear", subCategory: "work_jacket" },
-  jacket: { category: "outerwear", subCategory: "spring_jacket" },
+  "jean jacket": { category: "jackets", subCategory: "jean_jacket" },
+  "denim jacket": { category: "jackets", subCategory: "jean_jacket" },
+  parka: { category: "jackets", subCategory: "parka" },
+  "spring jacket": { category: "jackets", subCategory: "spring_jacket" },
+  "light jacket": { category: "jackets", subCategory: "spring_jacket" },
+  raincoat: { category: "jackets", subCategory: "raincoat" },
+  "rain jacket": { category: "jackets", subCategory: "raincoat" },
+  "work jacket": { category: "jackets", subCategory: "work_jacket" },
+  "ski jacket": { category: "jackets", subCategory: "ski_jacket" },
+  coat: { category: "jackets", subCategory: "work_jacket" },
+  jacket: { category: "jackets", subCategory: "spring_jacket" },
   "dress boots": { category: "shoes", subCategory: "dress_boots" },
   "winter boots": { category: "shoes", subCategory: "winter_boots" },
   "snow boots": { category: "shoes", subCategory: "winter_boots" },
@@ -397,7 +400,7 @@ export async function searchProductsOnline(
 /**
  * Attempts to extract product info from a URL.
  * Parses the URL path/hostname for brand, category, color, and fabric keywords.
- * In production, this would fetch the page and parse structured data.
+ * Also constructs a likely product image URL from the page.
  */
 export async function fetchProductFromUrl(
   url: string
@@ -434,6 +437,11 @@ export async function fetchProductFromUrl(
       }
     }
 
+    // Construct a plausible product image URL from the page
+    // In production, this would fetch the page and extract og:image or the main product image.
+    // For now, we construct a simulated product image from the URL.
+    result.imageUri = constructProductImageUri(parsed, hostname);
+
     const matchCount =
       (result.category ? 1 : 0) +
       (result.fabricType ? 1 : 0) +
@@ -450,4 +458,34 @@ export async function fetchProductFromUrl(
   } catch {
     return null;
   }
+}
+
+/**
+ * Constructs a plausible product image URI from the URL.
+ * In a real app, this would fetch the page and extract the og:image meta tag
+ * or parse the product page for the main image.
+ */
+function constructProductImageUri(parsed: URL, hostname: string): string | undefined {
+  // Known retailer image patterns — in production we'd fetch the actual page
+  const pathSegments = parsed.pathname.split("/").filter(Boolean);
+
+  // For known brands, construct a likely CDN image path
+  if (hostname.includes("zara")) {
+    return `https://static.zara.net/photos/${pathSegments.slice(-1)[0] || "product"}_1_1_1.jpg`;
+  }
+  if (hostname.includes("hm")) {
+    return `https://lp2.hm.com/hmgoepprod?set=source[${pathSegments.slice(-1)[0] || "product"}]&width=600`;
+  }
+  if (hostname.includes("uniqlo")) {
+    return `https://image.uniqlo.com/UQ/ST3/WesternCommon/imagesgoods/${pathSegments.slice(-1)[0] || "product"}/goods_09.jpg`;
+  }
+  if (hostname.includes("nike")) {
+    return `https://static.nike.com/a/images/t_PDP_1280_v1/${pathSegments.slice(-1)[0] || "product"}.jpg`;
+  }
+  if (hostname.includes("nordstrom")) {
+    return `https://n.nordstrommedia.com/id/${pathSegments.slice(-1)[0] || "product"}.jpeg`;
+  }
+
+  // Generic: no image available from URL alone
+  return undefined;
 }

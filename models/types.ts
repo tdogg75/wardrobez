@@ -2,7 +2,8 @@ export type ClothingCategory =
   | "tops"
   | "bottoms"
   | "dresses"
-  | "outerwear"
+  | "blazers"
+  | "jackets"
   | "shoes"
   | "accessories"
   | "swimwear";
@@ -13,6 +14,12 @@ export type Occasion =
   | "fancy"
   | "party"
   | "vacation";
+
+export type Season =
+  | "spring"
+  | "summer"
+  | "fall"
+  | "winter";
 
 export type FabricType =
   | "cotton"
@@ -37,13 +44,14 @@ export interface ClothingItem {
   colorName: string;
   secondaryColor?: string; // hex (optional)
   secondaryColorName?: string;
-  occasions: Occasion[];
   fabricType: FabricType;
   imageUris: string[]; // multiple images (online, personal, etc.)
   brand?: string;
   productUrl?: string; // link to the product page
   favorite: boolean;
   createdAt: number;
+  // Legacy field - kept for migration but no longer used in UI
+  occasions?: Occasion[];
 }
 
 export interface Outfit {
@@ -51,6 +59,7 @@ export interface Outfit {
   name: string;
   itemIds: string[];
   occasions: Occasion[];
+  seasons: Season[];
   rating: number; // 1-5
   createdAt: number;
   suggested: boolean; // was this AI-suggested?
@@ -60,7 +69,8 @@ export const CATEGORY_LABELS: Record<ClothingCategory, string> = {
   tops: "Tops",
   bottoms: "Bottoms",
   dresses: "Dresses",
-  outerwear: "Outerwear",
+  blazers: "Blazers",
+  jackets: "Jackets",
   shoes: "Shoes",
   accessories: "Accessories",
   swimwear: "Swimwear",
@@ -75,7 +85,7 @@ export const SUBCATEGORIES: Record<ClothingCategory, { value: string; label: str
     { value: "sweater", label: "Sweater" },
     { value: "sweatshirt", label: "Sweatshirt" },
     { value: "hoodie", label: "Hoodie" },
-    { value: "blazer", label: "Blazer" },
+    { value: "polo", label: "Polo" },
     { value: "workout_shirt", label: "Workout Shirt" },
   ],
   bottoms: [
@@ -94,12 +104,18 @@ export const SUBCATEGORIES: Record<ClothingCategory, { value: string; label: str
     { value: "sundress", label: "Sundress" },
     { value: "cover_up", label: "Cover-Up" },
   ],
-  outerwear: [
+  blazers: [
+    { value: "casual_blazer", label: "Casual" },
+    { value: "formal_blazer", label: "Formal" },
+    { value: "sport_coat", label: "Sport Coat" },
+  ],
+  jackets: [
     { value: "parka", label: "Parka" },
     { value: "spring_jacket", label: "Spring Jacket" },
     { value: "raincoat", label: "Raincoat" },
     { value: "work_jacket", label: "Work Jacket" },
     { value: "ski_jacket", label: "Ski Jacket" },
+    { value: "jean_jacket", label: "Jean Jacket" },
   ],
   shoes: [
     { value: "dress_boots", label: "Dress Boots" },
@@ -127,6 +143,13 @@ export const OCCASION_LABELS: Record<Occasion, string> = {
   fancy: "Fancy",
   party: "Party",
   vacation: "Vacation",
+};
+
+export const SEASON_LABELS: Record<Season, string> = {
+  spring: "Spring",
+  summer: "Summer",
+  fall: "Fall",
+  winter: "Winter",
 };
 
 export const FABRIC_TYPE_LABELS: Record<FabricType, string> = {

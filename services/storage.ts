@@ -23,9 +23,6 @@ function migrateClothingItem(item: any): ClothingItem {
     delete migrated.fabricWeight;
   }
 
-  // Remove seasons if present
-  delete migrated.seasons;
-
   // Migrate imageUri (string | null) -> imageUris (string[])
   if (migrated.imageUri !== undefined && migrated.imageUris === undefined) {
     migrated.imageUris = migrated.imageUri ? [migrated.imageUri] : [];
@@ -37,7 +34,19 @@ function migrateClothingItem(item: any): ClothingItem {
     migrated.imageUris = [];
   }
 
-  // Migrate old occasion values
+  // Migrate outerwear -> jackets
+  if (migrated.category === "outerwear") {
+    migrated.category = "jackets";
+  }
+
+  // Migrate blazer subcategory under tops -> blazers category
+  if (migrated.category === "tops" && migrated.subCategory === "blazer") {
+    migrated.category = "blazers";
+    migrated.subCategory = "casual_blazer";
+  }
+
+  // Remove occasions from clothing items (legacy field)
+  // Keep the field but don't require it
   if (Array.isArray(migrated.occasions)) {
     migrated.occasions = migrated.occasions
       .map((o: string) => {
@@ -54,7 +63,14 @@ function migrateClothingItem(item: any): ClothingItem {
 
 function migrateOutfit(outfit: any): Outfit {
   const migrated = { ...outfit };
-  delete migrated.seasons;
+  // Ensure seasons array exists
+  if (!Array.isArray(migrated.seasons)) {
+    migrated.seasons = [];
+  }
+  // Ensure occasions array exists
+  if (!Array.isArray(migrated.occasions)) {
+    migrated.occasions = [];
+  }
   return migrated as Outfit;
 }
 

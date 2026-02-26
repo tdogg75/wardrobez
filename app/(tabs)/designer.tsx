@@ -14,11 +14,12 @@ import { Ionicons } from "@expo/vector-icons";
 import { useClothingItems } from "@/hooks/useClothingItems";
 import { useOutfits } from "@/hooks/useOutfits";
 import { validateOutfit } from "@/services/outfitEngine";
+import { Chip } from "@/components/Chip";
 import { MoodBoard } from "@/components/MoodBoard";
 import { ColorDot } from "@/components/ColorDot";
 import { Theme } from "@/constants/theme";
-import type { ClothingItem, ClothingCategory } from "@/models/types";
-import { CATEGORY_LABELS } from "@/models/types";
+import type { ClothingItem, ClothingCategory, Occasion, Season } from "@/models/types";
+import { CATEGORY_LABELS, OCCASION_LABELS, SEASON_LABELS } from "@/models/types";
 
 function generateId(): string {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 9);
@@ -28,7 +29,8 @@ const CATEGORY_ORDER: ClothingCategory[] = [
   "tops",
   "bottoms",
   "dresses",
-  "outerwear",
+  "blazers",
+  "jackets",
   "shoes",
   "accessories",
   "swimwear",
@@ -40,6 +42,8 @@ export default function DesignerScreen() {
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [outfitName, setOutfitName] = useState("");
+  const [occasions, setOccasions] = useState<Occasion[]>([]);
+  const [seasons, setSeasons] = useState<Season[]>([]);
 
   const selectedItems = useMemo(
     () => items.filter((i) => selectedIds.has(i.id)),
@@ -79,6 +83,16 @@ export default function DesignerScreen() {
     });
   };
 
+  const toggleOccasion = (o: Occasion) =>
+    setOccasions((prev) =>
+      prev.includes(o) ? prev.filter((x) => x !== o) : [...prev, o]
+    );
+
+  const toggleSeason = (s: Season) =>
+    setSeasons((prev) =>
+      prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]
+    );
+
   const handleSave = async () => {
     if (selectedItems.length === 0) {
       Alert.alert("No items", "Select at least one item for your outfit.");
@@ -86,13 +100,13 @@ export default function DesignerScreen() {
     }
 
     const name = outfitName.trim() || `Custom #${Date.now().toString(36).slice(-4).toUpperCase()}`;
-    const allOccasions = new Set(selectedItems.flatMap((i) => i.occasions));
 
     await saveOutfit({
       id: generateId(),
       name,
       itemIds: selectedItems.map((i) => i.id),
-      occasions: [...allOccasions],
+      occasions,
+      seasons,
       rating: 3,
       createdAt: Date.now(),
       suggested: false,
@@ -101,11 +115,15 @@ export default function DesignerScreen() {
     Alert.alert("Saved!", `${name} has been added to your outfits.`);
     setSelectedIds(new Set());
     setOutfitName("");
+    setOccasions([]);
+    setSeasons([]);
   };
 
   const handleClear = () => {
     setSelectedIds(new Set());
     setOutfitName("");
+    setOccasions([]);
+    setSeasons([]);
   };
 
   return (
@@ -178,14 +196,42 @@ export default function DesignerScreen() {
           );
         }}
         ListHeaderComponent={
-          <View style={styles.nameInputWrap}>
-            <TextInput
-              style={styles.nameInput}
-              placeholder="Outfit name (optional)"
-              placeholderTextColor={Theme.colors.textLight}
-              value={outfitName}
-              onChangeText={setOutfitName}
-            />
+          <View>
+            <View style={styles.nameInputWrap}>
+              <TextInput
+                style={styles.nameInput}
+                placeholder="Outfit name (optional)"
+                placeholderTextColor={Theme.colors.textLight}
+                value={outfitName}
+                onChangeText={setOutfitName}
+              />
+            </View>
+
+            {/* Occasion tags for the outfit */}
+            <Text style={styles.tagSectionTitle}>Occasion</Text>
+            <View style={styles.chipRow}>
+              {(Object.keys(OCCASION_LABELS) as Occasion[]).map((o) => (
+                <Chip
+                  key={o}
+                  label={OCCASION_LABELS[o]}
+                  selected={occasions.includes(o)}
+                  onPress={() => toggleOccasion(o)}
+                />
+              ))}
+            </View>
+
+            {/* Season tags for the outfit */}
+            <Text style={styles.tagSectionTitle}>Season</Text>
+            <View style={styles.chipRow}>
+              {(Object.keys(SEASON_LABELS) as Season[]).map((s) => (
+                <Chip
+                  key={s}
+                  label={SEASON_LABELS[s]}
+                  selected={seasons.includes(s)}
+                  onPress={() => toggleSeason(s)}
+                />
+              ))}
+            </View>
           </View>
         }
         ListFooterComponent={<View style={{ height: 100 }} />}
@@ -267,6 +313,14 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Theme.colors.border,
   },
+  tagSectionTitle: {
+    fontSize: Theme.fontSize.sm,
+    fontWeight: "600",
+    color: Theme.colors.text,
+    marginBottom: 4,
+    marginTop: Theme.spacing.sm,
+  },
+  chipRow: { flexDirection: "row", flexWrap: "wrap", marginBottom: 4 },
   sectionHeader: {
     fontSize: Theme.fontSize.sm,
     fontWeight: "700",

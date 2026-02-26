@@ -2,6 +2,7 @@ import type {
   ClothingItem,
   ClothingCategory,
   Occasion,
+  Season,
   FabricType,
   Outfit,
 } from "@/models/types";
@@ -44,7 +45,6 @@ function colorCompatibility(hex1: string, hex2: string): number {
 
   // Exact/near match (monochromatic)
   if (hueDiff < 10) {
-    // Monochromatic — great if there's lightness contrast
     baseScore = lightDiff > 15 ? 0.88 : 0.72;
   }
   // Analogous (within 30°)
@@ -85,7 +85,6 @@ function colorCompatibility(hex1: string, hex2: string): number {
 function outfitColorScore(items: ClothingItem[]): { score: number; hasGreatHarmony: boolean } {
   if (items.length < 2) return { score: 0.85, hasGreatHarmony: false };
 
-  // Collect all colors (primary + secondary)
   const allColors: string[] = [];
   for (const item of items) {
     allColors.push(item.color);
@@ -94,7 +93,6 @@ function outfitColorScore(items: ClothingItem[]): { score: number; hasGreatHarmo
     }
   }
 
-  // Pairwise comparison of all colors
   let totalScore = 0;
   let pairs = 0;
 
@@ -139,12 +137,78 @@ function fabricCompatibility(items: ClothingItem[]): number {
   return 0.85;
 }
 
-// --- Occasion Logic ---
+// --- Seasonal Logic ---
 
-function occasionScore(items: ClothingItem[], targetOccasion: Occasion): number {
-  if (items.length === 0) return 0;
-  const matchCount = items.filter((i) => i.occasions.includes(targetOccasion)).length;
-  return matchCount / items.length;
+/** Items that are only appropriate in certain seasons */
+const WINTER_ONLY_SUBS = ["winter_boots", "ski_jacket", "parka"];
+const SUMMER_ONLY_SUBS = ["sandals", "sundress"];
+const WARM_SEASON_SUBS = ["shorts", "tank_top", "sandals", "sundress", "cover_up"];
+const COLD_SEASON_SUBS = ["winter_boots", "parka", "ski_jacket"];
+
+/** Year-round layering items */
+const YEAR_ROUND_SUBS = [
+  "blazer", "casual_blazer", "formal_blazer", "sport_coat",
+  "sweater", "hoodie", "sweatshirt",
+  "work_jacket",
+];
+
+function getItemSeasonalFit(item: ClothingItem, season: Season): number {
+  const sub = item.subCategory ?? "";
+
+  // Year-round items always score well
+  if (YEAR_ROUND_SUBS.includes(sub)) return 1.0;
+
+  // Blazers are always fine (layering)
+  if (item.category === "blazers") return 1.0;
+
+  // Sweaters and hoodies in tops are always fine as layering
+  if (item.category === "tops" && ["sweater", "hoodie", "sweatshirt"].includes(sub)) return 1.0;
+
+  // Season-specific penalties
+  if (season === "winter") {
+    if (SUMMER_ONLY_SUBS.includes(sub)) return 0.0; // no sandals in winter
+    if (WARM_SEASON_SUBS.includes(sub)) return 0.1;
+  }
+  if (season === "summer") {
+    if (WINTER_ONLY_SUBS.includes(sub)) return 0.0; // no winter boots in summer
+    if (COLD_SEASON_SUBS.includes(sub)) return 0.1;
+  }
+
+  // Jean jackets and spring jackets best in spring/fall
+  if (sub === "jean_jacket" || sub === "spring_jacket") {
+    if (season === "spring" || season === "fall") return 1.0;
+    if (season === "summer") return 0.6;
+    return 0.7; // winter: can layer but not ideal as primary
+  }
+
+  // Raincoat works in spring/fall
+  if (sub === "raincoat") {
+    if (season === "spring" || season === "fall") return 1.0;
+    return 0.5;
+  }
+
+  // Color-based seasonal reasoning (be reasonable, not strict)
+  const { l } = hexToHSL(item.color);
+  if (season === "winter") {
+    // White pants in winter is a faux pas (but white tops are fine)
+    if (item.category === "bottoms" && l > 90) return 0.3;
+  }
+
+  // Default: most items work in most seasons
+  return 0.9;
+}
+
+function seasonalScore(items: ClothingItem[], season: Season): number {
+  if (items.length === 0) return 0.9;
+  let total = 0;
+  let blocked = false;
+  for (const item of items) {
+    const fit = getItemSeasonalFit(item, season);
+    if (fit === 0.0) blocked = true;
+    total += fit;
+  }
+  if (blocked) return 0.0; // Hard block: don't suggest sandals+winter
+  return total / items.length;
 }
 
 // --- Outfit Rules & Validation ---
@@ -152,12 +216,12 @@ function occasionScore(items: ClothingItem[], targetOccasion: Occasion): number 
 const JEWELRY_SUBS = ["earrings", "necklaces", "bracelets", "rings"];
 
 function isBlazer(item: ClothingItem): boolean {
-  return item.category === "tops" && item.subCategory === "blazer";
+  return item.category === "blazers";
 }
 
 function isShirtLike(item: ClothingItem): boolean {
   if (item.category !== "tops") return false;
-  const shirtSubs = ["tank_top", "tshirt", "long_sleeve", "blouse", "sweater", "sweatshirt", "hoodie", "workout_shirt"];
+  const shirtSubs = ["tank_top", "tshirt", "long_sleeve", "blouse", "sweater", "sweatshirt", "hoodie", "polo", "workout_shirt"];
   return !item.subCategory || shirtSubs.includes(item.subCategory);
 }
 
@@ -189,20 +253,30 @@ function getCategoryCombinations(): ClothingCategory[][] {
     // Traditional outfits
     ["tops", "bottoms"],
     ["tops", "bottoms", "shoes"],
-    ["tops", "bottoms", "outerwear"],
-    ["tops", "bottoms", "outerwear", "shoes"],
+    ["tops", "bottoms", "jackets"],
+    ["tops", "bottoms", "jackets", "shoes"],
     ["tops", "bottoms", "accessories"],
     ["tops", "bottoms", "shoes", "accessories"],
-    ["tops", "bottoms", "outerwear", "shoes", "accessories"],
+    ["tops", "bottoms", "jackets", "shoes", "accessories"],
+
+    // With blazer
+    ["tops", "bottoms", "blazers"],
+    ["tops", "bottoms", "blazers", "shoes"],
+    ["tops", "bottoms", "blazers", "shoes", "accessories"],
+
+    // Blazer + jacket (layering)
+    ["tops", "bottoms", "blazers", "jackets", "shoes"],
 
     // Dress-based outfits
     ["dresses"],
     ["dresses", "shoes"],
-    ["dresses", "outerwear"],
-    ["dresses", "shoes", "outerwear"],
+    ["dresses", "jackets"],
+    ["dresses", "shoes", "jackets"],
     ["dresses", "accessories"],
     ["dresses", "shoes", "accessories"],
-    ["dresses", "outerwear", "shoes", "accessories"],
+    ["dresses", "jackets", "shoes", "accessories"],
+    ["dresses", "blazers"],
+    ["dresses", "blazers", "shoes"],
 
     // Swimwear
     ["swimwear"],
@@ -242,8 +316,8 @@ function enrichWithAccessories(
   if (allAccessories.length === 0) return combo;
 
   const hasBottoms = combo.some((i) => i.category === "bottoms");
-  const comboOccasions = new Set(combo.flatMap((i) => i.occasions));
-  const isFormalish = comboOccasions.has("fancy") || comboOccasions.has("work") || comboOccasions.has("party");
+  const hasBlazer = combo.some((i) => i.category === "blazers");
+  const isFormalish = hasBlazer;
 
   const extras: ClothingItem[] = [];
   const usedSubs = new Set<string>();
@@ -263,7 +337,7 @@ function enrichWithAccessories(
     }
   }
 
-  // For formal/work/party outfits, add 1-2 pieces of jewelry
+  // For formal outfits with blazers, add 1-2 pieces of jewelry
   if (isFormalish) {
     for (const sub of JEWELRY_SUBS) {
       if (usedSubs.has(sub) || extras.length >= 2) break;
@@ -290,10 +364,11 @@ export function suggestOutfits(
   allItems: ClothingItem[],
   options: {
     occasion?: Occasion;
+    season?: Season;
     maxResults?: number;
   } = {}
 ): SuggestionResult[] {
-  const { occasion, maxResults = 6 } = options;
+  const { occasion, season, maxResults = 6 } = options;
 
   // Group items by category
   const byCategory = new Map<ClothingCategory, ClothingItem[]>();
@@ -326,18 +401,29 @@ export function suggestOutfits(
     if (colorResult.score > 0.85) reasons.push("Excellent color harmony");
     else if (colorResult.score > 0.7) reasons.push("Good color pairing");
 
-    // Fabric compatibility — 30% weight
+    // Fabric compatibility — 25% weight
     const fabric = fabricCompatibility(combo);
-    score += fabric * 30;
+    score += fabric * 25;
     if (fabric > 0.8) reasons.push("Well-balanced fabrics");
 
-    // Occasion match — 30% weight
-    if (occasion) {
-      const os = occasionScore(combo, occasion);
-      score += os * 30;
-      if (os > 0.7) reasons.push(`Great for ${occasion}`);
+    // Seasonal fit — 20% weight
+    if (season) {
+      const sFit = seasonalScore(combo, season);
+      if (sFit === 0.0) {
+        // Hard block — skip this combo entirely
+        return { items: combo, score: -1, reasons: [] };
+      }
+      score += sFit * 20;
+      if (sFit > 0.85) reasons.push(`Great for ${season}`);
     } else {
-      score += 15;
+      score += 10;
+    }
+
+    // Occasion is now on outfits, not items, so just give a baseline
+    if (occasion) {
+      score += 10;
+    } else {
+      score += 10;
     }
 
     // Bonus for completeness
@@ -348,17 +434,21 @@ export function suggestOutfits(
     }
     if (categories.has("accessories")) score += 1;
     if (categories.has("dresses")) reasons.push("Dress-based look");
+    if (categories.has("blazers")) reasons.push("Polished with blazer");
 
     return { items: combo, score, reasons };
   });
 
+  // Filter out blocked combos
+  const valid = scored.filter((s) => s.score >= 0);
+
   // Sort by score descending
-  scored.sort((a, b) => b.score - a.score);
+  valid.sort((a, b) => b.score - a.score);
 
   // Deduplicate
   const seen = new Set<string>();
   const unique: SuggestionResult[] = [];
-  for (const result of scored) {
+  for (const result of valid) {
     const key = result.items.map((i) => i.id).sort().join(",");
     if (!seen.has(key)) {
       seen.add(key);
