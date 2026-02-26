@@ -32,6 +32,11 @@ export const PRESET_COLORS: ColorInfo[] = [
   { hex: "#E6E6FA", name: "Lavender", hue: 240, saturation: 67, lightness: 94, isNeutral: false },
   { hex: "#800020", name: "Burgundy", hue: 345, saturation: 100, lightness: 25, isNeutral: false },
   { hex: "#556B2F", name: "Olive", hue: 82, saturation: 39, lightness: 30, isNeutral: false },
+  // Typical jeans / denim washes
+  { hex: "#1B3A5C", name: "Dark Wash", hue: 212, saturation: 53, lightness: 23, isNeutral: true },
+  { hex: "#4A6FA5", name: "Medium Wash", hue: 215, saturation: 39, lightness: 47, isNeutral: false },
+  { hex: "#8AADCE", name: "Light Wash", hue: 210, saturation: 40, lightness: 67, isNeutral: false },
+  { hex: "#2C3E50", name: "Raw Indigo", hue: 210, saturation: 29, lightness: 24, isNeutral: true },
 ];
 
 export function hexToHSL(hex: string): { h: number; s: number; l: number } {
@@ -58,6 +63,25 @@ export function hexToHSL(hex: string): { h: number; s: number; l: number } {
   return { h: Math.round(h * 360), s: Math.round(s * 100), l: Math.round(l * 100) };
 }
 
+export function hslToHex(h: number, s: number, l: number): string {
+  const sN = s / 100;
+  const lN = l / 100;
+  const c = (1 - Math.abs(2 * lN - 1)) * sN;
+  const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+  const m = lN - c / 2;
+
+  let r = 0, g = 0, b = 0;
+  if (h < 60) { r = c; g = x; b = 0; }
+  else if (h < 120) { r = x; g = c; b = 0; }
+  else if (h < 180) { r = 0; g = c; b = x; }
+  else if (h < 240) { r = 0; g = x; b = c; }
+  else if (h < 300) { r = x; g = 0; b = c; }
+  else { r = c; g = 0; b = x; }
+
+  const toHex = (n: number) => Math.round((n + m) * 255).toString(16).padStart(2, "0");
+  return `#${toHex(r)}${toHex(g)}${toHex(b)}`.toUpperCase();
+}
+
 export function getColorDistance(hex1: string, hex2: string): number {
   const c1 = hexToHSL(hex1);
   const c2 = hexToHSL(hex2);
@@ -67,4 +91,22 @@ export function getColorDistance(hex1: string, hex2: string): number {
   const lightDiff = Math.abs(c1.l - c2.l);
 
   return Math.sqrt(hueDiff * hueDiff + satDiff * satDiff + lightDiff * lightDiff);
+}
+
+export function findClosestPresetIndex(hex: string): number {
+  let bestIdx = 0;
+  let bestDist = Infinity;
+  for (let i = 0; i < PRESET_COLORS.length; i++) {
+    const d = getColorDistance(hex, PRESET_COLORS[i].hex);
+    if (d < bestDist) {
+      bestDist = d;
+      bestIdx = i;
+    }
+  }
+  return bestIdx;
+}
+
+export function getColorName(hex: string): string {
+  const idx = findClosestPresetIndex(hex);
+  return PRESET_COLORS[idx].name;
 }

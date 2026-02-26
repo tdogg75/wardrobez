@@ -11,9 +11,10 @@ import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useOutfits } from "@/hooks/useOutfits";
 import { useClothingItems } from "@/hooks/useClothingItems";
-import { ColorDot } from "@/components/ColorDot";
+import { MoodBoard } from "@/components/MoodBoard";
 import { EmptyState } from "@/components/EmptyState";
 import { Theme } from "@/constants/theme";
+import type { ClothingItem } from "@/models/types";
 
 export default function OutfitsScreen() {
   const { outfits, loading, remove } = useOutfits();
@@ -38,7 +39,7 @@ export default function OutfitsScreen() {
           renderItem={({ item: outfit }) => {
             const outfitItems = outfit.itemIds
               .map((id) => getById(id))
-              .filter(Boolean);
+              .filter(Boolean) as ClothingItem[];
 
             return (
               <Pressable
@@ -50,40 +51,46 @@ export default function OutfitsScreen() {
                   })
                 }
               >
-                <View style={styles.cardHeader}>
-                  <Text style={styles.cardTitle}>{outfit.name}</Text>
-                  {outfit.suggested && (
-                    <View style={styles.aiBadge}>
-                      <Ionicons name="sparkles" size={12} color={Theme.colors.primary} />
-                      <Text style={styles.aiBadgeText}>AI</Text>
+                <View style={styles.cardBody}>
+                  {/* Mini Mood Board */}
+                  <View style={styles.moodBoardWrap}>
+                    <MoodBoard items={outfitItems} size={110} />
+                  </View>
+
+                  {/* Outfit Info */}
+                  <View style={styles.cardInfo}>
+                    <View style={styles.cardHeader}>
+                      <Text style={styles.cardTitle} numberOfLines={1}>
+                        {outfit.name}
+                      </Text>
+                      {outfit.suggested && (
+                        <View style={styles.aiBadge}>
+                          <Ionicons name="sparkles" size={10} color={Theme.colors.primary} />
+                          <Text style={styles.aiBadgeText}>AI</Text>
+                        </View>
+                      )}
                     </View>
-                  )}
-                </View>
 
-                {/* Color swatches */}
-                <View style={styles.swatches}>
-                  {outfitItems.map((item) =>
-                    item ? (
-                      <ColorDot key={item.id} color={item.color} size={24} />
-                    ) : null
-                  )}
-                </View>
+                    {/* Item names */}
+                    <Text style={styles.itemList} numberOfLines={2}>
+                      {outfitItems.map((i) => i?.name).join(" + ")}
+                    </Text>
 
-                {/* Item names */}
-                <Text style={styles.itemList} numberOfLines={2}>
-                  {outfitItems.map((i) => i?.name).join(" + ")}
-                </Text>
-
-                {/* Rating */}
-                <View style={styles.ratingRow}>
-                  {[1, 2, 3, 4, 5].map((star) => (
-                    <Ionicons
-                      key={star}
-                      name={star <= outfit.rating ? "star" : "star-outline"}
-                      size={16}
-                      color={star <= outfit.rating ? "#FFD700" : Theme.colors.textLight}
-                    />
-                  ))}
+                    {/* Rating */}
+                    <View style={styles.ratingRow}>
+                      {[1, 2, 3, 4, 5].map((star) => (
+                        <Ionicons
+                          key={star}
+                          name={star <= outfit.rating ? "star" : "star-outline"}
+                          size={14}
+                          color={star <= outfit.rating ? "#FFD700" : Theme.colors.textLight}
+                        />
+                      ))}
+                      <Text style={styles.itemCount}>
+                        {outfitItems.length} items
+                      </Text>
+                    </View>
+                  </View>
                 </View>
 
                 <Pressable
@@ -108,7 +115,7 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: Theme.colors.surface,
     borderRadius: Theme.borderRadius.md,
-    padding: Theme.spacing.md,
+    padding: Theme.spacing.sm,
     marginBottom: Theme.spacing.md,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
@@ -117,42 +124,65 @@ const styles = StyleSheet.create({
     elevation: 3,
     position: "relative",
   },
+  cardBody: {
+    flexDirection: "row",
+    gap: 12,
+  },
+  moodBoardWrap: {
+    borderRadius: Theme.borderRadius.sm,
+    overflow: "hidden",
+  },
+  cardInfo: {
+    flex: 1,
+    justifyContent: "center",
+    paddingRight: 24,
+  },
   cardHeader: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
-    marginBottom: 8,
+    gap: 6,
+    marginBottom: 4,
   },
   cardTitle: {
-    fontSize: Theme.fontSize.lg,
+    fontSize: Theme.fontSize.md,
     fontWeight: "700",
     color: Theme.colors.text,
+    flex: 1,
   },
   aiBadge: {
     flexDirection: "row",
     alignItems: "center",
     gap: 3,
     backgroundColor: Theme.colors.primary + "15",
-    paddingHorizontal: 8,
+    paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: Theme.borderRadius.full,
   },
   aiBadgeText: {
-    fontSize: Theme.fontSize.xs,
+    fontSize: 10,
     fontWeight: "700",
     color: Theme.colors.primary,
   },
-  swatches: { flexDirection: "row", gap: 6, marginBottom: 8 },
   itemList: {
-    fontSize: Theme.fontSize.sm,
+    fontSize: Theme.fontSize.xs,
     color: Theme.colors.textSecondary,
-    marginBottom: 8,
+    marginBottom: 6,
+    lineHeight: 16,
   },
-  ratingRow: { flexDirection: "row", gap: 2 },
+  ratingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 2,
+  },
+  itemCount: {
+    fontSize: Theme.fontSize.xs,
+    color: Theme.colors.textLight,
+    marginLeft: 8,
+  },
   deleteBtn: {
     position: "absolute",
-    top: 12,
-    right: 12,
+    top: 10,
+    right: 10,
     padding: 4,
   },
 });

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import {
   View,
   Text,
@@ -16,7 +16,13 @@ import { useClothingItems } from "@/hooks/useClothingItems";
 import { Chip } from "@/components/Chip";
 import { ColorDot } from "@/components/ColorDot";
 import { Theme } from "@/constants/theme";
-import { PRESET_COLORS } from "@/constants/colors";
+import {
+  PRESET_COLORS,
+  hexToHSL,
+  hslToHex,
+  getColorName,
+  findClosestPresetIndex,
+} from "@/constants/colors";
 import type {
   ClothingCategory,
   Occasion,
@@ -42,8 +48,16 @@ export default function EditItemScreen() {
   const [fabricType, setFabricType] = useState<FabricType>("cotton");
   const [imageUris, setImageUris] = useState<string[]>([]);
   const [brand, setBrand] = useState("");
+  const [productUrl, setProductUrl] = useState("");
   const [favorite, setFavorite] = useState(false);
   const [createdAt, setCreatedAt] = useState(Date.now());
+
+  // HSL fine-tuning
+  const [hslAdjust, setHslAdjust] = useState<{ h: number; s: number; l: number } | null>(null);
+
+  // Secondary color
+  const [secondaryColorIdx, setSecondaryColorIdx] = useState<number | null>(null);
+  const [showSecondaryColor, setShowSecondaryColor] = useState(false);
 
   useEffect(() => {
     const item = items.find((i) => i.id === id);
@@ -51,15 +65,37 @@ export default function EditItemScreen() {
     setName(item.name);
     setCategory(item.category);
     setSubCategory(item.subCategory);
-    const cIdx = PRESET_COLORS.findIndex((c) => c.hex === item.color);
-    setColorIdx(cIdx >= 0 ? cIdx : 0);
+    const cIdx = findClosestPresetIndex(item.color);
+    setColorIdx(cIdx);
+    const hsl = hexToHSL(item.color);
+    setHslAdjust({ h: hsl.h, s: hsl.s, l: hsl.l });
     setOccasions(item.occasions);
     setFabricType(item.fabricType);
     setImageUris(item.imageUris ?? []);
     setBrand(item.brand ?? "");
+    setProductUrl(item.productUrl ?? "");
     setFavorite(item.favorite);
     setCreatedAt(item.createdAt);
+
+    if (item.secondaryColor) {
+      const secIdx = findClosestPresetIndex(item.secondaryColor);
+      setSecondaryColorIdx(secIdx);
+      setShowSecondaryColor(true);
+    }
   }, [id, items]);
+
+  const finalColor = useMemo(() => {
+    if (hslAdjust) return hslToHex(hslAdjust.h, hslAdjust.s, hslAdjust.l);
+    return PRESET_COLORS[colorIdx].hex;
+  }, [colorIdx, hslAdjust]);
+
+  const finalColorName = useMemo(() => {
+    if (hslAdjust) return getColorName(finalColor);
+    return PRESET_COLORS[colorIdx].name;
+  }, [finalColor, hslAdjust, colorIdx]);
+
+  const secondaryColor = secondaryColorIdx !== null ? PRESET_COLORS[secondaryColorIdx].hex : undefined;
+  const secondaryColorName = secondaryColorIdx !== null ? PRESET_COLORS[secondaryColorIdx].name : undefined;
 
   const toggleOccasion = (o: Occasion) =>
     setOccasions((prev) =>
@@ -82,20 +118,28 @@ export default function EditItemScreen() {
     setImageUris((prev) => prev.filter((_, i) => i !== index));
   };
 
+  const handleSelectPresetColor = (idx: number) => {
+    setColorIdx(idx);
+    const preset = PRESET_COLORS[idx];
+    setHslAdjust({ h: preset.hue, s: preset.saturation, l: preset.lightness });
+  };
+
   const handleSave = async () => {
     if (!name.trim() || !id) return;
-    const color = PRESET_COLORS[colorIdx];
     await addOrUpdate({
       id,
       name: name.trim(),
       category,
       subCategory,
-      color: color.hex,
-      colorName: color.name,
+      color: finalColor,
+      colorName: finalColorName,
+      secondaryColor,
+      secondaryColorName,
       occasions,
       fabricType,
       imageUris,
       brand: brand.trim() || undefined,
+      productUrl: productUrl.trim() || undefined,
       favorite,
       createdAt,
     });
@@ -161,6 +205,18 @@ export default function EditItemScreen() {
         placeholderTextColor={Theme.colors.textLight}
       />
 
+      {/* Product URL */}
+      <Text style={styles.sectionTitle}>Product URL (optional)</Text>
+      <TextInput
+        style={styles.input}
+        value={productUrl}
+        onChangeText={setProductUrl}
+        placeholder="https://..."
+        placeholderTextColor={Theme.colors.textLight}
+        autoCapitalize="none"
+        keyboardType="url"
+      />
+
       {/* Category */}
       <Text style={styles.sectionTitle}>Category</Text>
       <View style={styles.chipRow}>
@@ -198,18 +254,140 @@ export default function EditItemScreen() {
 
       {/* Color */}
       <Text style={styles.sectionTitle}>
-        Color — {PRESET_COLORS[colorIdx].name}
+        Color — {finalColorName}
       </Text>
       <View style={styles.colorGrid}>
         {PRESET_COLORS.map((c, i) => (
-          <Pressable key={c.hex} onPress={() => setColorIdx(i)} style={styles.colorBtn}>
-            <ColorDot color={c.hex} size={36} selected={colorIdx === i} />
+          <Pressable key={c.hex + i} onPress={() => handleSelectPresetColor(i)} style={styles.colorBtn}>
+            <ColorDot color={c.hex} size={36} selected={colorIdx === i && !hslAdjust} />
           </Pressable>
         ))}
       </View>
 
+      {/* HSL Fine-Tuning */}
+      {hslAdjust && (
+        <View style={styles.hslSection}>
+          <View style={styles.hslPreview}>
+            <View style={[styles.hslSwatch, { backgroundColor: finalColor }]} />
+            <Text style={styles.hslLabel}>{finalColorName} ({finalColor})</Text>
+          </View>
+          <View style={styles.sliderRow}>
+            <Text style={styles.sliderLabel}>Hue</Text>
+            <Pressable
+              style={styles.sliderBtn}
+              onPress={() => setHslAdjust({ ...hslAdjust, h: Math.max(0, hslAdjust.h - 10) })}
+            >
+              <Ionicons name="remove" size={16} color={Theme.colors.text} />
+            </Pressable>
+            <View style={styles.sliderTrack}>
+              <View
+                style={[
+                  styles.sliderFill,
+                  { width: `${(hslAdjust.h / 360) * 100}%`, backgroundColor: `hsl(${hslAdjust.h}, 70%, 50%)` },
+                ]}
+              />
+            </View>
+            <Pressable
+              style={styles.sliderBtn}
+              onPress={() => setHslAdjust({ ...hslAdjust, h: Math.min(360, hslAdjust.h + 10) })}
+            >
+              <Ionicons name="add" size={16} color={Theme.colors.text} />
+            </Pressable>
+            <Text style={styles.sliderValue}>{hslAdjust.h}°</Text>
+          </View>
+          <View style={styles.sliderRow}>
+            <Text style={styles.sliderLabel}>Sat</Text>
+            <Pressable
+              style={styles.sliderBtn}
+              onPress={() => setHslAdjust({ ...hslAdjust, s: Math.max(0, hslAdjust.s - 5) })}
+            >
+              <Ionicons name="remove" size={16} color={Theme.colors.text} />
+            </Pressable>
+            <View style={styles.sliderTrack}>
+              <View
+                style={[
+                  styles.sliderFill,
+                  { width: `${hslAdjust.s}%`, backgroundColor: `hsl(${hslAdjust.h}, ${hslAdjust.s}%, 50%)` },
+                ]}
+              />
+            </View>
+            <Pressable
+              style={styles.sliderBtn}
+              onPress={() => setHslAdjust({ ...hslAdjust, s: Math.min(100, hslAdjust.s + 5) })}
+            >
+              <Ionicons name="add" size={16} color={Theme.colors.text} />
+            </Pressable>
+            <Text style={styles.sliderValue}>{hslAdjust.s}%</Text>
+          </View>
+          <View style={styles.sliderRow}>
+            <Text style={styles.sliderLabel}>Light</Text>
+            <Pressable
+              style={styles.sliderBtn}
+              onPress={() => setHslAdjust({ ...hslAdjust, l: Math.max(0, hslAdjust.l - 5) })}
+            >
+              <Ionicons name="remove" size={16} color={Theme.colors.text} />
+            </Pressable>
+            <View style={styles.sliderTrack}>
+              <View
+                style={[
+                  styles.sliderFill,
+                  { width: `${hslAdjust.l}%`, backgroundColor: `hsl(${hslAdjust.h}, ${hslAdjust.s}%, ${hslAdjust.l}%)` },
+                ]}
+              />
+            </View>
+            <Pressable
+              style={styles.sliderBtn}
+              onPress={() => setHslAdjust({ ...hslAdjust, l: Math.min(100, hslAdjust.l + 5) })}
+            >
+              <Ionicons name="add" size={16} color={Theme.colors.text} />
+            </Pressable>
+            <Text style={styles.sliderValue}>{hslAdjust.l}%</Text>
+          </View>
+          <Pressable style={styles.resetHslBtn} onPress={() => setHslAdjust(null)}>
+            <Text style={styles.resetHslText}>Reset to preset</Text>
+          </Pressable>
+        </View>
+      )}
+
+      {/* Secondary Color */}
+      <Pressable
+        style={styles.secondaryToggle}
+        onPress={() => {
+          setShowSecondaryColor(!showSecondaryColor);
+          if (showSecondaryColor) setSecondaryColorIdx(null);
+        }}
+      >
+        <Ionicons
+          name={showSecondaryColor ? "chevron-up" : "chevron-down"}
+          size={16}
+          color={Theme.colors.primary}
+        />
+        <Text style={styles.secondaryToggleText}>
+          {showSecondaryColor ? "Hide secondary color" : "Add secondary color (optional)"}
+        </Text>
+      </Pressable>
+
+      {showSecondaryColor && (
+        <>
+          <Text style={styles.sectionTitle}>
+            Secondary Color{secondaryColorIdx !== null ? ` — ${PRESET_COLORS[secondaryColorIdx].name}` : ""}
+          </Text>
+          <View style={styles.colorGrid}>
+            {PRESET_COLORS.map((c, i) => (
+              <Pressable
+                key={`sec-${c.hex}-${i}`}
+                onPress={() => setSecondaryColorIdx(secondaryColorIdx === i ? null : i)}
+                style={styles.colorBtn}
+              >
+                <ColorDot color={c.hex} size={36} selected={secondaryColorIdx === i} />
+              </Pressable>
+            ))}
+          </View>
+        </>
+      )}
+
       {/* Occasion */}
-      <Text style={styles.sectionTitle}>Occasions</Text>
+      <Text style={styles.sectionTitle}>Occasions (optional)</Text>
       <View style={styles.chipRow}>
         {(Object.keys(OCCASION_LABELS) as Occasion[]).map((o) => (
           <Chip
@@ -322,6 +500,94 @@ const styles = StyleSheet.create({
   chipRow: { flexDirection: "row", flexWrap: "wrap" },
   colorGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   colorBtn: { padding: 2 },
+  // HSL Fine-Tuning
+  hslSection: {
+    marginTop: Theme.spacing.md,
+    backgroundColor: Theme.colors.surface,
+    borderRadius: Theme.borderRadius.md,
+    padding: Theme.spacing.md,
+    borderWidth: 1,
+    borderColor: Theme.colors.border,
+  },
+  hslPreview: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginBottom: 12,
+  },
+  hslSwatch: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "rgba(0,0,0,0.1)",
+  },
+  hslLabel: {
+    fontSize: Theme.fontSize.sm,
+    color: Theme.colors.text,
+    fontWeight: "600",
+  },
+  sliderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 8,
+  },
+  sliderLabel: {
+    width: 36,
+    fontSize: Theme.fontSize.xs,
+    color: Theme.colors.textSecondary,
+    fontWeight: "600",
+  },
+  sliderBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: Theme.colors.surfaceAlt,
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: Theme.colors.border,
+  },
+  sliderTrack: {
+    flex: 1,
+    height: 8,
+    backgroundColor: Theme.colors.surfaceAlt,
+    borderRadius: 4,
+    overflow: "hidden",
+  },
+  sliderFill: {
+    height: "100%",
+    borderRadius: 4,
+  },
+  sliderValue: {
+    width: 36,
+    fontSize: Theme.fontSize.xs,
+    color: Theme.colors.textSecondary,
+    textAlign: "right",
+  },
+  resetHslBtn: {
+    alignItems: "center",
+    marginTop: 4,
+  },
+  resetHslText: {
+    fontSize: Theme.fontSize.xs,
+    color: Theme.colors.primary,
+    fontWeight: "600",
+  },
+  // Secondary Color
+  secondaryToggle: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: Theme.spacing.md,
+    paddingVertical: 8,
+  },
+  secondaryToggleText: {
+    fontSize: Theme.fontSize.sm,
+    color: Theme.colors.primary,
+    fontWeight: "600",
+  },
   saveBtn: {
     height: 52,
     backgroundColor: Theme.colors.primary,

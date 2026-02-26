@@ -10,10 +10,9 @@ export type ClothingCategory =
 export type Occasion =
   | "casual"
   | "work"
-  | "formal"
-  | "athletic"
-  | "date_night"
-  | "outdoor";
+  | "fancy"
+  | "party"
+  | "vacation";
 
 export type FabricType =
   | "cotton"
@@ -34,12 +33,15 @@ export interface ClothingItem {
   name: string;
   category: ClothingCategory;
   subCategory?: string;
-  color: string; // hex color
+  color: string; // hex color (primary)
   colorName: string;
+  secondaryColor?: string; // hex (optional)
+  secondaryColorName?: string;
   occasions: Occasion[];
   fabricType: FabricType;
   imageUris: string[]; // multiple images (online, personal, etc.)
   brand?: string;
+  productUrl?: string; // link to the product page
   favorite: boolean;
   createdAt: number;
 }
@@ -122,10 +124,9 @@ export const SUBCATEGORIES: Record<ClothingCategory, { value: string; label: str
 export const OCCASION_LABELS: Record<Occasion, string> = {
   casual: "Casual",
   work: "Work",
-  formal: "Formal",
-  athletic: "Athletic",
-  date_night: "Date Night",
-  outdoor: "Outdoor",
+  fancy: "Fancy",
+  party: "Party",
+  vacation: "Vacation",
 };
 
 export const FABRIC_TYPE_LABELS: Record<FabricType, string> = {

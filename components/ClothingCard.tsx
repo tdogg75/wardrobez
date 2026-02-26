@@ -37,14 +37,19 @@ export function ClothingCard({ item, onPress, onToggleFavorite }: ClothingCardPr
         <Text style={styles.name} numberOfLines={1}>
           {item.name}
         </Text>
-        <View style={styles.meta}>
-          <ColorDot color={item.color} size={14} />
-          <Text style={styles.category}>
-            {CATEGORY_LABELS[item.category]}
-            {item.subCategory
-              ? ` · ${SUBCATEGORIES[item.category]?.find((s) => s.value === item.subCategory)?.label ?? item.subCategory}`
-              : ""}
-          </Text>
+        <View style={styles.metaRow}>
+          <View style={styles.meta}>
+            <ColorDot color={item.color} size={14} />
+            <Text style={styles.category} numberOfLines={1}>
+              {CATEGORY_LABELS[item.category]}
+              {item.subCategory
+                ? ` · ${SUBCATEGORIES[item.category]?.find((s) => s.value === item.subCategory)?.label ?? item.subCategory}`
+                : ""}
+            </Text>
+          </View>
+          {item.brand ? (
+            <Text style={styles.brand} numberOfLines={1}>{item.brand}</Text>
+          ) : null}
         </View>
       </View>
     </Pressable>
@@ -98,13 +103,26 @@ const styles = StyleSheet.create({
     color: Theme.colors.text,
     marginBottom: 4,
   },
+  metaRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
   meta: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
+    flex: 1,
   },
   category: {
     fontSize: Theme.fontSize.xs,
     color: Theme.colors.textSecondary,
+    flex: 1,
+  },
+  brand: {
+    fontSize: Theme.fontSize.xs,
+    color: Theme.colors.textSecondary,
+    marginLeft: 4,
+    fontStyle: "italic",
   },
 });

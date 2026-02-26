@@ -7,30 +7,112 @@ import type {
 } from "@/models/types";
 import { hexToHSL } from "@/constants/colors";
 
-// --- Color Harmony Rules ---
+// --- Advanced Color Harmony Rules ---
 
 function isNeutral(hex: string): boolean {
   const { s, l } = hexToHSL(hex);
   return s < 15 || l < 15 || l > 90;
 }
 
+/**
+ * Sophisticated color wheel matching.
+ * Uses HSL values to determine harmony type and score accordingly.
+ * Considers hue distance, saturation balance, and lightness contrast.
+ */
 function colorCompatibility(hex1: string, hex2: string): number {
-  if (isNeutral(hex1) || isNeutral(hex2)) return 0.85;
+  const neutral1 = isNeutral(hex1);
+  const neutral2 = isNeutral(hex2);
+
+  // Two neutrals always work well together
+  if (neutral1 && neutral2) return 0.9;
+  // A neutral + any color is good
+  if (neutral1 || neutral2) return 0.85;
 
   const c1 = hexToHSL(hex1);
   const c2 = hexToHSL(hex2);
   const hueDiff = Math.min(Math.abs(c1.h - c2.h), 360 - Math.abs(c1.h - c2.h));
 
-  // Complementary
-  if (hueDiff > 150 && hueDiff < 210) return 0.9;
-  // Analogous
-  if (hueDiff < 45) return 0.8;
-  // Monochromatic
-  if (hueDiff < 10) return 0.75;
-  // Triadic
-  if (hueDiff > 110 && hueDiff < 130) return 0.7;
+  // Saturation balance bonus: similar saturation levels harmonize better
+  const satDiff = Math.abs(c1.s - c2.s);
+  const satBonus = satDiff < 20 ? 0.05 : satDiff < 40 ? 0.02 : 0;
 
-  return 0.4;
+  // Lightness contrast bonus: some contrast in lightness is pleasing
+  const lightDiff = Math.abs(c1.l - c2.l);
+  const lightBonus = lightDiff > 15 && lightDiff < 50 ? 0.05 : 0;
+
+  let baseScore = 0.35;
+
+  // Exact/near match (monochromatic)
+  if (hueDiff < 10) {
+    // Monochromatic — great if there's lightness contrast
+    baseScore = lightDiff > 15 ? 0.88 : 0.72;
+  }
+  // Analogous (within 30°)
+  else if (hueDiff < 30) {
+    baseScore = 0.85;
+  }
+  // Near-analogous (30-60°)
+  else if (hueDiff < 60) {
+    baseScore = 0.75;
+  }
+  // Split-complementary (120-150°)
+  else if (hueDiff > 120 && hueDiff < 150) {
+    baseScore = 0.78;
+  }
+  // Triadic (around 120°)
+  else if (hueDiff > 110 && hueDiff <= 130) {
+    baseScore = 0.73;
+  }
+  // Complementary (150-210°)
+  else if (hueDiff >= 150 && hueDiff <= 210) {
+    baseScore = 0.9;
+  }
+  // Tetradic / square (around 90°)
+  else if (hueDiff > 80 && hueDiff <= 100) {
+    baseScore = 0.65;
+  }
+  // Awkward middle zone
+  else {
+    baseScore = 0.4;
+  }
+
+  return Math.min(1.0, baseScore + satBonus + lightBonus);
+}
+
+/**
+ * Calculate color harmony for an outfit considering both primary and secondary colors.
+ */
+function outfitColorScore(items: ClothingItem[]): { score: number; hasGreatHarmony: boolean } {
+  if (items.length < 2) return { score: 0.85, hasGreatHarmony: false };
+
+  // Collect all colors (primary + secondary)
+  const allColors: string[] = [];
+  for (const item of items) {
+    allColors.push(item.color);
+    if (item.secondaryColor) {
+      allColors.push(item.secondaryColor);
+    }
+  }
+
+  // Pairwise comparison of all colors
+  let totalScore = 0;
+  let pairs = 0;
+
+  for (let i = 0; i < allColors.length; i++) {
+    for (let j = i + 1; j < allColors.length; j++) {
+      totalScore += colorCompatibility(allColors[i], allColors[j]);
+      pairs++;
+    }
+  }
+
+  if (pairs === 0) return { score: 0.85, hasGreatHarmony: false };
+
+  const avgScore = totalScore / pairs;
+
+  return {
+    score: avgScore,
+    hasGreatHarmony: avgScore > 0.78,
+  };
 }
 
 // --- Fabric Compatibility ---
@@ -84,12 +166,7 @@ function isDress(item: ClothingItem): boolean {
 }
 
 /**
- * Validates outfit combos against styling rules:
- * - A dress does NOT pair with bottoms
- * - A dress CAN pair with outerwear/blazer, shoes, accessories
- * - A blazer must have a shirt underneath (or a dress)
- * - T-shirts and tank tops CAN go with a blazer
- * - No duplicate categories (except accessories)
+ * Validates outfit combos against styling rules.
  */
 function isValidCombo(combo: ClothingItem[]): boolean {
   const hasDress = combo.some(isDress);
@@ -97,10 +174,7 @@ function isValidCombo(combo: ClothingItem[]): boolean {
   const hasBlazer = combo.some(isBlazer);
   const hasShirtUnderneath = combo.some((i) => isShirtLike(i));
 
-  // Dress + bottoms is invalid
   if (hasDress && hasBottoms) return false;
-
-  // Blazer needs a shirt underneath or a dress
   if (hasBlazer && !hasShirtUnderneath && !hasDress) return false;
 
   return true;
@@ -160,7 +234,6 @@ function pickOnePerCategory(
 
 /**
  * Enrich combos with complementary accessories where appropriate.
- * Adds belt for pants outfits, jewelry for formal/date looks.
  */
 function enrichWithAccessories(
   combo: OutfitCombo,
@@ -170,12 +243,11 @@ function enrichWithAccessories(
 
   const hasBottoms = combo.some((i) => i.category === "bottoms");
   const comboOccasions = new Set(combo.flatMap((i) => i.occasions));
-  const isFormalish = comboOccasions.has("formal") || comboOccasions.has("work") || comboOccasions.has("date_night");
+  const isFormalish = comboOccasions.has("fancy") || comboOccasions.has("work") || comboOccasions.has("party");
 
   const extras: ClothingItem[] = [];
   const usedSubs = new Set<string>();
 
-  // Track already-included accessory subcategories
   for (const item of combo) {
     if (item.category === "accessories" && item.subCategory) {
       usedSubs.add(item.subCategory);
@@ -191,7 +263,7 @@ function enrichWithAccessories(
     }
   }
 
-  // For formal/work/date outfits, add 1-2 pieces of jewelry
+  // For formal/work/party outfits, add 1-2 pieces of jewelry
   if (isFormalish) {
     for (const sub of JEWELRY_SUBS) {
       if (usedSubs.has(sub) || extras.length >= 2) break;
@@ -248,21 +320,11 @@ export function suggestOutfits(
     let score = 0;
     const reasons: string[] = [];
 
-    // Color harmony (average pairwise) — 40% weight
-    let colorScore = 0;
-    let colorPairs = 0;
-    for (let i = 0; i < combo.length; i++) {
-      for (let j = i + 1; j < combo.length; j++) {
-        colorScore += colorCompatibility(combo[i].color, combo[j].color);
-        colorPairs++;
-      }
-    }
-    if (colorPairs > 0) {
-      const avgColor = colorScore / colorPairs;
-      score += avgColor * 40;
-      if (avgColor > 0.8) reasons.push("Great color harmony");
-      else if (avgColor > 0.6) reasons.push("Good color pairing");
-    }
+    // Color harmony (using advanced scoring) — 40% weight
+    const colorResult = outfitColorScore(combo);
+    score += colorResult.score * 40;
+    if (colorResult.score > 0.85) reasons.push("Excellent color harmony");
+    else if (colorResult.score > 0.7) reasons.push("Good color pairing");
 
     // Fabric compatibility — 30% weight
     const fabric = fabricCompatibility(combo);
@@ -273,7 +335,7 @@ export function suggestOutfits(
     if (occasion) {
       const os = occasionScore(combo, occasion);
       score += os * 30;
-      if (os > 0.7) reasons.push(`Great for ${occasion.replace("_", " ")}`);
+      if (os > 0.7) reasons.push(`Great for ${occasion}`);
     } else {
       score += 15;
     }
