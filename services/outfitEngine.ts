@@ -14,38 +14,21 @@ function isNeutral(hex: string): boolean {
   return s < 15 || l < 15 || l > 90;
 }
 
-function areComplementary(hex1: string, hex2: string): boolean {
-  const c1 = hexToHSL(hex1);
-  const c2 = hexToHSL(hex2);
-  if (isNeutral(hex1) || isNeutral(hex2)) return true;
-  const hueDiff = Math.abs(c1.h - c2.h);
-  const normalized = Math.min(hueDiff, 360 - hueDiff);
-  return normalized > 150 && normalized < 210;
-}
-
-function areAnalogous(hex1: string, hex2: string): boolean {
-  const c1 = hexToHSL(hex1);
-  const c2 = hexToHSL(hex2);
-  if (isNeutral(hex1) || isNeutral(hex2)) return true;
-  const hueDiff = Math.abs(c1.h - c2.h);
-  const normalized = Math.min(hueDiff, 360 - hueDiff);
-  return normalized < 45;
-}
-
 function colorCompatibility(hex1: string, hex2: string): number {
   if (isNeutral(hex1) || isNeutral(hex2)) return 0.85;
-  if (areComplementary(hex1, hex2)) return 0.9;
-  if (areAnalogous(hex1, hex2)) return 0.8;
 
-  // Monochromatic
   const c1 = hexToHSL(hex1);
   const c2 = hexToHSL(hex2);
   const hueDiff = Math.min(Math.abs(c1.h - c2.h), 360 - Math.abs(c1.h - c2.h));
-  if (hueDiff < 10) return 0.75;
 
-  // Triadic (120 degrees apart)
-  const normalized = Math.min(hueDiff, 360 - hueDiff);
-  if (normalized > 110 && normalized < 130) return 0.7;
+  // Complementary
+  if (hueDiff > 150 && hueDiff < 210) return 0.9;
+  // Analogous
+  if (hueDiff < 45) return 0.8;
+  // Monochromatic
+  if (hueDiff < 10) return 0.75;
+  // Triadic
+  if (hueDiff > 110 && hueDiff < 130) return 0.7;
 
   return 0.4;
 }
@@ -59,10 +42,8 @@ function fabricCompatibility(items: ClothingItem[]): number {
   const types = items.map((i) => i.fabricType);
   const uniqueTypes = new Set(types);
 
-  // Single fabric type = great cohesion
   if (uniqueTypes.size === 1) return 0.9;
 
-  // Check if mixing formal and casual fabrics
   const hasFormal = types.some((t) => FORMAL_FABRICS.includes(t));
   const hasCasual = types.some((t) => CASUAL_FABRICS.includes(t));
 
@@ -70,10 +51,9 @@ function fabricCompatibility(items: ClothingItem[]): number {
     const formalCount = types.filter((t) => FORMAL_FABRICS.includes(t)).length;
     const casualCount = types.filter((t) => CASUAL_FABRICS.includes(t)).length;
     const balance = Math.min(formalCount, casualCount) / Math.max(formalCount, casualCount);
-    return 0.6 + balance * 0.2; // 0.6 to 0.8
+    return 0.6 + balance * 0.2;
   }
 
-  // All formal or all casual
   return 0.85;
 }
 
@@ -85,18 +65,72 @@ function occasionScore(items: ClothingItem[], targetOccasion: Occasion): number 
   return matchCount / items.length;
 }
 
+// --- Outfit Rules & Validation ---
+
+const JEWELRY_SUBS = ["earrings", "necklaces", "bracelets", "rings"];
+
+function isBlazer(item: ClothingItem): boolean {
+  return item.category === "tops" && item.subCategory === "blazer";
+}
+
+function isShirtLike(item: ClothingItem): boolean {
+  if (item.category !== "tops") return false;
+  const shirtSubs = ["tank_top", "tshirt", "long_sleeve", "blouse", "sweater", "sweatshirt", "hoodie", "workout_shirt"];
+  return !item.subCategory || shirtSubs.includes(item.subCategory);
+}
+
+function isDress(item: ClothingItem): boolean {
+  return item.category === "dresses";
+}
+
+/**
+ * Validates outfit combos against styling rules:
+ * - A dress does NOT pair with bottoms
+ * - A dress CAN pair with outerwear/blazer, shoes, accessories
+ * - A blazer must have a shirt underneath (or a dress)
+ * - T-shirts and tank tops CAN go with a blazer
+ * - No duplicate categories (except accessories)
+ */
+function isValidCombo(combo: ClothingItem[]): boolean {
+  const hasDress = combo.some(isDress);
+  const hasBottoms = combo.some((i) => i.category === "bottoms");
+  const hasBlazer = combo.some(isBlazer);
+  const hasShirtUnderneath = combo.some((i) => isShirtLike(i));
+
+  // Dress + bottoms is invalid
+  if (hasDress && hasBottoms) return false;
+
+  // Blazer needs a shirt underneath or a dress
+  if (hasBlazer && !hasShirtUnderneath && !hasDress) return false;
+
+  return true;
+}
+
 // --- Build valid outfit combos ---
 
 type OutfitCombo = ClothingItem[];
 
 function getCategoryCombinations(): ClothingCategory[][] {
   return [
+    // Traditional outfits
     ["tops", "bottoms"],
-    ["tops", "bottoms", "outerwear"],
     ["tops", "bottoms", "shoes"],
+    ["tops", "bottoms", "outerwear"],
     ["tops", "bottoms", "outerwear", "shoes"],
     ["tops", "bottoms", "accessories"],
+    ["tops", "bottoms", "shoes", "accessories"],
     ["tops", "bottoms", "outerwear", "shoes", "accessories"],
+
+    // Dress-based outfits
+    ["dresses"],
+    ["dresses", "shoes"],
+    ["dresses", "outerwear"],
+    ["dresses", "shoes", "outerwear"],
+    ["dresses", "accessories"],
+    ["dresses", "shoes", "accessories"],
+    ["dresses", "outerwear", "shoes", "accessories"],
+
+    // Swimwear
     ["swimwear"],
     ["swimwear", "accessories"],
   ];
@@ -124,6 +158,54 @@ function pickOnePerCategory(
   return results;
 }
 
+/**
+ * Enrich combos with complementary accessories where appropriate.
+ * Adds belt for pants outfits, jewelry for formal/date looks.
+ */
+function enrichWithAccessories(
+  combo: OutfitCombo,
+  allAccessories: ClothingItem[]
+): OutfitCombo {
+  if (allAccessories.length === 0) return combo;
+
+  const hasBottoms = combo.some((i) => i.category === "bottoms");
+  const comboOccasions = new Set(combo.flatMap((i) => i.occasions));
+  const isFormalish = comboOccasions.has("formal") || comboOccasions.has("work") || comboOccasions.has("date_night");
+
+  const extras: ClothingItem[] = [];
+  const usedSubs = new Set<string>();
+
+  // Track already-included accessory subcategories
+  for (const item of combo) {
+    if (item.category === "accessories" && item.subCategory) {
+      usedSubs.add(item.subCategory);
+    }
+  }
+
+  // Add a belt when wearing pants/jeans
+  if (hasBottoms && !usedSubs.has("belts")) {
+    const belt = allAccessories.find((a) => a.subCategory === "belts");
+    if (belt) {
+      extras.push(belt);
+      usedSubs.add("belts");
+    }
+  }
+
+  // For formal/work/date outfits, add 1-2 pieces of jewelry
+  if (isFormalish) {
+    for (const sub of JEWELRY_SUBS) {
+      if (usedSubs.has(sub) || extras.length >= 2) break;
+      const piece = allAccessories.find((a) => a.subCategory === sub && !usedSubs.has(sub));
+      if (piece) {
+        extras.push(piece);
+        usedSubs.add(sub);
+      }
+    }
+  }
+
+  return [...combo, ...extras];
+}
+
 // --- Main Suggestion Engine ---
 
 export interface SuggestionResult {
@@ -139,7 +221,7 @@ export function suggestOutfits(
     maxResults?: number;
   } = {}
 ): SuggestionResult[] {
-  const { occasion, maxResults = 5 } = options;
+  const { occasion, maxResults = 6 } = options;
 
   // Group items by category
   const byCategory = new Map<ClothingCategory, ClothingItem[]>();
@@ -149,10 +231,16 @@ export function suggestOutfits(
     byCategory.set(item.category, list);
   }
 
+  const allAccessories = byCategory.get("accessories") ?? [];
+
   const allCombos: OutfitCombo[] = [];
   for (const categorySet of getCategoryCombinations()) {
     const combos = pickOnePerCategory(byCategory, categorySet);
-    allCombos.push(...combos);
+    for (const combo of combos) {
+      if (!isValidCombo(combo)) continue;
+      const enriched = enrichWithAccessories(combo, allAccessories);
+      allCombos.push(enriched);
+    }
   }
 
   // Score each combo
@@ -187,23 +275,29 @@ export function suggestOutfits(
       score += os * 30;
       if (os > 0.7) reasons.push(`Great for ${occasion.replace("_", " ")}`);
     } else {
-      score += 15; // neutral bonus if no occasion filter
+      score += 15;
     }
+
+    // Bonus for completeness
+    const categories = new Set(combo.map((i) => i.category));
+    if (categories.has("shoes")) {
+      score += 2;
+      reasons.push("Complete with shoes");
+    }
+    if (categories.has("accessories")) score += 1;
+    if (categories.has("dresses")) reasons.push("Dress-based look");
 
     return { items: combo, score, reasons };
   });
 
-  // Sort by score descending, take top N
+  // Sort by score descending
   scored.sort((a, b) => b.score - a.score);
 
-  // Deduplicate (same set of item IDs)
+  // Deduplicate
   const seen = new Set<string>();
   const unique: SuggestionResult[] = [];
   for (const result of scored) {
-    const key = result.items
-      .map((i) => i.id)
-      .sort()
-      .join(",");
+    const key = result.items.map((i) => i.id).sort().join(",");
     if (!seen.has(key)) {
       seen.add(key);
       unique.push(result);
@@ -214,20 +308,26 @@ export function suggestOutfits(
   return unique;
 }
 
-export function outfitToSaveable(
-  suggestion: SuggestionResult,
-  name: string
-): Omit<Outfit, "id" | "createdAt"> {
-  const allOccasions = new Set<Occasion>();
-  for (const item of suggestion.items) {
-    item.occasions.forEach((o) => allOccasions.add(o));
+/**
+ * Validates a custom outfit (for the designer) against the same rules.
+ * Returns an array of warnings (empty = valid).
+ */
+export function validateOutfit(items: ClothingItem[]): string[] {
+  const warnings: string[] = [];
+  const hasDress = items.some(isDress);
+  const hasBottoms = items.some((i) => i.category === "bottoms");
+  const hasBlazer = items.some(isBlazer);
+  const hasShirt = items.some(isShirtLike);
+
+  if (hasDress && hasBottoms) {
+    warnings.push("A dress typically doesn't pair with pants or bottoms");
+  }
+  if (hasBlazer && !hasShirt && !hasDress) {
+    warnings.push("A blazer usually needs a shirt or top underneath");
+  }
+  if (items.length === 0) {
+    warnings.push("Select at least one item to create an outfit");
   }
 
-  return {
-    name,
-    itemIds: suggestion.items.map((i) => i.id),
-    occasions: [...allOccasions],
-    rating: Math.round(suggestion.score / 20), // normalize to 1-5
-    suggested: true,
-  };
+  return warnings;
 }

@@ -16,8 +16,8 @@ export function ClothingCard({ item, onPress, onToggleFavorite }: ClothingCardPr
   return (
     <Pressable style={styles.card} onPress={onPress}>
       <View style={styles.imageContainer}>
-        {item.imageUri ? (
-          <Image source={{ uri: item.imageUri }} style={styles.image} />
+        {item.imageUris?.length > 0 ? (
+          <Image source={{ uri: item.imageUris[0] }} style={styles.image} />
         ) : (
           <View style={[styles.placeholder, { backgroundColor: item.color + "30" }]}>
             <Ionicons name="shirt-outline" size={40} color={item.color} />

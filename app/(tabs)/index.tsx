@@ -21,6 +21,7 @@ const ALL_CATEGORIES: (ClothingCategory | "all")[] = [
   "all",
   "tops",
   "bottoms",
+  "dresses",
   "outerwear",
   "shoes",
   "accessories",

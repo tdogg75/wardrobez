@@ -1,0 +1,384 @@
+import React, { useState, useMemo } from "react";
+import {
+  View,
+  Text,
+  ScrollView,
+  Pressable,
+  Image,
+  TextInput,
+  StyleSheet,
+  Alert,
+  SectionList,
+} from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { useClothingItems } from "@/hooks/useClothingItems";
+import { useOutfits } from "@/hooks/useOutfits";
+import { validateOutfit } from "@/services/outfitEngine";
+import { MoodBoard } from "@/components/MoodBoard";
+import { ColorDot } from "@/components/ColorDot";
+import { Theme } from "@/constants/theme";
+import type { ClothingItem, ClothingCategory } from "@/models/types";
+import { CATEGORY_LABELS } from "@/models/types";
+
+function generateId(): string {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 9);
+}
+
+const CATEGORY_ORDER: ClothingCategory[] = [
+  "tops",
+  "bottoms",
+  "dresses",
+  "outerwear",
+  "shoes",
+  "accessories",
+  "swimwear",
+];
+
+export default function DesignerScreen() {
+  const { items } = useClothingItems();
+  const { addOrUpdate: saveOutfit } = useOutfits();
+
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [outfitName, setOutfitName] = useState("");
+
+  const selectedItems = useMemo(
+    () => items.filter((i) => selectedIds.has(i.id)),
+    [items, selectedIds]
+  );
+
+  const warnings = useMemo(
+    () => validateOutfit(selectedItems),
+    [selectedItems]
+  );
+
+  const sections = useMemo(() => {
+    const grouped = new Map<ClothingCategory, ClothingItem[]>();
+    for (const item of items) {
+      const list = grouped.get(item.category) ?? [];
+      list.push(item);
+      grouped.set(item.category, list);
+    }
+
+    return CATEGORY_ORDER
+      .filter((cat) => (grouped.get(cat) ?? []).length > 0)
+      .map((cat) => ({
+        title: CATEGORY_LABELS[cat],
+        data: grouped.get(cat) ?? [],
+      }));
+  }, [items]);
+
+  const toggleItem = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const handleSave = async () => {
+    if (selectedItems.length === 0) {
+      Alert.alert("No items", "Select at least one item for your outfit.");
+      return;
+    }
+
+    const name = outfitName.trim() || `Custom #${Date.now().toString(36).slice(-4).toUpperCase()}`;
+    const allOccasions = new Set(selectedItems.flatMap((i) => i.occasions));
+
+    await saveOutfit({
+      id: generateId(),
+      name,
+      itemIds: selectedItems.map((i) => i.id),
+      occasions: [...allOccasions],
+      rating: 3,
+      createdAt: Date.now(),
+      suggested: false,
+    });
+
+    Alert.alert("Saved!", `${name} has been added to your outfits.`);
+    setSelectedIds(new Set());
+    setOutfitName("");
+  };
+
+  const handleClear = () => {
+    setSelectedIds(new Set());
+    setOutfitName("");
+  };
+
+  return (
+    <View style={styles.container}>
+      {/* Mood Board Preview - sticky at top */}
+      <View style={styles.previewSection}>
+        <MoodBoard items={selectedItems} size={220} />
+        {selectedItems.length > 0 && (
+          <View style={styles.previewMeta}>
+            <View style={styles.palette}>
+              {selectedItems.map((item) => (
+                <ColorDot key={item.id} color={item.color} size={20} />
+              ))}
+            </View>
+            <Text style={styles.itemCount}>
+              {selectedItems.length} item{selectedItems.length !== 1 ? "s" : ""}
+            </Text>
+          </View>
+        )}
+
+        {/* Warnings */}
+        {warnings.length > 0 && (
+          <View style={styles.warningsWrap}>
+            {warnings.map((w, i) => (
+              <View key={i} style={styles.warningRow}>
+                <Ionicons name="warning-outline" size={14} color={Theme.colors.warning} />
+                <Text style={styles.warningText}>{w}</Text>
+              </View>
+            ))}
+          </View>
+        )}
+      </View>
+
+      {/* Item Picker */}
+      <SectionList
+        sections={sections}
+        keyExtractor={(item) => item.id}
+        contentContainerStyle={styles.listContent}
+        stickySectionHeadersEnabled={false}
+        renderSectionHeader={({ section }) => (
+          <Text style={styles.sectionHeader}>{section.title}</Text>
+        )}
+        renderItem={({ item }) => {
+          const isSelected = selectedIds.has(item.id);
+          return (
+            <Pressable
+              style={[styles.itemRow, isSelected && styles.itemRowSelected]}
+              onPress={() => toggleItem(item.id)}
+            >
+              {item.imageUris?.length > 0 ? (
+                <Image source={{ uri: item.imageUris[0] }} style={styles.itemThumb} />
+              ) : (
+                <View style={[styles.itemThumbPlaceholder, { backgroundColor: item.color + "30" }]}>
+                  <Ionicons name="shirt-outline" size={18} color={item.color} />
+                </View>
+              )}
+              <View style={styles.itemInfo}>
+                <Text style={styles.itemName} numberOfLines={1}>{item.name}</Text>
+                <View style={styles.itemMeta}>
+                  <ColorDot color={item.color} size={12} />
+                  <Text style={styles.itemMetaText}>{item.colorName}</Text>
+                </View>
+              </View>
+              <View style={[styles.checkBox, isSelected && styles.checkBoxSelected]}>
+                {isSelected && (
+                  <Ionicons name="checkmark" size={16} color="#FFFFFF" />
+                )}
+              </View>
+            </Pressable>
+          );
+        }}
+        ListHeaderComponent={
+          <View style={styles.nameInputWrap}>
+            <TextInput
+              style={styles.nameInput}
+              placeholder="Outfit name (optional)"
+              placeholderTextColor={Theme.colors.textLight}
+              value={outfitName}
+              onChangeText={setOutfitName}
+            />
+          </View>
+        }
+        ListFooterComponent={<View style={{ height: 100 }} />}
+      />
+
+      {/* Bottom Actions */}
+      <View style={styles.bottomBar}>
+        <Pressable style={styles.clearBtn} onPress={handleClear}>
+          <Text style={styles.clearBtnText}>Clear</Text>
+        </Pressable>
+        <Pressable
+          style={[styles.saveBtn, selectedItems.length === 0 && styles.saveBtnDisabled]}
+          onPress={handleSave}
+          disabled={selectedItems.length === 0}
+        >
+          <Ionicons name="bookmark-outline" size={18} color="#FFFFFF" />
+          <Text style={styles.saveBtnText}>Save Outfit</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: Theme.colors.background,
+  },
+  previewSection: {
+    alignItems: "center",
+    paddingTop: Theme.spacing.md,
+    paddingBottom: Theme.spacing.sm,
+    backgroundColor: Theme.colors.background,
+    borderBottomWidth: 1,
+    borderBottomColor: Theme.colors.border,
+  },
+  previewMeta: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    marginTop: 8,
+  },
+  palette: {
+    flexDirection: "row",
+    gap: 4,
+  },
+  itemCount: {
+    fontSize: Theme.fontSize.sm,
+    color: Theme.colors.textSecondary,
+    fontWeight: "600",
+  },
+  warningsWrap: {
+    marginTop: 8,
+    paddingHorizontal: Theme.spacing.md,
+    gap: 4,
+  },
+  warningRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  warningText: {
+    fontSize: Theme.fontSize.xs,
+    color: Theme.colors.warning,
+  },
+  listContent: {
+    paddingHorizontal: Theme.spacing.md,
+  },
+  nameInputWrap: {
+    paddingVertical: Theme.spacing.md,
+  },
+  nameInput: {
+    height: 44,
+    backgroundColor: Theme.colors.surface,
+    borderRadius: Theme.borderRadius.sm,
+    paddingHorizontal: Theme.spacing.md,
+    fontSize: Theme.fontSize.md,
+    color: Theme.colors.text,
+    borderWidth: 1,
+    borderColor: Theme.colors.border,
+  },
+  sectionHeader: {
+    fontSize: Theme.fontSize.sm,
+    fontWeight: "700",
+    color: Theme.colors.textSecondary,
+    paddingTop: Theme.spacing.md,
+    paddingBottom: Theme.spacing.xs,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  itemRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    backgroundColor: Theme.colors.surface,
+    padding: Theme.spacing.sm,
+    borderRadius: Theme.borderRadius.sm,
+    marginBottom: 6,
+    borderWidth: 2,
+    borderColor: "transparent",
+  },
+  itemRowSelected: {
+    borderColor: Theme.colors.primary,
+    backgroundColor: Theme.colors.primary + "08",
+  },
+  itemThumb: {
+    width: 44,
+    height: 44,
+    borderRadius: Theme.borderRadius.sm,
+    resizeMode: "cover",
+  },
+  itemThumbPlaceholder: {
+    width: 44,
+    height: 44,
+    borderRadius: Theme.borderRadius.sm,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  itemInfo: {
+    flex: 1,
+  },
+  itemName: {
+    fontSize: Theme.fontSize.md,
+    fontWeight: "600",
+    color: Theme.colors.text,
+    marginBottom: 2,
+  },
+  itemMeta: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  itemMetaText: {
+    fontSize: Theme.fontSize.xs,
+    color: Theme.colors.textSecondary,
+  },
+  checkBox: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: Theme.colors.border,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  checkBoxSelected: {
+    backgroundColor: Theme.colors.primary,
+    borderColor: Theme.colors.primary,
+  },
+  bottomBar: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    flexDirection: "row",
+    gap: 10,
+    paddingHorizontal: Theme.spacing.md,
+    paddingTop: Theme.spacing.sm,
+    paddingBottom: 34,
+    backgroundColor: Theme.colors.surface,
+    borderTopWidth: 1,
+    borderTopColor: Theme.colors.border,
+  },
+  clearBtn: {
+    height: 48,
+    paddingHorizontal: Theme.spacing.lg,
+    borderRadius: Theme.borderRadius.md,
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: Theme.colors.border,
+  },
+  clearBtnText: {
+    fontSize: Theme.fontSize.md,
+    fontWeight: "600",
+    color: Theme.colors.textSecondary,
+  },
+  saveBtn: {
+    flex: 1,
+    height: 48,
+    flexDirection: "row",
+    gap: 8,
+    backgroundColor: Theme.colors.primary,
+    borderRadius: Theme.borderRadius.md,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  saveBtnDisabled: {
+    opacity: 0.5,
+  },
+  saveBtnText: {
+    color: "#FFFFFF",
+    fontSize: Theme.fontSize.md,
+    fontWeight: "700",
+  },
+});

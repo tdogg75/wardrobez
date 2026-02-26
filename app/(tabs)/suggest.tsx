@@ -13,6 +13,7 @@ import { useOutfits } from "@/hooks/useOutfits";
 import { suggestOutfits, type SuggestionResult } from "@/services/outfitEngine";
 import { Chip } from "@/components/Chip";
 import { ColorDot } from "@/components/ColorDot";
+import { MoodBoard } from "@/components/MoodBoard";
 import { EmptyState } from "@/components/EmptyState";
 import { Theme } from "@/constants/theme";
 import type { Occasion } from "@/models/types";
@@ -47,7 +48,7 @@ export default function SuggestScreen() {
     setGenerated(true);
   }, [items, occasion]);
 
-  const handleSave = async (suggestion: SuggestionResult, index: number) => {
+  const handleSave = async (suggestion: SuggestionResult) => {
     const name = `Outfit #${Date.now().toString(36).slice(-4).toUpperCase()}`;
     const allOccasions = new Set<Occasion>();
     for (const item of suggestion.items) {
@@ -81,7 +82,6 @@ export default function SuggestScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      {/* Filters */}
       <Text style={styles.heading}>Get Outfit Ideas</Text>
       <Text style={styles.subtitle}>
         Our engine analyzes color harmony, fabric compatibility, and
@@ -105,7 +105,6 @@ export default function SuggestScreen() {
         <Text style={styles.generateBtnText}>Generate Suggestions</Text>
       </Pressable>
 
-      {/* Results */}
       {generated && suggestions.length === 0 && (
         <View style={styles.noResults}>
           <Text style={styles.noResultsText}>
@@ -121,6 +120,11 @@ export default function SuggestScreen() {
             <Text style={styles.scoreText}>
               Score: {Math.round(suggestion.score)}
             </Text>
+          </View>
+
+          {/* Mood Board */}
+          <View style={styles.moodBoardWrap}>
+            <MoodBoard items={suggestion.items} size={260} />
           </View>
 
           {/* Color palette */}
@@ -164,7 +168,7 @@ export default function SuggestScreen() {
           {/* Save Button */}
           <Pressable
             style={styles.saveOutfitBtn}
-            onPress={() => handleSave(suggestion, idx)}
+            onPress={() => handleSave(suggestion)}
           >
             <Ionicons name="bookmark-outline" size={16} color={Theme.colors.primary} />
             <Text style={styles.saveOutfitText}>Save Outfit</Text>
@@ -249,6 +253,10 @@ const styles = StyleSheet.create({
     fontSize: Theme.fontSize.sm,
     fontWeight: "600",
     color: Theme.colors.primary,
+  },
+  moodBoardWrap: {
+    alignItems: "center",
+    marginBottom: 12,
   },
   palette: { flexDirection: "row", gap: 6, marginBottom: 12 },
   itemRow: {

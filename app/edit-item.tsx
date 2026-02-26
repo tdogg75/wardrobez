@@ -40,7 +40,7 @@ export default function EditItemScreen() {
   const [colorIdx, setColorIdx] = useState(0);
   const [occasions, setOccasions] = useState<Occasion[]>([]);
   const [fabricType, setFabricType] = useState<FabricType>("cotton");
-  const [imageUri, setImageUri] = useState<string | null>(null);
+  const [imageUris, setImageUris] = useState<string[]>([]);
   const [brand, setBrand] = useState("");
   const [favorite, setFavorite] = useState(false);
   const [createdAt, setCreatedAt] = useState(Date.now());
@@ -55,7 +55,7 @@ export default function EditItemScreen() {
     setColorIdx(cIdx >= 0 ? cIdx : 0);
     setOccasions(item.occasions);
     setFabricType(item.fabricType);
-    setImageUri(item.imageUri);
+    setImageUris(item.imageUris ?? []);
     setBrand(item.brand ?? "");
     setFavorite(item.favorite);
     setCreatedAt(item.createdAt);
@@ -74,8 +74,12 @@ export default function EditItemScreen() {
       quality: 0.8,
     });
     if (!result.canceled && result.assets[0]) {
-      setImageUri(result.assets[0].uri);
+      setImageUris((prev) => [...prev, result.assets[0].uri]);
     }
+  };
+
+  const removeImage = (index: number) => {
+    setImageUris((prev) => prev.filter((_, i) => i !== index));
   };
 
   const handleSave = async () => {
@@ -90,7 +94,7 @@ export default function EditItemScreen() {
       colorName: color.name,
       occasions,
       fabricType,
-      imageUri,
+      imageUris,
       brand: brand.trim() || undefined,
       favorite,
       createdAt,
@@ -116,17 +120,30 @@ export default function EditItemScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      {/* Photo */}
-      <Pressable style={styles.photoBtn} onPress={pickImage}>
-        {imageUri ? (
-          <Image source={{ uri: imageUri }} style={styles.photo} />
-        ) : (
-          <View style={styles.photoPlaceholder}>
-            <Ionicons name="camera-outline" size={36} color={Theme.colors.textLight} />
-            <Text style={styles.photoLabel}>Change Photo</Text>
+      {/* Photos */}
+      <Text style={styles.sectionTitle}>Photos</Text>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.photoScroll}>
+        {imageUris.map((uri, index) => (
+          <View key={`${uri}-${index}`} style={styles.photoThumb}>
+            <Image source={{ uri }} style={styles.photoThumbImage} />
+            <Pressable
+              style={styles.removePhotoBtn}
+              onPress={() => removeImage(index)}
+            >
+              <Ionicons name="close-circle" size={22} color={Theme.colors.error} />
+            </Pressable>
+            {index === 0 && (
+              <View style={styles.primaryBadge}>
+                <Text style={styles.primaryBadgeText}>Main</Text>
+              </View>
+            )}
           </View>
-        )}
-      </Pressable>
+        ))}
+        <Pressable style={styles.addPhotoBtn} onPress={pickImage}>
+          <Ionicons name="camera-outline" size={28} color={Theme.colors.textLight} />
+          <Text style={styles.addPhotoLabel}>Add Photo</Text>
+        </Pressable>
+      </ScrollView>
 
       <Text style={styles.sectionTitle}>Name</Text>
       <TextInput
@@ -232,16 +249,59 @@ export default function EditItemScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Theme.colors.background },
   content: { padding: Theme.spacing.md, paddingBottom: Theme.spacing.xxl },
-  photoBtn: {
-    height: 200,
-    borderRadius: Theme.borderRadius.lg,
-    overflow: "hidden",
-    marginBottom: Theme.spacing.lg,
-    backgroundColor: Theme.colors.surfaceAlt,
+  photoScroll: {
+    marginBottom: Theme.spacing.sm,
   },
-  photo: { width: "100%", height: "100%", resizeMode: "cover" },
-  photoPlaceholder: { flex: 1, justifyContent: "center", alignItems: "center" },
-  photoLabel: { marginTop: 8, fontSize: Theme.fontSize.sm, color: Theme.colors.textLight },
+  photoThumb: {
+    width: 100,
+    height: 130,
+    borderRadius: Theme.borderRadius.sm,
+    overflow: "hidden",
+    marginRight: Theme.spacing.sm,
+    position: "relative",
+  },
+  photoThumbImage: {
+    width: "100%",
+    height: "100%",
+    resizeMode: "cover",
+  },
+  removePhotoBtn: {
+    position: "absolute",
+    top: 4,
+    right: 4,
+    backgroundColor: "rgba(255,255,255,0.9)",
+    borderRadius: 11,
+  },
+  primaryBadge: {
+    position: "absolute",
+    bottom: 4,
+    left: 4,
+    backgroundColor: Theme.colors.primary,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: Theme.borderRadius.full,
+  },
+  primaryBadgeText: {
+    color: "#FFFFFF",
+    fontSize: 9,
+    fontWeight: "700",
+  },
+  addPhotoBtn: {
+    width: 100,
+    height: 130,
+    borderRadius: Theme.borderRadius.sm,
+    backgroundColor: Theme.colors.surfaceAlt,
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: Theme.colors.border,
+    borderStyle: "dashed",
+  },
+  addPhotoLabel: {
+    marginTop: 4,
+    fontSize: Theme.fontSize.xs,
+    color: Theme.colors.textLight,
+  },
   sectionTitle: {
     fontSize: Theme.fontSize.md,
     fontWeight: "600",
