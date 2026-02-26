@@ -14,6 +14,7 @@ import { useClothingItems } from "@/hooks/useClothingItems";
 import { MoodBoard } from "@/components/MoodBoard";
 import { EmptyState } from "@/components/EmptyState";
 import { Theme } from "@/constants/theme";
+import { SEASON_LABELS } from "@/models/types";
 import type { ClothingItem } from "@/models/types";
 
 export default function OutfitsScreen() {
@@ -76,7 +77,7 @@ export default function OutfitsScreen() {
                       {outfitItems.map((i) => i?.name).join(" + ")}
                     </Text>
 
-                    {/* Rating */}
+                    {/* Rating + Season */}
                     <View style={styles.ratingRow}>
                       {[1, 2, 3, 4, 5].map((star) => (
                         <Ionicons
@@ -90,6 +91,11 @@ export default function OutfitsScreen() {
                         {outfitItems.length} items
                       </Text>
                     </View>
+                    {(outfit.seasons ?? []).length > 0 && (
+                      <Text style={styles.seasonText}>
+                        {(outfit.seasons ?? []).map((s) => SEASON_LABELS[s]).join(", ")}
+                      </Text>
+                    )}
                   </View>
                 </View>
 
@@ -178,6 +184,12 @@ const styles = StyleSheet.create({
     fontSize: Theme.fontSize.xs,
     color: Theme.colors.textLight,
     marginLeft: 8,
+  },
+  seasonText: {
+    fontSize: Theme.fontSize.xs,
+    color: Theme.colors.primary,
+    fontWeight: "500",
+    marginTop: 2,
   },
   deleteBtn: {
     position: "absolute",

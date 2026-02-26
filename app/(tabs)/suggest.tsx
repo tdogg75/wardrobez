@@ -16,8 +16,8 @@ import { ColorDot } from "@/components/ColorDot";
 import { MoodBoard } from "@/components/MoodBoard";
 import { EmptyState } from "@/components/EmptyState";
 import { Theme } from "@/constants/theme";
-import type { Occasion } from "@/models/types";
-import { OCCASION_LABELS, CATEGORY_LABELS } from "@/models/types";
+import type { Occasion, Season } from "@/models/types";
+import { OCCASION_LABELS, SEASON_LABELS, CATEGORY_LABELS } from "@/models/types";
 
 function generateId(): string {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 9);
@@ -28,6 +28,7 @@ export default function SuggestScreen() {
   const { addOrUpdate: saveOutfit } = useOutfits();
 
   const [occasion, setOccasion] = useState<Occasion | undefined>(undefined);
+  const [season, setSeason] = useState<Season | undefined>(undefined);
   const [suggestions, setSuggestions] = useState<SuggestionResult[]>([]);
   const [generated, setGenerated] = useState(false);
 
@@ -42,24 +43,22 @@ export default function SuggestScreen() {
 
     const results = suggestOutfits(items, {
       occasion,
+      season,
       maxResults: 6,
     });
     setSuggestions(results);
     setGenerated(true);
-  }, [items, occasion]);
+  }, [items, occasion, season]);
 
   const handleSave = async (suggestion: SuggestionResult) => {
     const name = `Outfit #${Date.now().toString(36).slice(-4).toUpperCase()}`;
-    const allOccasions = new Set<Occasion>();
-    for (const item of suggestion.items) {
-      item.occasions.forEach((o) => allOccasions.add(o));
-    }
 
     await saveOutfit({
       id: generateId(),
       name,
       itemIds: suggestion.items.map((i) => i.id),
-      occasions: [...allOccasions],
+      occasions: occasion ? [occasion] : [],
+      seasons: season ? [season] : [],
       rating: Math.min(5, Math.max(1, Math.round(suggestion.score / 20))),
       createdAt: Date.now(),
       suggested: true,
@@ -85,7 +84,7 @@ export default function SuggestScreen() {
       <Text style={styles.heading}>Get Outfit Ideas</Text>
       <Text style={styles.subtitle}>
         Our engine analyzes color harmony, fabric compatibility, and
-        occasion fit to suggest your best looks.
+        seasonal fit to suggest your best looks.
       </Text>
 
       <Text style={styles.sectionTitle}>Occasion (optional)</Text>
@@ -96,6 +95,18 @@ export default function SuggestScreen() {
             label={OCCASION_LABELS[o]}
             selected={occasion === o}
             onPress={() => setOccasion(occasion === o ? undefined : o)}
+          />
+        ))}
+      </View>
+
+      <Text style={styles.sectionTitle}>Season (optional)</Text>
+      <View style={styles.chipRow}>
+        {(Object.keys(SEASON_LABELS) as Season[]).map((s) => (
+          <Chip
+            key={s}
+            label={SEASON_LABELS[s]}
+            selected={season === s}
+            onPress={() => setSeason(season === s ? undefined : s)}
           />
         ))}
       </View>

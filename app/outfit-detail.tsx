@@ -15,7 +15,7 @@ import { useClothingItems } from "@/hooks/useClothingItems";
 import { ColorDot } from "@/components/ColorDot";
 import { MoodBoard } from "@/components/MoodBoard";
 import { Theme } from "@/constants/theme";
-import { CATEGORY_LABELS, OCCASION_LABELS } from "@/models/types";
+import { CATEGORY_LABELS, OCCASION_LABELS, SEASON_LABELS } from "@/models/types";
 import type { ClothingItem } from "@/models/types";
 
 export default function OutfitDetailScreen() {
@@ -129,6 +129,20 @@ export default function OutfitDetailScreen() {
         </>
       )}
 
+      {/* Seasons */}
+      {(outfit.seasons ?? []).length > 0 && (
+        <>
+          <Text style={styles.sectionTitle}>Seasons</Text>
+          <View style={styles.tagRow}>
+            {(outfit.seasons ?? []).map((s) => (
+              <View key={s} style={[styles.tag, styles.seasonTag]}>
+                <Text style={styles.tagText}>{SEASON_LABELS[s]}</Text>
+              </View>
+            ))}
+          </View>
+        </>
+      )}
+
       <Pressable style={styles.deleteBtn} onPress={handleDelete}>
         <Ionicons name="trash-outline" size={18} color={Theme.colors.error} />
         <Text style={styles.deleteBtnText}>Delete Outfit</Text>
@@ -218,6 +232,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: Theme.borderRadius.full,
+  },
+  seasonTag: {
+    backgroundColor: Theme.colors.primary + "12",
   },
   tagText: {
     fontSize: Theme.fontSize.sm,
