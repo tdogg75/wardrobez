@@ -3,6 +3,7 @@ import {
   View,
   Text,
   ScrollView,
+  Image,
   StyleSheet,
   Pressable,
   Alert,
@@ -12,8 +13,10 @@ import { Ionicons } from "@expo/vector-icons";
 import { useOutfits } from "@/hooks/useOutfits";
 import { useClothingItems } from "@/hooks/useClothingItems";
 import { ColorDot } from "@/components/ColorDot";
+import { MoodBoard } from "@/components/MoodBoard";
 import { Theme } from "@/constants/theme";
 import { CATEGORY_LABELS, OCCASION_LABELS } from "@/models/types";
+import type { ClothingItem } from "@/models/types";
 
 export default function OutfitDetailScreen() {
   const router = useRouter();
@@ -30,7 +33,9 @@ export default function OutfitDetailScreen() {
     );
   }
 
-  const outfitItems = outfit.itemIds.map((itemId) => getById(itemId)).filter(Boolean);
+  const outfitItems = outfit.itemIds
+    .map((itemId) => getById(itemId))
+    .filter(Boolean) as ClothingItem[];
 
   const handleDelete = () => {
     Alert.alert("Delete Outfit", "Remove this outfit from your collection?", [
@@ -70,37 +75,47 @@ export default function OutfitDetailScreen() {
         ))}
       </View>
 
+      {/* Mood Board */}
+      {outfitItems.length > 0 && (
+        <>
+          <Text style={styles.sectionTitle}>Mood Board</Text>
+          <View style={styles.moodBoardWrap}>
+            <MoodBoard items={outfitItems} size={300} />
+          </View>
+        </>
+      )}
+
       {/* Color Palette */}
       <Text style={styles.sectionTitle}>Color Palette</Text>
       <View style={styles.palette}>
-        {outfitItems.map((item) =>
-          item ? (
-            <View key={item.id} style={styles.paletteItem}>
-              <ColorDot color={item.color} size={36} />
-              <Text style={styles.paletteLabel}>{item.colorName}</Text>
-            </View>
-          ) : null
-        )}
+        {outfitItems.map((item) => (
+          <View key={item.id} style={styles.paletteItem}>
+            <ColorDot color={item.color} size={36} />
+            <Text style={styles.paletteLabel}>{item.colorName}</Text>
+          </View>
+        ))}
       </View>
 
       {/* Items */}
       <Text style={styles.sectionTitle}>Items</Text>
-      {outfitItems.map((item) =>
-        item ? (
-          <View key={item.id} style={styles.itemCard}>
+      {outfitItems.map((item) => (
+        <View key={item.id} style={styles.itemCard}>
+          {item.imageUris?.length > 0 ? (
+            <Image source={{ uri: item.imageUris[0] }} style={styles.itemThumb} />
+          ) : (
             <View style={[styles.itemColor, { backgroundColor: item.color }]} />
-            <View style={styles.itemInfo}>
-              <Text style={styles.itemName}>{item.name}</Text>
-              <Text style={styles.itemMeta}>
-                {CATEGORY_LABELS[item.category]}
-                {item.brand ? ` · ${item.brand}` : ""}
-              </Text>
-            </View>
+          )}
+          <View style={styles.itemInfo}>
+            <Text style={styles.itemName}>{item.name}</Text>
+            <Text style={styles.itemMeta}>
+              {CATEGORY_LABELS[item.category]}
+              {item.brand ? ` · ${item.brand}` : ""}
+            </Text>
           </View>
-        ) : null
-      )}
+        </View>
+      ))}
 
-      {/* Tags */}
+      {/* Occasions */}
       {outfit.occasions.length > 0 && (
         <>
           <Text style={styles.sectionTitle}>Occasions</Text>
@@ -164,7 +179,11 @@ const styles = StyleSheet.create({
     marginTop: Theme.spacing.lg,
     marginBottom: Theme.spacing.sm,
   },
-  palette: { flexDirection: "row", gap: 16 },
+  moodBoardWrap: {
+    alignItems: "center",
+    marginBottom: Theme.spacing.sm,
+  },
+  palette: { flexDirection: "row", gap: 16, flexWrap: "wrap" },
   paletteItem: { alignItems: "center", gap: 4 },
   paletteLabel: { fontSize: Theme.fontSize.xs, color: Theme.colors.textSecondary },
   itemCard: {
@@ -172,11 +191,17 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 12,
     backgroundColor: Theme.colors.surface,
-    padding: Theme.spacing.md,
+    padding: Theme.spacing.sm,
     borderRadius: Theme.borderRadius.sm,
     marginBottom: 8,
   },
-  itemColor: { width: 14, height: 40, borderRadius: 7 },
+  itemThumb: {
+    width: 44,
+    height: 44,
+    borderRadius: Theme.borderRadius.sm,
+    resizeMode: "cover",
+  },
+  itemColor: { width: 14, height: 44, borderRadius: 7 },
   itemInfo: { flex: 1 },
   itemName: {
     fontSize: Theme.fontSize.md,
