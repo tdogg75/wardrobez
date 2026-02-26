@@ -2,7 +2,6 @@ import React from "react";
 import { View, Image, StyleSheet, Text } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import type { ClothingItem, ClothingCategory } from "@/models/types";
-import { CATEGORY_LABELS } from "@/models/types";
 import { Theme } from "@/constants/theme";
 
 interface MoodBoardProps {
@@ -10,35 +9,36 @@ interface MoodBoardProps {
   size?: number;
 }
 
-// Layout positions for items on the mood board grid
-// Each position is { top%, left%, width%, height% }
-const LAYOUTS: Record<number, { top: number; left: number; w: number; h: number }[]> = {
-  1: [{ top: 5, left: 10, w: 80, h: 90 }],
+// Creative overlapping layouts — items overlap slightly, varied sizes & rotations
+type CellPos = { top: number; left: number; w: number; h: number; rotate: number; z: number };
+
+const LAYOUTS: Record<number, CellPos[]> = {
+  1: [{ top: 5, left: 8, w: 84, h: 90, rotate: -1, z: 1 }],
   2: [
-    { top: 5, left: 3, w: 46, h: 90 },
-    { top: 5, left: 51, w: 46, h: 90 },
+    { top: 8, left: 2, w: 52, h: 84, rotate: -3, z: 1 },
+    { top: 4, left: 42, w: 55, h: 80, rotate: 2, z: 2 },
   ],
   3: [
-    { top: 3, left: 3, w: 55, h: 50 },
-    { top: 3, left: 60, w: 37, h: 50 },
-    { top: 55, left: 15, w: 70, h: 42 },
+    { top: 2, left: 0, w: 54, h: 58, rotate: -2, z: 1 },
+    { top: 6, left: 48, w: 50, h: 52, rotate: 3, z: 2 },
+    { top: 48, left: 18, w: 62, h: 50, rotate: -1, z: 3 },
   ],
   4: [
-    { top: 3, left: 3, w: 46, h: 48 },
-    { top: 3, left: 51, w: 46, h: 48 },
-    { top: 53, left: 3, w: 46, h: 44 },
-    { top: 53, left: 51, w: 46, h: 44 },
+    { top: 0, left: 0, w: 50, h: 52, rotate: -3, z: 1 },
+    { top: 4, left: 44, w: 54, h: 48, rotate: 2, z: 2 },
+    { top: 44, left: 2, w: 48, h: 52, rotate: 1, z: 3 },
+    { top: 48, left: 46, w: 52, h: 48, rotate: -2, z: 4 },
   ],
   5: [
-    { top: 2, left: 2, w: 38, h: 48 },
-    { top: 2, left: 42, w: 56, h: 30 },
-    { top: 34, left: 42, w: 56, h: 30 },
-    { top: 52, left: 2, w: 38, h: 46 },
-    { top: 66, left: 42, w: 56, h: 32 },
+    { top: 0, left: 2, w: 44, h: 46, rotate: -2, z: 1 },
+    { top: 2, left: 40, w: 58, h: 38, rotate: 3, z: 2 },
+    { top: 36, left: 0, w: 40, h: 38, rotate: 1, z: 3 },
+    { top: 34, left: 34, w: 50, h: 36, rotate: -1, z: 4 },
+    { top: 64, left: 14, w: 72, h: 34, rotate: 0, z: 5 },
   ],
 };
 
-function getLayout(count: number) {
+function getLayout(count: number): CellPos[] {
   if (count <= 0) return [];
   if (count >= 5) return LAYOUTS[5];
   return LAYOUTS[count] ?? LAYOUTS[4];
@@ -84,14 +84,16 @@ export function MoodBoard({ items, size = 280 }: MoodBoardProps) {
                 left: `${pos.left}%`,
                 width: `${pos.w}%`,
                 height: `${pos.h}%`,
+                transform: [{ rotate: `${pos.rotate}deg` }],
+                zIndex: pos.z,
               },
             ]}
           >
             {item.imageUris?.length > 0 ? (
               <Image source={{ uri: item.imageUris[0] }} style={styles.cellImage} />
             ) : (
-              <View style={[styles.cellPlaceholder, { backgroundColor: item.color + "25" }]}>
-                <Ionicons name={iconName as any} size={28} color={item.color} />
+              <View style={[styles.cellPlaceholder, { backgroundColor: item.color + "40" }]}>
+                <Ionicons name={iconName as any} size={Math.round(size * 0.09)} color={item.color} />
               </View>
             )}
             <View style={styles.cellLabel}>
@@ -104,7 +106,6 @@ export function MoodBoard({ items, size = 280 }: MoodBoardProps) {
         );
       })}
 
-      {/* Show overflow count */}
       {items.length > 5 && (
         <View style={styles.overflowBadge}>
           <Text style={styles.overflowText}>+{items.length - 5}</Text>
@@ -116,12 +117,10 @@ export function MoodBoard({ items, size = 280 }: MoodBoardProps) {
 
 const styles = StyleSheet.create({
   board: {
-    backgroundColor: Theme.colors.surface,
+    backgroundColor: "#F4F2EF",
     borderRadius: Theme.borderRadius.lg,
     overflow: "hidden",
     position: "relative",
-    borderWidth: 1,
-    borderColor: Theme.colors.border,
   },
   emptyText: {
     position: "absolute",
@@ -137,8 +136,11 @@ const styles = StyleSheet.create({
     position: "absolute",
     borderRadius: Theme.borderRadius.sm,
     overflow: "hidden",
-    borderWidth: 1,
-    borderColor: Theme.colors.border,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 6,
+    elevation: 4,
   },
   cellImage: {
     width: "100%",
@@ -158,19 +160,19 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
-    backgroundColor: "rgba(255,255,255,0.92)",
+    backgroundColor: "rgba(0,0,0,0.45)",
     paddingHorizontal: 6,
     paddingVertical: 3,
   },
   labelDot: {
-    width: 8,
-    height: 8,
+    width: 7,
+    height: 7,
     borderRadius: 4,
   },
   labelText: {
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: "600",
-    color: Theme.colors.text,
+    color: "#FFFFFF",
     flex: 1,
   },
   overflowBadge: {
@@ -181,6 +183,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: Theme.borderRadius.full,
+    zIndex: 10,
   },
   overflowText: {
     color: "#FFF",

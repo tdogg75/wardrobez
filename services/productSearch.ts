@@ -1,11 +1,14 @@
 import type { ClothingCategory, FabricType } from "@/models/types";
-import { PRESET_COLORS } from "@/constants/colors";
+import { PRESET_COLORS, findClosestPresetIndex } from "@/constants/colors";
 
 export interface ProductSearchResult {
   category?: ClothingCategory;
   subCategory?: string;
   fabricType?: FabricType;
   colorIndex?: number;
+  name?: string;
+  brand?: string;
+  imageUri?: string;
 }
 
 export interface OnlineProductOption {
@@ -15,7 +18,7 @@ export interface OnlineProductOption {
   price: string;
   color: string; // hex
   colorName: string;
-  imageUri: string | null; // URL or null for placeholder
+  imageUri: string | null;
   category?: ClothingCategory;
   subCategory?: string;
   fabricType?: FabricType;
@@ -50,7 +53,7 @@ const SUBCATEGORY_KEYWORDS: Record<
   skirt: { category: "bottoms", subCategory: "skirt" },
   "formal dress": { category: "dresses", subCategory: "formal_dress" },
   "evening dress": { category: "dresses", subCategory: "formal_dress" },
-  "gown": { category: "dresses", subCategory: "formal_dress" },
+  gown: { category: "dresses", subCategory: "formal_dress" },
   "work dress": { category: "dresses", subCategory: "work_dress" },
   "office dress": { category: "dresses", subCategory: "work_dress" },
   "sheath dress": { category: "dresses", subCategory: "work_dress" },
@@ -152,9 +155,50 @@ const COLOR_KEYWORDS: Record<string, string> = {
   mint: "#90EE90",
   turquoise: "#008080",
   indigo: "#000080",
+  "dark wash": "#1B3A5C",
+  "medium wash": "#4A6FA5",
+  "light wash": "#8AADCE",
+  "raw indigo": "#2C3E50",
 };
 
-// Simulated store names and price ranges for realistic product results
+// Well-known brand domains for prioritization
+const BRAND_DOMAINS: Record<string, string> = {
+  nike: "nike.com",
+  adidas: "adidas.com",
+  zara: "zara.com",
+  "h&m": "hm.com",
+  uniqlo: "uniqlo.com",
+  "banana republic": "bananarepublic.com",
+  gap: "gap.com",
+  "old navy": "oldnavy.com",
+  nordstrom: "nordstrom.com",
+  asos: "asos.com",
+  levi: "levi.com",
+  levis: "levi.com",
+  "ralph lauren": "ralphlauren.com",
+  "j crew": "jcrew.com",
+  "j.crew": "jcrew.com",
+  mango: "mango.com",
+  aritzia: "aritzia.com",
+  lululemon: "lululemon.com",
+  everlane: "everlane.com",
+  target: "target.com",
+  puma: "puma.com",
+  "new balance": "newbalance.com",
+  gucci: "gucci.com",
+  prada: "prada.com",
+  burberry: "burberry.com",
+  "tommy hilfiger": "tommy.com",
+  "calvin klein": "calvinklein.com",
+  coach: "coach.com",
+  "michael kors": "michaelkors.com",
+  anthropologie: "anthropologie.com",
+  "free people": "freepeople.com",
+  express: "express.com",
+  "forever 21": "forever21.com",
+};
+
+// Realistic store data for search results
 const STORES = [
   { name: "Nordstrom", priceRange: [45, 200] },
   { name: "Zara", priceRange: [25, 120] },
@@ -166,7 +210,6 @@ const STORES = [
   { name: "Banana Republic", priceRange: [40, 160] },
 ];
 
-// Color variations for generating realistic product options
 const COLOR_VARIATIONS: Record<string, { hex: string; name: string }[]> = {
   "#000000": [
     { hex: "#000000", name: "Black" },
@@ -187,6 +230,16 @@ const COLOR_VARIATIONS: Record<string, { hex: string; name: string }[]> = {
     { hex: "#DC143C", name: "Crimson" },
     { hex: "#B22222", name: "Firebrick" },
     { hex: "#FF4500", name: "Red-Orange" },
+  ],
+  "#1B3A5C": [
+    { hex: "#1B3A5C", name: "Dark Wash" },
+    { hex: "#1A2E4A", name: "Deep Indigo" },
+    { hex: "#2C4A6E", name: "Dark Denim" },
+  ],
+  "#4A6FA5": [
+    { hex: "#4A6FA5", name: "Medium Wash" },
+    { hex: "#5C7FB5", name: "Classic Blue" },
+    { hex: "#3D6494", name: "Vintage Wash" },
   ],
   default: [
     { hex: "#000000", name: "Black" },
@@ -226,10 +279,7 @@ function inferAttributes(text: string): ProductSearchResult {
   for (const keyword of sortedColorKeys) {
     if (text.includes(keyword)) {
       const hex = COLOR_KEYWORDS[keyword];
-      const idx = PRESET_COLORS.findIndex((c) => c.hex === hex);
-      if (idx >= 0) {
-        result.colorIndex = idx;
-      }
+      result.colorIndex = findClosestPresetIndex(hex);
       break;
     }
   }
@@ -258,8 +308,9 @@ export async function searchProduct(
 }
 
 /**
- * Simulates an online product search returning multiple options with details.
- * In production, this would call a real product API (Google Shopping, etc.).
+ * Searches for products online, prioritizing the brand's own website.
+ * In a production app this would use a real product API.
+ * Currently uses smart keyword matching to produce realistic simulated results.
  */
 export async function searchProductsOnline(
   name: string,
@@ -270,20 +321,13 @@ export async function searchProductsOnline(
 
   // Determine base color
   let baseColor = "#808080";
-  let baseColorName = "Gray";
   if (attrs.colorIndex !== undefined) {
     baseColor = PRESET_COLORS[attrs.colorIndex].hex;
-    baseColorName = PRESET_COLORS[attrs.colorIndex].name;
   }
 
   // Get color variations
   const variations =
     COLOR_VARIATIONS[baseColor] || COLOR_VARIATIONS["default"];
-
-  // Generate 3-5 simulated product options from different "stores"
-  const shuffledStores = [...STORES].sort(() => Math.random() - 0.5);
-  const numResults = Math.min(4, Math.max(3, shuffledStores.length));
-  const options: OnlineProductOption[] = [];
 
   // Capitalize first letter of each word
   const titleCase = (s: string) =>
@@ -291,8 +335,31 @@ export async function searchProductsOnline(
 
   const baseName = titleCase(name.trim());
 
+  // Build store list — brand store first if available
+  const storeList = [...STORES];
+  let brandStore: (typeof STORES)[0] | null = null;
+
+  if (brand) {
+    const brandLower = brand.toLowerCase();
+    const domain = BRAND_DOMAINS[brandLower];
+    if (domain) {
+      brandStore = {
+        name: titleCase(brand),
+        priceRange: [30, 150],
+      };
+    }
+  }
+
+  // If brand recognized, put its store first
+  const orderedStores = brandStore
+    ? [brandStore, ...storeList.filter((s) => s.name.toLowerCase() !== brand?.toLowerCase())]
+    : storeList.sort(() => Math.random() - 0.5);
+
+  const numResults = Math.min(4, Math.max(3, orderedStores.length));
+  const options: OnlineProductOption[] = [];
+
   for (let i = 0; i < numResults; i++) {
-    const store = shuffledStores[i];
+    const store = orderedStores[i];
     const colorVar = variations[i % variations.length];
     const price =
       store.priceRange[0] +
@@ -300,11 +367,12 @@ export async function searchProductsOnline(
         Math.random() * (store.priceRange[1] - store.priceRange[0])
       );
 
-    // Create name variations
+    // Create name variations with brand prominently featured
     let productName = baseName;
-    if (i === 1 && brand) productName = `${titleCase(brand)} ${baseName}`;
-    if (i === 2) productName = `${colorVar.name} ${baseName}`;
-    if (i === 3) productName = `${baseName} - ${colorVar.name}`;
+    if (i === 0 && brand) productName = `${titleCase(brand)} ${baseName}`;
+    else if (i === 1) productName = `${colorVar.name} ${baseName}`;
+    else if (i === 2 && brand) productName = `${baseName} by ${titleCase(brand)}`;
+    else if (i === 3) productName = `${baseName} - ${colorVar.name}`;
 
     options.push({
       id: `search_${Date.now()}_${i}`,
@@ -313,7 +381,7 @@ export async function searchProductsOnline(
       price: `$${price}.99`,
       color: colorVar.hex,
       colorName: colorVar.name,
-      imageUri: null, // No real image - UI will show color placeholder
+      imageUri: null,
       category: attrs.category,
       subCategory: attrs.subCategory,
       fabricType: attrs.fabricType,
@@ -321,7 +389,65 @@ export async function searchProductsOnline(
   }
 
   // Simulate network delay
-  await new Promise((r) => setTimeout(r, 800));
+  await new Promise((r) => setTimeout(r, 600));
 
   return options;
+}
+
+/**
+ * Attempts to extract product info from a URL.
+ * Parses the URL path/hostname for brand, category, color, and fabric keywords.
+ * In production, this would fetch the page and parse structured data.
+ */
+export async function fetchProductFromUrl(
+  url: string
+): Promise<ProductSearchResult | null> {
+  try {
+    const parsed = new URL(url);
+    const hostname = parsed.hostname.replace("www.", "").toLowerCase();
+    const pathText = decodeURIComponent(parsed.pathname)
+      .replace(/[-_/]/g, " ")
+      .toLowerCase();
+    const fullText = `${hostname} ${pathText}`;
+
+    const result = inferAttributes(fullText);
+
+    // Try to extract brand from hostname
+    for (const [brandName, domain] of Object.entries(BRAND_DOMAINS)) {
+      if (hostname.includes(domain.replace(".com", ""))) {
+        result.brand = brandName.charAt(0).toUpperCase() + brandName.slice(1);
+        break;
+      }
+    }
+
+    // Try to extract product name from URL path segments
+    const segments = parsed.pathname.split("/").filter(Boolean);
+    const lastSegment = segments[segments.length - 1];
+    if (lastSegment) {
+      const cleanName = lastSegment
+        .replace(/[-_]/g, " ")
+        .replace(/\b\w/g, (c) => c.toUpperCase())
+        .replace(/\d{5,}/g, "") // Remove product IDs
+        .trim();
+      if (cleanName.length > 2) {
+        result.name = cleanName;
+      }
+    }
+
+    const matchCount =
+      (result.category ? 1 : 0) +
+      (result.fabricType ? 1 : 0) +
+      (result.colorIndex !== undefined ? 1 : 0) +
+      (result.brand ? 1 : 0) +
+      (result.name ? 1 : 0);
+
+    if (matchCount === 0) return null;
+
+    // Simulate network delay for URL fetch
+    await new Promise((r) => setTimeout(r, 800));
+
+    return result;
+  } catch {
+    return null;
+  }
 }

@@ -37,6 +37,18 @@ function migrateClothingItem(item: any): ClothingItem {
     migrated.imageUris = [];
   }
 
+  // Migrate old occasion values
+  if (Array.isArray(migrated.occasions)) {
+    migrated.occasions = migrated.occasions
+      .map((o: string) => {
+        if (o === "formal") return "fancy";
+        if (o === "date_night") return "party";
+        if (o === "athletic" || o === "outdoor") return "casual";
+        return o;
+      })
+      .filter((o: string, i: number, arr: string[]) => arr.indexOf(o) === i);
+  }
+
   return migrated as ClothingItem;
 }
 
