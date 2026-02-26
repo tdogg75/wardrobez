@@ -84,6 +84,11 @@ function migrateClothingItem(item: any): ClothingItem {
     migrated.archived = false;
   }
 
+  // Ensure new optional fields have sensible defaults
+  if (!Array.isArray(migrated.itemFlags)) {
+    migrated.itemFlags = migrated.itemFlags ?? [];
+  }
+
   return migrated as ClothingItem;
 }
 
@@ -104,6 +109,10 @@ function migrateOutfit(outfit: any): Outfit {
   // Ensure hasRemovedItems defaults to false
   if (typeof migrated.hasRemovedItems !== "boolean") {
     migrated.hasRemovedItems = false;
+  }
+  // Ensure tags array exists
+  if (!Array.isArray(migrated.tags)) {
+    migrated.tags = [];
   }
   return migrated as Outfit;
 }
@@ -171,7 +180,42 @@ export async function archiveItem(
   const updatedOutfits = outfits.map((o) => {
     if (o.itemIds.includes(id)) {
       outfitsChanged = true;
-      return { ...o, hasRemovedItems: true };
+      return { ...o, hasRemovedItems: true, removedItemNotified: false };
+    }
+    return o;
+  });
+  if (outfitsChanged) {
+    await AsyncStorage.setItem(KEYS.OUTFITS, JSON.stringify(updatedOutfits));
+  }
+}
+
+export async function unarchiveItem(id: string): Promise<void> {
+  const items = await getClothingItems();
+  const idx = items.findIndex((i) => i.id === id);
+  if (idx < 0) return;
+
+  items[idx] = {
+    ...items[idx],
+    archived: false,
+    archiveReason: undefined,
+    archivedAt: undefined,
+  };
+  await AsyncStorage.setItem(KEYS.CLOTHING_ITEMS, JSON.stringify(items));
+
+  // Re-check outfits: if all items are now active, clear the flag
+  const outfits = await getOutfits();
+  let outfitsChanged = false;
+  const updatedOutfits = outfits.map((o) => {
+    if (o.itemIds.includes(id) && o.hasRemovedItems) {
+      // Check if all items in this outfit are now unarchived
+      const allActive = o.itemIds.every((itemId) => {
+        const item = items.find((i) => i.id === itemId);
+        return item && !item.archived;
+      });
+      if (allActive) {
+        outfitsChanged = true;
+        return { ...o, hasRemovedItems: false, removedItemNotified: false };
+      }
     }
     return o;
   });
@@ -211,7 +255,7 @@ export async function deleteOutfit(id: string): Promise<void> {
 export async function logOutfitWorn(outfitId: string): Promise<void> {
   const today = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
 
-  // Add today's date to the outfit's wornDates
+  // Add today's date to the outfit's wornDates (allows multiple per day)
   const outfits = await getOutfits();
   const outfitIdx = outfits.findIndex((o) => o.id === outfitId);
   if (outfitIdx < 0) return;
@@ -230,6 +274,39 @@ export async function logOutfitWorn(outfitId: string): Promise<void> {
     if (outfit.itemIds.includes(item.id)) {
       itemsChanged = true;
       return { ...item, wearCount: item.wearCount + 1 };
+    }
+    return item;
+  });
+  if (itemsChanged) {
+    await AsyncStorage.setItem(KEYS.CLOTHING_ITEMS, JSON.stringify(updatedItems));
+  }
+}
+
+export async function removeWornDate(
+  outfitId: string,
+  dateIndex: number
+): Promise<void> {
+  const outfits = await getOutfits();
+  const outfitIdx = outfits.findIndex((o) => o.id === outfitId);
+  if (outfitIdx < 0) return;
+
+  const outfit = outfits[outfitIdx];
+  const newDates = [...outfit.wornDates];
+  newDates.splice(dateIndex, 1);
+
+  outfits[outfitIdx] = {
+    ...outfit,
+    wornDates: newDates,
+  };
+  await AsyncStorage.setItem(KEYS.OUTFITS, JSON.stringify(outfits));
+
+  // Decrement wearCount on all items in the outfit
+  const items = await getClothingItems();
+  let itemsChanged = false;
+  const updatedItems = items.map((item) => {
+    if (outfit.itemIds.includes(item.id) && item.wearCount > 0) {
+      itemsChanged = true;
+      return { ...item, wearCount: item.wearCount - 1 };
     }
     return item;
   });

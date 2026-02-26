@@ -30,12 +30,19 @@ import type {
   ClothingCategory,
   FabricType,
   ArchiveReason,
+  HardwareColour,
+  ItemFlag,
 } from "@/models/types";
 import {
   CATEGORY_LABELS,
   SUBCATEGORIES,
   FABRIC_TYPE_LABELS,
   ARCHIVE_REASON_LABELS,
+  ALWAYS_OPEN_SUBCATEGORIES,
+  HARDWARE_COLOUR_LABELS,
+  HARDWARE_SUBCATEGORIES,
+  HARDWARE_CATEGORIES,
+  ITEM_FLAG_LABELS,
 } from "@/models/types";
 
 const ARCHIVE_REASONS: ArchiveReason[] = ["donated", "sold", "worn_out", "given_away"];
@@ -70,6 +77,21 @@ export default function EditItemScreen() {
   const [showDropper, setShowDropper] = useState(false);
   const [dropperTarget, setDropperTarget] = useState<"primary" | "secondary">("primary");
 
+  // Open top detection
+  const [isOpen, setIsOpen] = useState(false);
+
+  // Hardware colour
+  const [hardwareColour, setHardwareColour] = useState<HardwareColour | undefined>(undefined);
+
+  // Item flags
+  const [itemFlags, setItemFlags] = useState<ItemFlag[]>([]);
+
+  // Notes
+  const [notes, setNotes] = useState("");
+
+  // Original auto colour (from dropper)
+  const [originalAutoColor, setOriginalAutoColor] = useState<string | undefined>(undefined);
+
   // Archive
   const [showArchiveModal, setShowArchiveModal] = useState(false);
 
@@ -97,6 +119,13 @@ export default function EditItemScreen() {
       setSecondaryColorIdx(secIdx);
       setShowSecondaryColor(true);
     }
+
+    // Load new fields
+    setIsOpen(item.isOpen ?? false);
+    setHardwareColour(item.hardwareColour);
+    setItemFlags(item.itemFlags ?? []);
+    setNotes(item.notes ?? "");
+    setOriginalAutoColor(item.originalAutoColor);
   }, [id, items]);
 
   const finalColor = useMemo(() => {
@@ -147,11 +176,20 @@ export default function EditItemScreen() {
       const idx = findClosestPresetIndex(hex);
       setColorIdx(idx);
       setHslAdjust({ h: hsl.h, s: hsl.s, l: hsl.l });
+      setOriginalAutoColor(hex);
     } else {
       const idx = findClosestPresetIndex(hex);
       setSecondaryColorIdx(idx);
       setShowSecondaryColor(true);
     }
+  };
+
+  const handleRevertToOriginalColor = () => {
+    if (!originalAutoColor) return;
+    const hsl = hexToHSL(originalAutoColor);
+    const idx = findClosestPresetIndex(originalAutoColor);
+    setColorIdx(idx);
+    setHslAdjust({ h: hsl.h, s: hsl.s, l: hsl.l });
   };
 
   const handleSave = async () => {
@@ -176,6 +214,11 @@ export default function EditItemScreen() {
       wearCount,
       archived: false,
       createdAt,
+      isOpen,
+      hardwareColour,
+      itemFlags: itemFlags.length > 0 ? itemFlags : undefined,
+      notes: notes.trim() || undefined,
+      originalAutoColor,
     });
     router.back();
   };
@@ -306,10 +349,45 @@ export default function EditItemScreen() {
           </>
         )}
 
-        {/* Color */}
+        {/* Open Top Toggle */}
+        {(category === "tops" || category === "blazers") && subCategory && (
+          <>
+            <View style={styles.openTopRow}>
+              <Text style={styles.sectionTitle}>Open Top (requires shirt under)</Text>
+              <Pressable
+                style={[
+                  styles.openTopToggle,
+                  (isOpen || ALWAYS_OPEN_SUBCATEGORIES.includes(subCategory)) && styles.openTopToggleActive,
+                ]}
+                onPress={() => {
+                  if (!ALWAYS_OPEN_SUBCATEGORIES.includes(subCategory)) {
+                    setIsOpen(!isOpen);
+                  }
+                }}
+                disabled={ALWAYS_OPEN_SUBCATEGORIES.includes(subCategory)}
+              >
+                <Text
+                  style={[
+                    styles.openTopToggleText,
+                    (isOpen || ALWAYS_OPEN_SUBCATEGORIES.includes(subCategory)) && styles.openTopToggleTextActive,
+                  ]}
+                >
+                  {isOpen || ALWAYS_OPEN_SUBCATEGORIES.includes(subCategory) ? "Yes" : "No"}
+                </Text>
+              </Pressable>
+            </View>
+            {ALWAYS_OPEN_SUBCATEGORIES.includes(subCategory) && (
+              <Text style={styles.openTopHint}>
+                {subcats.find((sc) => sc.value === subCategory)?.label ?? subCategory} items are always open
+              </Text>
+            )}
+          </>
+        )}
+
+        {/* Colour */}
         <View style={styles.colorHeader}>
           <Text style={styles.sectionTitle}>
-            Color — {finalColorName}
+            Colour — {finalColorName}
           </Text>
           <View style={{ flexDirection: "row", gap: 6 }}>
             {imageUris.length > 0 && (
@@ -339,6 +417,14 @@ export default function EditItemScreen() {
           ))}
         </View>
 
+        {/* Revert to original colour */}
+        {originalAutoColor && (
+          <Pressable style={styles.revertBtn} onPress={handleRevertToOriginalColor}>
+            <Ionicons name="refresh-outline" size={16} color={Theme.colors.primary} />
+            <Text style={styles.revertBtnText}>Revert to original colour</Text>
+          </Pressable>
+        )}
+
         {/* Secondary Color */}
         <Pressable
           style={styles.secondaryToggle}
@@ -353,7 +439,7 @@ export default function EditItemScreen() {
             color={Theme.colors.primary}
           />
           <Text style={styles.secondaryToggleText}>
-            {showSecondaryColor ? "Hide secondary color" : "Add secondary color (optional)"}
+            {showSecondaryColor ? "Hide secondary colour" : "Add secondary colour (optional)"}
           </Text>
         </Pressable>
 
@@ -361,7 +447,7 @@ export default function EditItemScreen() {
           <>
             <View style={styles.colorHeader}>
               <Text style={styles.sectionTitle}>
-                Secondary Color{secondaryColorIdx !== null ? ` — ${PRESET_COLORS[secondaryColorIdx].name}` : ""}
+                Secondary Colour{secondaryColorIdx !== null ? ` — ${PRESET_COLORS[secondaryColorIdx].name}` : ""}
               </Text>
               {imageUris.length > 0 && (
                 <Pressable
@@ -403,6 +489,54 @@ export default function EditItemScreen() {
           ))}
         </View>
 
+        {/* Hardware Colour */}
+        {(HARDWARE_CATEGORIES.includes(category) ||
+          (subCategory && HARDWARE_SUBCATEGORIES.includes(subCategory))) && (
+          <>
+            <Text style={styles.sectionTitle}>Hardware Colour</Text>
+            <View style={styles.chipRow}>
+              {(Object.keys(HARDWARE_COLOUR_LABELS) as HardwareColour[]).map((hc) => (
+                <Chip
+                  key={hc}
+                  label={HARDWARE_COLOUR_LABELS[hc]}
+                  selected={hardwareColour === hc}
+                  onPress={() => setHardwareColour(hardwareColour === hc ? undefined : hc)}
+                />
+              ))}
+            </View>
+          </>
+        )}
+
+        {/* Item Flags */}
+        <Text style={styles.sectionTitle}>Flags</Text>
+        <View style={styles.chipRow}>
+          {(Object.keys(ITEM_FLAG_LABELS) as ItemFlag[]).map((flag) => (
+            <Chip
+              key={flag}
+              label={ITEM_FLAG_LABELS[flag]}
+              selected={itemFlags.includes(flag)}
+              onPress={() =>
+                setItemFlags((prev) =>
+                  prev.includes(flag) ? prev.filter((f) => f !== flag) : [...prev, flag]
+                )
+              }
+            />
+          ))}
+        </View>
+
+        {/* Notes */}
+        <Text style={styles.sectionTitle}>Notes (optional)</Text>
+        <TextInput
+          style={styles.notesInput}
+          placeholder="Add any notes about this item..."
+          placeholderTextColor={Theme.colors.textLight}
+          value={notes}
+          onChangeText={setNotes}
+          multiline
+          numberOfLines={3}
+          textAlignVertical="top"
+        />
+
         <Pressable style={styles.saveBtn} onPress={handleSave}>
           <Text style={styles.saveBtnText}>Save Changes</Text>
         </Pressable>
@@ -431,7 +565,7 @@ export default function EditItemScreen() {
       >
         <View style={styles.modalContainer}>
           <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Fine-tune Color</Text>
+            <Text style={styles.modalTitle}>Fine-tune Colour</Text>
             <Pressable onPress={() => setShowColorPicker(false)}>
               <Ionicons name="close" size={24} color={Theme.colors.text} />
             </Pressable>
