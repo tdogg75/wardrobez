@@ -33,6 +33,7 @@ const CATEGORY_ORDER: ClothingCategory[] = [
   "jackets",
   "shoes",
   "accessories",
+  "jewelry",
   "swimwear",
 ];
 
@@ -110,6 +111,7 @@ export default function DesignerScreen() {
       rating: 3,
       createdAt: Date.now(),
       suggested: false,
+      wornDates: [],
     });
 
     Alert.alert("Saved!", `${name} has been added to your outfits.`);

@@ -9,6 +9,7 @@ export interface ProductSearchResult {
   name?: string;
   brand?: string;
   imageUri?: string;
+  cost?: number;
 }
 
 export interface OnlineProductOption {
@@ -91,15 +92,23 @@ const SUBCATEGORY_KEYWORDS: Record<
   boots: { category: "shoes", subCategory: "dress_boots" },
   loafers: { category: "shoes", subCategory: "flats" },
   belt: { category: "accessories", subCategory: "belts" },
-  watch: { category: "accessories", subCategory: "watches" },
-  earring: { category: "accessories", subCategory: "earrings" },
-  earrings: { category: "accessories", subCategory: "earrings" },
-  necklace: { category: "accessories", subCategory: "necklaces" },
-  bracelet: { category: "accessories", subCategory: "bracelets" },
-  ring: { category: "accessories", subCategory: "rings" },
-  bikini: { category: "swimwear" },
-  swimsuit: { category: "swimwear" },
-  "swim trunks": { category: "swimwear" },
+  hat: { category: "accessories", subCategory: "hats" },
+  sunglasses: { category: "accessories", subCategory: "sunglasses" },
+  watch: { category: "jewelry", subCategory: "watches" },
+  earring: { category: "jewelry", subCategory: "earrings" },
+  earrings: { category: "jewelry", subCategory: "earrings" },
+  necklace: { category: "jewelry", subCategory: "necklaces" },
+  bracelet: { category: "jewelry", subCategory: "bracelets" },
+  ring: { category: "jewelry", subCategory: "rings" },
+  bikini: { category: "swimwear", subCategory: "swim_top" },
+  "bikini top": { category: "swimwear", subCategory: "swim_top" },
+  "bikini bottom": { category: "swimwear", subCategory: "swim_bottom" },
+  "one piece": { category: "swimwear", subCategory: "one_piece" },
+  "one-piece": { category: "swimwear", subCategory: "one_piece" },
+  swimsuit: { category: "swimwear", subCategory: "one_piece" },
+  "swim trunks": { category: "swimwear", subCategory: "swim_bottom" },
+  "swim top": { category: "swimwear", subCategory: "swim_top" },
+  "swim bottom": { category: "swimwear", subCategory: "swim_bottom" },
 };
 
 const FABRIC_KEYWORDS: Record<string, FabricType> = {

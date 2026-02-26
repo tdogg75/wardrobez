@@ -17,6 +17,7 @@ import { useClothingItems } from "@/hooks/useClothingItems";
 import { Chip } from "@/components/Chip";
 import { ColorDot } from "@/components/ColorDot";
 import { ColorWheelPicker } from "@/components/ColorWheelPicker";
+import { ImageColorDropper } from "@/components/ImageColorDropper";
 import { Theme } from "@/constants/theme";
 import {
   PRESET_COLORS,
@@ -28,17 +29,21 @@ import {
 import type {
   ClothingCategory,
   FabricType,
+  ArchiveReason,
 } from "@/models/types";
 import {
   CATEGORY_LABELS,
   SUBCATEGORIES,
   FABRIC_TYPE_LABELS,
+  ARCHIVE_REASON_LABELS,
 } from "@/models/types";
+
+const ARCHIVE_REASONS: ArchiveReason[] = ["donated", "sold", "worn_out", "given_away"];
 
 export default function EditItemScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { items, addOrUpdate, remove } = useClothingItems();
+  const { items, addOrUpdate, remove, archiveItem } = useClothingItems();
 
   const [name, setName] = useState("");
   const [category, setCategory] = useState<ClothingCategory>("tops");
@@ -50,6 +55,8 @@ export default function EditItemScreen() {
   const [productUrl, setProductUrl] = useState("");
   const [favorite, setFavorite] = useState(false);
   const [createdAt, setCreatedAt] = useState(Date.now());
+  const [cost, setCost] = useState("");
+  const [wearCount, setWearCount] = useState(0);
 
   // HSL fine-tuning
   const [hslAdjust, setHslAdjust] = useState<{ h: number; s: number; l: number } | null>(null);
@@ -58,6 +65,13 @@ export default function EditItemScreen() {
   // Secondary color
   const [secondaryColorIdx, setSecondaryColorIdx] = useState<number | null>(null);
   const [showSecondaryColor, setShowSecondaryColor] = useState(false);
+
+  // Color dropper
+  const [showDropper, setShowDropper] = useState(false);
+  const [dropperTarget, setDropperTarget] = useState<"primary" | "secondary">("primary");
+
+  // Archive
+  const [showArchiveModal, setShowArchiveModal] = useState(false);
 
   useEffect(() => {
     const item = items.find((i) => i.id === id);
@@ -75,6 +89,8 @@ export default function EditItemScreen() {
     setProductUrl(item.productUrl ?? "");
     setFavorite(item.favorite);
     setCreatedAt(item.createdAt);
+    setCost(item.cost != null ? String(item.cost) : "");
+    setWearCount(item.wearCount ?? 0);
 
     if (item.secondaryColor) {
       const secIdx = findClosestPresetIndex(item.secondaryColor);
@@ -125,8 +141,23 @@ export default function EditItemScreen() {
     setShowColorPicker(true);
   };
 
+  const handleDropperColorPicked = (hex: string) => {
+    const hsl = hexToHSL(hex);
+    if (dropperTarget === "primary") {
+      const idx = findClosestPresetIndex(hex);
+      setColorIdx(idx);
+      setHslAdjust({ h: hsl.h, s: hsl.s, l: hsl.l });
+    } else {
+      const idx = findClosestPresetIndex(hex);
+      setSecondaryColorIdx(idx);
+      setShowSecondaryColor(true);
+    }
+  };
+
   const handleSave = async () => {
     if (!name.trim() || !id) return;
+    const parsedCost = cost.trim() ? parseFloat(cost.trim()) : undefined;
+
     await addOrUpdate({
       id,
       name: name.trim(),
@@ -140,7 +171,10 @@ export default function EditItemScreen() {
       imageUris,
       brand: brand.trim() || undefined,
       productUrl: productUrl.trim() || undefined,
+      cost: parsedCost && !isNaN(parsedCost) ? parsedCost : undefined,
       favorite,
+      wearCount,
+      archived: false,
       createdAt,
     });
     router.back();
@@ -158,6 +192,14 @@ export default function EditItemScreen() {
         },
       },
     ]);
+  };
+
+  const handleArchive = async (reason: ArchiveReason) => {
+    if (!id) return;
+    setShowArchiveModal(false);
+    await archiveItem(id, reason);
+    Alert.alert("Archived", "Item has been archived and affected outfits have been flagged.");
+    router.back();
   };
 
   const subcats = SUBCATEGORIES[category];
@@ -218,6 +260,17 @@ export default function EditItemScreen() {
           keyboardType="url"
         />
 
+        {/* Cost */}
+        <Text style={styles.sectionTitle}>Cost (optional)</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="e.g. 49.99"
+          placeholderTextColor={Theme.colors.textLight}
+          value={cost}
+          onChangeText={setCost}
+          keyboardType="decimal-pad"
+        />
+
         {/* Category */}
         <Text style={styles.sectionTitle}>Category</Text>
         <View style={styles.chipRow}>
@@ -258,11 +311,25 @@ export default function EditItemScreen() {
           <Text style={styles.sectionTitle}>
             Color — {finalColorName}
           </Text>
-          <Pressable style={styles.colorPickerBtn} onPress={openColorPicker}>
-            <View style={[styles.colorPickerSwatch, { backgroundColor: finalColor }]} />
-            <Ionicons name="color-palette-outline" size={18} color={Theme.colors.primary} />
-            <Text style={styles.colorPickerBtnText}>Fine-tune</Text>
-          </Pressable>
+          <View style={{ flexDirection: "row", gap: 6 }}>
+            {imageUris.length > 0 && (
+              <Pressable
+                style={styles.colorPickerBtn}
+                onPress={() => {
+                  setDropperTarget("primary");
+                  setShowDropper(true);
+                }}
+              >
+                <Ionicons name="eyedrop-outline" size={16} color={Theme.colors.primary} />
+                <Text style={styles.colorPickerBtnText}>Dropper</Text>
+              </Pressable>
+            )}
+            <Pressable style={styles.colorPickerBtn} onPress={openColorPicker}>
+              <View style={[styles.colorPickerSwatch, { backgroundColor: finalColor }]} />
+              <Ionicons name="color-palette-outline" size={18} color={Theme.colors.primary} />
+              <Text style={styles.colorPickerBtnText}>Fine-tune</Text>
+            </Pressable>
+          </View>
         </View>
         <View style={styles.colorGrid}>
           {PRESET_COLORS.map((c, i) => (
@@ -292,9 +359,23 @@ export default function EditItemScreen() {
 
         {showSecondaryColor && (
           <>
-            <Text style={styles.sectionTitle}>
-              Secondary Color{secondaryColorIdx !== null ? ` — ${PRESET_COLORS[secondaryColorIdx].name}` : ""}
-            </Text>
+            <View style={styles.colorHeader}>
+              <Text style={styles.sectionTitle}>
+                Secondary Color{secondaryColorIdx !== null ? ` — ${PRESET_COLORS[secondaryColorIdx].name}` : ""}
+              </Text>
+              {imageUris.length > 0 && (
+                <Pressable
+                  style={styles.colorPickerBtn}
+                  onPress={() => {
+                    setDropperTarget("secondary");
+                    setShowDropper(true);
+                  }}
+                >
+                  <Ionicons name="eyedrop-outline" size={16} color={Theme.colors.primary} />
+                  <Text style={styles.colorPickerBtnText}>Dropper</Text>
+                </Pressable>
+              )}
+            </View>
             <View style={styles.colorGrid}>
               {PRESET_COLORS.map((c, i) => (
                 <Pressable
@@ -326,6 +407,15 @@ export default function EditItemScreen() {
           <Text style={styles.saveBtnText}>Save Changes</Text>
         </Pressable>
 
+        {/* Archive Button */}
+        <Pressable
+          style={styles.archiveBtn}
+          onPress={() => setShowArchiveModal(true)}
+        >
+          <Ionicons name="archive-outline" size={18} color={Theme.colors.warning} />
+          <Text style={styles.archiveBtnText}>Archive Item</Text>
+        </Pressable>
+
         <Pressable style={styles.deleteBtn} onPress={handleDelete}>
           <Ionicons name="trash-outline" size={18} color={Theme.colors.error} />
           <Text style={styles.deleteBtnText}>Delete Item</Text>
@@ -348,7 +438,6 @@ export default function EditItemScreen() {
           </View>
 
           <ScrollView contentContainerStyle={styles.colorPickerContent}>
-            {/* Preview swatch */}
             <View style={styles.pickerPreview}>
               <View style={[styles.pickerSwatch, { backgroundColor: finalColor }]} />
               <View>
@@ -357,7 +446,6 @@ export default function EditItemScreen() {
               </View>
             </View>
 
-            {/* Color Wheel */}
             <View style={styles.wheelWrap}>
               <ColorWheelPicker
                 hue={hslAdjust?.h ?? 0}
@@ -368,7 +456,6 @@ export default function EditItemScreen() {
               />
             </View>
 
-            {/* HSL Sliders */}
             {hslAdjust && (
               <View style={styles.hslSection}>
                 <View style={styles.sliderRow}>
@@ -458,6 +545,48 @@ export default function EditItemScreen() {
           </ScrollView>
         </View>
       </Modal>
+
+      {/* Archive Reason Modal */}
+      <Modal
+        visible={showArchiveModal}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setShowArchiveModal(false)}
+      >
+        <Pressable style={styles.archiveOverlay} onPress={() => setShowArchiveModal(false)}>
+          <View style={styles.archiveSheet}>
+            <Text style={styles.archiveSheetTitle}>Archive Reason</Text>
+            {ARCHIVE_REASONS.map((reason) => (
+              <Pressable
+                key={reason}
+                style={styles.archiveOption}
+                onPress={() => handleArchive(reason)}
+              >
+                <Text style={styles.archiveOptionText}>
+                  {ARCHIVE_REASON_LABELS[reason]}
+                </Text>
+                <Ionicons name="chevron-forward" size={18} color={Theme.colors.textLight} />
+              </Pressable>
+            ))}
+            <Pressable
+              style={styles.archiveCancelBtn}
+              onPress={() => setShowArchiveModal(false)}
+            >
+              <Text style={styles.archiveCancelText}>Cancel</Text>
+            </Pressable>
+          </View>
+        </Pressable>
+      </Modal>
+
+      {/* Image Color Dropper */}
+      {imageUris.length > 0 && (
+        <ImageColorDropper
+          imageUri={imageUris[0]}
+          visible={showDropper}
+          onColorPicked={handleDropperColorPicked}
+          onClose={() => setShowDropper(false)}
+        />
+      )}
     </>
   );
 }
@@ -566,7 +695,6 @@ const styles = StyleSheet.create({
   },
   colorGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   colorBtn: { padding: 2 },
-  // Secondary Color
   secondaryToggle: {
     flexDirection: "row",
     alignItems: "center",
@@ -588,12 +716,29 @@ const styles = StyleSheet.create({
     marginTop: Theme.spacing.xl,
   },
   saveBtnText: { color: "#FFFFFF", fontSize: Theme.fontSize.lg, fontWeight: "700" },
-  deleteBtn: {
+  archiveBtn: {
     flexDirection: "row",
     justifyContent: "center",
     alignItems: "center",
     gap: 6,
     marginTop: Theme.spacing.md,
+    padding: Theme.spacing.md,
+    borderWidth: 1,
+    borderColor: Theme.colors.warning + "40",
+    borderRadius: Theme.borderRadius.md,
+    backgroundColor: Theme.colors.warning + "08",
+  },
+  archiveBtnText: {
+    color: Theme.colors.warning,
+    fontSize: Theme.fontSize.md,
+    fontWeight: "600",
+  },
+  deleteBtn: {
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 6,
+    marginTop: Theme.spacing.sm,
     padding: Theme.spacing.md,
   },
   deleteBtnText: {
@@ -719,5 +864,48 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontSize: Theme.fontSize.lg,
     fontWeight: "700",
+  },
+  // Archive modal
+  archiveOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "flex-end",
+  },
+  archiveSheet: {
+    backgroundColor: Theme.colors.surface,
+    borderTopLeftRadius: Theme.borderRadius.lg,
+    borderTopRightRadius: Theme.borderRadius.lg,
+    padding: Theme.spacing.lg,
+    paddingBottom: 40,
+  },
+  archiveSheetTitle: {
+    fontSize: Theme.fontSize.lg,
+    fontWeight: "700",
+    color: Theme.colors.text,
+    marginBottom: Theme.spacing.md,
+    textAlign: "center",
+  },
+  archiveOption: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: Theme.spacing.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Theme.colors.border,
+  },
+  archiveOptionText: {
+    fontSize: Theme.fontSize.md,
+    color: Theme.colors.text,
+    fontWeight: "500",
+  },
+  archiveCancelBtn: {
+    marginTop: Theme.spacing.md,
+    paddingVertical: Theme.spacing.md,
+    alignItems: "center",
+  },
+  archiveCancelText: {
+    fontSize: Theme.fontSize.md,
+    color: Theme.colors.textSecondary,
+    fontWeight: "600",
   },
 });

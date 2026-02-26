@@ -6,6 +6,7 @@ import {
   Pressable,
   StyleSheet,
   ActivityIndicator,
+  Alert,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -17,10 +18,23 @@ import { Theme } from "@/constants/theme";
 import { SEASON_LABELS } from "@/models/types";
 import type { ClothingItem } from "@/models/types";
 
+const fmt = (n: number) =>
+  n.toLocaleString("en-US", { style: "currency", currency: "USD" });
+
 export default function OutfitsScreen() {
-  const { outfits, loading, remove } = useOutfits();
+  const { outfits, loading, remove, logWorn, updateRating } = useOutfits();
   const { getById } = useClothingItems();
   const router = useRouter();
+
+  const handleLogWorn = (outfitId: string, outfitName: string) => {
+    Alert.alert("Log Worn", `Mark "${outfitName}" as worn today?`, [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Log It",
+        onPress: () => logWorn(outfitId),
+      },
+    ]);
+  };
 
   return (
     <View style={styles.container}>
@@ -42,9 +56,19 @@ export default function OutfitsScreen() {
               .map((id) => getById(id))
               .filter(Boolean) as ClothingItem[];
 
+            const totalCost = outfitItems.reduce(
+              (sum, i) => sum + (i.cost ?? 0),
+              0
+            );
+
+            const isFlagged = outfit.hasRemovedItems && !outfit.removedItemNotified;
+
             return (
               <Pressable
-                style={styles.card}
+                style={[
+                  styles.card,
+                  isFlagged && styles.cardFlagged,
+                ]}
                 onPress={() =>
                   router.push({
                     pathname: "/outfit-detail",
@@ -77,20 +101,38 @@ export default function OutfitsScreen() {
                       {outfitItems.map((i) => i?.name).join(" + ")}
                     </Text>
 
-                    {/* Rating + Season */}
+                    {/* Rating (tappable) */}
                     <View style={styles.ratingRow}>
                       {[1, 2, 3, 4, 5].map((star) => (
-                        <Ionicons
+                        <Pressable
                           key={star}
-                          name={star <= outfit.rating ? "star" : "star-outline"}
-                          size={14}
-                          color={star <= outfit.rating ? "#FFD700" : Theme.colors.textLight}
-                        />
+                          onPress={() => updateRating(outfit.id, star)}
+                          hitSlop={4}
+                        >
+                          <Ionicons
+                            name={star <= outfit.rating ? "star" : "star-outline"}
+                            size={14}
+                            color={star <= outfit.rating ? "#FFD700" : Theme.colors.textLight}
+                          />
+                        </Pressable>
                       ))}
                       <Text style={styles.itemCount}>
                         {outfitItems.length} items
                       </Text>
                     </View>
+
+                    {/* Cost + Worn count */}
+                    <View style={styles.metaRow}>
+                      {totalCost > 0 && (
+                        <Text style={styles.costText}>{fmt(totalCost)}</Text>
+                      )}
+                      {outfit.wornDates.length > 0 && (
+                        <Text style={styles.wornText}>
+                          Worn {outfit.wornDates.length}x
+                        </Text>
+                      )}
+                    </View>
+
                     {(outfit.seasons ?? []).length > 0 && (
                       <Text style={styles.seasonText}>
                         {(outfit.seasons ?? []).map((s) => SEASON_LABELS[s]).join(", ")}
@@ -99,12 +141,22 @@ export default function OutfitsScreen() {
                   </View>
                 </View>
 
-                <Pressable
-                  style={styles.deleteBtn}
-                  onPress={() => remove(outfit.id)}
-                >
-                  <Ionicons name="trash-outline" size={16} color={Theme.colors.error} />
-                </Pressable>
+                {/* Action buttons */}
+                <View style={styles.actionRow}>
+                  <Pressable
+                    style={styles.logWornBtn}
+                    onPress={() => handleLogWorn(outfit.id, outfit.name)}
+                  >
+                    <Ionicons name="checkmark-circle-outline" size={14} color={Theme.colors.success} />
+                    <Text style={styles.logWornText}>Log Worn</Text>
+                  </Pressable>
+                  <Pressable
+                    style={styles.deleteBtn}
+                    onPress={() => remove(outfit.id)}
+                  >
+                    <Ionicons name="trash-outline" size={14} color={Theme.colors.error} />
+                  </Pressable>
+                </View>
               </Pressable>
             );
           }}
@@ -128,7 +180,14 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.06,
     shadowRadius: 8,
     elevation: 3,
-    position: "relative",
+  },
+  cardFlagged: {
+    shadowColor: "#F59E0B",
+    shadowOpacity: 0.4,
+    shadowRadius: 12,
+    elevation: 6,
+    borderWidth: 1,
+    borderColor: "#F59E0B40",
   },
   cardBody: {
     flexDirection: "row",
@@ -141,7 +200,7 @@ const styles = StyleSheet.create({
   cardInfo: {
     flex: 1,
     justifyContent: "center",
-    paddingRight: 24,
+    paddingRight: 4,
   },
   cardHeader: {
     flexDirection: "row",
@@ -185,16 +244,52 @@ const styles = StyleSheet.create({
     color: Theme.colors.textLight,
     marginLeft: 8,
   },
+  metaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginTop: 3,
+  },
+  costText: {
+    fontSize: Theme.fontSize.xs,
+    color: Theme.colors.textSecondary,
+    fontWeight: "500",
+  },
+  wornText: {
+    fontSize: Theme.fontSize.xs,
+    color: Theme.colors.success,
+    fontWeight: "500",
+  },
   seasonText: {
     fontSize: Theme.fontSize.xs,
     color: Theme.colors.primary,
     fontWeight: "500",
     marginTop: 2,
   },
+  actionRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: Theme.colors.border,
+  },
+  logWornBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: Theme.borderRadius.sm,
+    backgroundColor: Theme.colors.success + "12",
+  },
+  logWornText: {
+    fontSize: Theme.fontSize.xs,
+    fontWeight: "600",
+    color: Theme.colors.success,
+  },
   deleteBtn: {
-    position: "absolute",
-    top: 10,
-    right: 10,
     padding: 4,
   },
 });

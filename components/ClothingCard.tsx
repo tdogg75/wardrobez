@@ -10,48 +10,63 @@ interface ClothingCardProps {
   item: ClothingItem;
   onPress: () => void;
   onToggleFavorite?: () => void;
+  compact?: boolean;
 }
 
-export function ClothingCard({ item, onPress, onToggleFavorite }: ClothingCardProps) {
+export function ClothingCard({ item, onPress, onToggleFavorite, compact }: ClothingCardProps) {
+  const imageHeight = compact ? 80 : 160;
+  const iconSize = compact ? 24 : 40;
+  const favSize = compact ? 14 : 20;
+  const favBtnSize = compact ? 22 : 32;
+
   return (
     <Pressable style={styles.card} onPress={onPress}>
-      <View style={styles.imageContainer}>
+      <View style={[styles.imageContainer, { height: imageHeight }]}>
         {item.imageUris?.length > 0 ? (
           <Image source={{ uri: item.imageUris[0] }} style={styles.image} />
         ) : (
           <View style={[styles.placeholder, { backgroundColor: item.color + "30" }]}>
-            <Ionicons name="shirt-outline" size={40} color={item.color} />
+            <Ionicons name="shirt-outline" size={iconSize} color={item.color} />
           </View>
         )}
         {onToggleFavorite && (
-          <Pressable style={styles.favoriteBtn} onPress={onToggleFavorite}>
+          <Pressable
+            style={[styles.favoriteBtn, { width: favBtnSize, height: favBtnSize, borderRadius: favBtnSize / 2 }]}
+            onPress={onToggleFavorite}
+          >
             <Ionicons
               name={item.favorite ? "heart" : "heart-outline"}
-              size={20}
+              size={favSize}
               color={item.favorite ? Theme.colors.secondary : Theme.colors.textLight}
             />
           </Pressable>
         )}
       </View>
-      <View style={styles.info}>
-        <Text style={styles.name} numberOfLines={1}>
-          {item.name}
-        </Text>
-        <View style={styles.metaRow}>
-          <View style={styles.meta}>
-            <ColorDot color={item.color} size={14} />
-            <Text style={styles.category} numberOfLines={1}>
-              {CATEGORY_LABELS[item.category]}
-              {item.subCategory
-                ? ` · ${SUBCATEGORIES[item.category]?.find((s) => s.value === item.subCategory)?.label ?? item.subCategory}`
-                : ""}
-            </Text>
+      {!compact ? (
+        <View style={styles.info}>
+          <Text style={styles.name} numberOfLines={1}>
+            {item.name}
+          </Text>
+          <View style={styles.metaRow}>
+            <View style={styles.meta}>
+              <ColorDot color={item.color} size={14} />
+              <Text style={styles.category} numberOfLines={1}>
+                {CATEGORY_LABELS[item.category]}
+                {item.subCategory
+                  ? ` · ${SUBCATEGORIES[item.category]?.find((s) => s.value === item.subCategory)?.label ?? item.subCategory}`
+                  : ""}
+              </Text>
+            </View>
+            {item.brand ? (
+              <Text style={styles.brand} numberOfLines={1}>{item.brand}</Text>
+            ) : null}
           </View>
-          {item.brand ? (
-            <Text style={styles.brand} numberOfLines={1}>{item.brand}</Text>
-          ) : null}
         </View>
-      </View>
+      ) : (
+        <View style={styles.compactInfo}>
+          <Text style={styles.compactName} numberOfLines={1}>{item.name}</Text>
+        </View>
+      )}
     </Pressable>
   );
 }
@@ -69,7 +84,6 @@ const styles = StyleSheet.create({
     marginBottom: Theme.spacing.md,
   },
   imageContainer: {
-    height: 160,
     position: "relative",
   },
   image: {
@@ -124,5 +138,14 @@ const styles = StyleSheet.create({
     color: Theme.colors.textSecondary,
     marginLeft: 4,
     fontStyle: "italic",
+  },
+  compactInfo: {
+    paddingHorizontal: 4,
+    paddingVertical: 3,
+  },
+  compactName: {
+    fontSize: 9,
+    fontWeight: "600",
+    color: Theme.colors.text,
   },
 });

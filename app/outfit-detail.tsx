@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect } from "react";
 import {
   View,
   Text,
@@ -18,13 +18,28 @@ import { Theme } from "@/constants/theme";
 import { CATEGORY_LABELS, OCCASION_LABELS, SEASON_LABELS } from "@/models/types";
 import type { ClothingItem } from "@/models/types";
 
+const fmt = (n: number) =>
+  n.toLocaleString("en-US", { style: "currency", currency: "USD" });
+
 export default function OutfitDetailScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { outfits, remove } = useOutfits();
+  const { outfits, remove, logWorn, markNotified, updateRating } = useOutfits();
   const { getById } = useClothingItems();
 
   const outfit = outfits.find((o) => o.id === id);
+
+  // Show removed-item notification on first open
+  useEffect(() => {
+    if (outfit?.hasRemovedItems && !outfit.removedItemNotified) {
+      Alert.alert(
+        "Items Removed",
+        "Some items in this outfit have been archived. This outfit may be incomplete.",
+        [{ text: "OK", onPress: () => markNotified(outfit.id) }]
+      );
+    }
+  }, [outfit?.id, outfit?.hasRemovedItems, outfit?.removedItemNotified]);
+
   if (!outfit) {
     return (
       <View style={styles.container}>
@@ -36,6 +51,8 @@ export default function OutfitDetailScreen() {
   const outfitItems = outfit.itemIds
     .map((itemId) => getById(itemId))
     .filter(Boolean) as ClothingItem[];
+
+  const totalCost = outfitItems.reduce((sum, i) => sum + (i.cost ?? 0), 0);
 
   const handleDelete = () => {
     Alert.alert("Delete Outfit", "Remove this outfit from your collection?", [
@@ -51,6 +68,13 @@ export default function OutfitDetailScreen() {
     ]);
   };
 
+  const handleLogWorn = () => {
+    Alert.alert("Log Worn", `Mark "${outfit.name}" as worn today?`, [
+      { text: "Cancel", style: "cancel" },
+      { text: "Log It", onPress: () => logWorn(outfit.id) },
+    ]);
+  };
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <View style={styles.header}>
@@ -63,17 +87,51 @@ export default function OutfitDetailScreen() {
         )}
       </View>
 
-      {/* Rating */}
+      {/* Rating (tappable) */}
       <View style={styles.ratingRow}>
         {[1, 2, 3, 4, 5].map((star) => (
-          <Ionicons
+          <Pressable
             key={star}
-            name={star <= outfit.rating ? "star" : "star-outline"}
-            size={22}
-            color={star <= outfit.rating ? "#FFD700" : Theme.colors.textLight}
-          />
+            onPress={() => updateRating(outfit.id, star)}
+            hitSlop={6}
+          >
+            <Ionicons
+              name={star <= outfit.rating ? "star" : "star-outline"}
+              size={22}
+              color={star <= outfit.rating ? "#FFD700" : Theme.colors.textLight}
+            />
+          </Pressable>
         ))}
       </View>
+
+      {/* Cost + Worn stats */}
+      <View style={styles.statsRow}>
+        {totalCost > 0 && (
+          <View style={styles.statChip}>
+            <Ionicons name="pricetag-outline" size={14} color={Theme.colors.textSecondary} />
+            <Text style={styles.statText}>{fmt(totalCost)}</Text>
+          </View>
+        )}
+        <View style={styles.statChip}>
+          <Ionicons name="shirt-outline" size={14} color={Theme.colors.textSecondary} />
+          <Text style={styles.statText}>
+            Worn {outfit.wornDates.length} time{outfit.wornDates.length !== 1 ? "s" : ""}
+          </Text>
+        </View>
+        {totalCost > 0 && outfit.wornDates.length > 0 && (
+          <View style={styles.statChip}>
+            <Text style={styles.statText}>
+              {fmt(totalCost / outfit.wornDates.length)}/wear
+            </Text>
+          </View>
+        )}
+      </View>
+
+      {/* Log Worn Button */}
+      <Pressable style={styles.logWornBtn} onPress={handleLogWorn}>
+        <Ionicons name="checkmark-circle-outline" size={18} color={Theme.colors.success} />
+        <Text style={styles.logWornText}>Log Worn Today</Text>
+      </Pressable>
 
       {/* Mood Board */}
       {outfitItems.length > 0 && (
@@ -110,6 +168,7 @@ export default function OutfitDetailScreen() {
             <Text style={styles.itemMeta}>
               {CATEGORY_LABELS[item.category]}
               {item.brand ? ` · ${item.brand}` : ""}
+              {item.cost ? ` · ${fmt(item.cost)}` : ""}
             </Text>
           </View>
         </View>
@@ -185,7 +244,42 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: Theme.colors.primary,
   },
-  ratingRow: { flexDirection: "row", gap: 3, marginBottom: Theme.spacing.lg },
+  ratingRow: { flexDirection: "row", gap: 3, marginBottom: Theme.spacing.sm },
+  statsRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginBottom: Theme.spacing.md,
+  },
+  statChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: Theme.colors.surfaceAlt,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: Theme.borderRadius.full,
+  },
+  statText: {
+    fontSize: Theme.fontSize.xs,
+    color: Theme.colors.textSecondary,
+    fontWeight: "500",
+  },
+  logWornBtn: {
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 6,
+    paddingVertical: 10,
+    borderRadius: Theme.borderRadius.sm,
+    backgroundColor: Theme.colors.success + "12",
+    marginBottom: Theme.spacing.md,
+  },
+  logWornText: {
+    fontSize: Theme.fontSize.md,
+    fontWeight: "600",
+    color: Theme.colors.success,
+  },
   sectionTitle: {
     fontSize: Theme.fontSize.md,
     fontWeight: "700",
