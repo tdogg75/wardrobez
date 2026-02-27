@@ -16,8 +16,8 @@ import { ColorDot } from "@/components/ColorDot";
 import { MoodBoard } from "@/components/MoodBoard";
 import { EmptyState } from "@/components/EmptyState";
 import { Theme } from "@/constants/theme";
-import type { Occasion, Season } from "@/models/types";
-import { OCCASION_LABELS, SEASON_LABELS, CATEGORY_LABELS } from "@/models/types";
+import type { Season } from "@/models/types";
+import { SEASON_LABELS, CATEGORY_LABELS } from "@/models/types";
 
 function generateId(): string {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 9);
@@ -27,7 +27,6 @@ export default function SuggestScreen() {
   const { items } = useClothingItems();
   const { addOrUpdate: saveOutfit } = useOutfits();
 
-  const [occasion, setOccasion] = useState<Occasion | undefined>(undefined);
   const [season, setSeason] = useState<Season | undefined>(undefined);
   const [suggestions, setSuggestions] = useState<SuggestionResult[]>([]);
   const [generated, setGenerated] = useState(false);
@@ -42,13 +41,12 @@ export default function SuggestScreen() {
     }
 
     const results = suggestOutfits(items, {
-      occasion,
       season,
       maxResults: 6,
     });
     setSuggestions(results);
     setGenerated(true);
-  }, [items, occasion, season]);
+  }, [items, season]);
 
   const handleSave = async (suggestion: SuggestionResult) => {
     const name = `Outfit #${Date.now().toString(36).slice(-4).toUpperCase()}`;
@@ -57,7 +55,7 @@ export default function SuggestScreen() {
       id: generateId(),
       name,
       itemIds: suggestion.items.map((i) => i.id),
-      occasions: occasion ? [occasion] : [],
+      occasions: [],
       seasons: season ? [season] : [],
       rating: Math.min(5, Math.max(1, Math.round(suggestion.score / 20))),
       createdAt: Date.now(),
@@ -84,21 +82,9 @@ export default function SuggestScreen() {
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <Text style={styles.heading}>Get Outfit Ideas</Text>
       <Text style={styles.subtitle}>
-        Our engine analyzes color harmony, fabric compatibility, and
+        Our engine analyses colour harmony, fabric compatibility, and
         seasonal fit to suggest your best looks.
       </Text>
-
-      <Text style={styles.sectionTitle}>Occasion (optional)</Text>
-      <View style={styles.chipRow}>
-        {(Object.keys(OCCASION_LABELS) as Occasion[]).map((o) => (
-          <Chip
-            key={o}
-            label={OCCASION_LABELS[o]}
-            selected={occasion === o}
-            onPress={() => setOccasion(occasion === o ? undefined : o)}
-          />
-        ))}
-      </View>
 
       <Text style={styles.sectionTitle}>Season (optional)</Text>
       <View style={styles.chipRow}>
@@ -120,7 +106,7 @@ export default function SuggestScreen() {
       {generated && suggestions.length === 0 && (
         <View style={styles.noResults}>
           <Text style={styles.noResultsText}>
-            No matching outfits found. Try different filters or add more items!
+            No matching outfits found. Try a different season or add more items!
           </Text>
         </View>
       )}
@@ -134,19 +120,16 @@ export default function SuggestScreen() {
             </Text>
           </View>
 
-          {/* Mood Board */}
           <View style={styles.moodBoardWrap}>
             <MoodBoard items={suggestion.items} size={260} />
           </View>
 
-          {/* Color palette */}
           <View style={styles.palette}>
             {suggestion.items.map((item) => (
               <ColorDot key={item.id} color={item.color} size={28} />
             ))}
           </View>
 
-          {/* Items */}
           {suggestion.items.map((item) => (
             <View key={item.id} style={styles.itemRow}>
               <View
@@ -161,7 +144,6 @@ export default function SuggestScreen() {
             </View>
           ))}
 
-          {/* Reasons */}
           {suggestion.reasons.length > 0 && (
             <View style={styles.reasons}>
               {suggestion.reasons.map((r, ri) => (
@@ -177,7 +159,6 @@ export default function SuggestScreen() {
             </View>
           )}
 
-          {/* Save Button */}
           <Pressable
             style={styles.saveOutfitBtn}
             onPress={() => handleSave(suggestion)}

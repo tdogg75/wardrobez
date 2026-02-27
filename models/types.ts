@@ -136,6 +136,7 @@ export const SUBCATEGORIES: Record<ClothingCategory, { value: string; label: str
     { value: "casual_pants", label: "Casual Pants" },
     { value: "skirt", label: "Skirt" },
     { value: "shorts", label: "Shorts" },
+    { value: "stockings", label: "Stockings/Tights" },
     { value: "other", label: "Other" },
   ],
   dresses: [
@@ -160,12 +161,15 @@ export const SUBCATEGORIES: Record<ClothingCategory, { value: string; label: str
   ],
   shoes: [
     { value: "dress_boots", label: "Dress Boots" },
+    { value: "ankle_boots", label: "Ankle Boots" },
+    { value: "knee_boots", label: "Knee-High Boots" },
     { value: "winter_boots", label: "Winter Boots" },
     { value: "running_shoes", label: "Running Shoes" },
     { value: "sandals", label: "Sandals" },
     { value: "soccer_shoes", label: "Soccer Shoes" },
     { value: "flats", label: "Flats" },
     { value: "heels", label: "Heels" },
+    { value: "loafers", label: "Loafers" },
   ],
   accessories: [
     { value: "belts", label: "Belts" },

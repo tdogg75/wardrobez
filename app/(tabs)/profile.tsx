@@ -5,6 +5,7 @@ import {
   ScrollView,
   Pressable,
   StyleSheet,
+  Alert,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useClothingItems } from "@/hooks/useClothingItems";
@@ -12,6 +13,7 @@ import { useOutfits } from "@/hooks/useOutfits";
 import { Theme } from "@/constants/theme";
 import { CATEGORY_LABELS, ARCHIVE_REASON_LABELS } from "@/models/types";
 import type { ClothingCategory, ClothingItem } from "@/models/types";
+import * as FileSystem from "expo-file-system";
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                            */
@@ -28,16 +30,17 @@ const daysBetween = (a: Date, b: Date) =>
 /* ------------------------------------------------------------------ */
 
 export default function ProfileScreen() {
-  const { items, archivedItems, getFavorites } = useClothingItems();
+  const { items, archivedItems, getFavorites, unarchiveItem } = useClothingItems();
   const { outfits } = useOutfits();
 
   /* ---------- section toggles ---------- */
   const [statsOpen, setStatsOpen] = useState(false);
   const [archivedOpen, setArchivedOpen] = useState(false);
   const [favoritesOpen, setFavoritesOpen] = useState(false);
+  const [spendingOpen, setSpendingOpen] = useState(false);
 
   /* ---------- derived data ---------- */
-  const allActive: ClothingItem[] = items; // active only
+  const allActive: ClothingItem[] = items;
 
   const totalSpent = useMemo(
     () => allActive.reduce((sum, i) => sum + (i.cost ?? 0), 0),
@@ -63,6 +66,21 @@ export default function ProfileScreen() {
     }
     return map;
   }, [outfits]);
+
+  /* Utilization rate: % of items worn at least once in last 120 days */
+  const utilizationRate = useMemo(() => {
+    if (allActive.length === 0) return 0;
+    const now = new Date();
+    const cutoff = 120;
+    let wornCount = 0;
+    for (const item of allActive) {
+      const lastWorn = lastWornMap[item.id];
+      if (lastWorn && daysBetween(now, lastWorn) <= cutoff) {
+        wornCount++;
+      }
+    }
+    return Math.round((wornCount / allActive.length) * 100);
+  }, [allActive, lastWornMap]);
 
   /* --- Most Worn Items (top 5) --- */
   const mostWorn = useMemo(
@@ -143,6 +161,81 @@ export default function ProfileScreen() {
     [allActive],
   );
 
+  /* --- Backup / Export --- */
+  const handleExport = async () => {
+    try {
+      const AsyncStorage = (await import("@react-native-async-storage/async-storage")).default;
+      const clothingData = await AsyncStorage.getItem("wardrobez:clothing_items");
+      const outfitData = await AsyncStorage.getItem("wardrobez:outfits");
+      const backup = JSON.stringify({
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        clothing_items: clothingData ? JSON.parse(clothingData) : [],
+        outfits: outfitData ? JSON.parse(outfitData) : [],
+      }, null, 2);
+
+      const path = `${FileSystem.documentDirectory}wardrobez-backup.json`;
+      await FileSystem.writeAsStringAsync(path, backup);
+      Alert.alert(
+        "Backup Saved",
+        `Your wardrobe backup has been saved to:\n${path}\n\nYou can share this file to keep a copy.`
+      );
+    } catch (e) {
+      Alert.alert("Export Failed", "Could not export your wardrobe data.");
+    }
+  };
+
+  const handleImport = async () => {
+    Alert.alert(
+      "Import Backup",
+      "This will replace all your current wardrobe data with the backup. Are you sure?",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Import",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              const path = `${FileSystem.documentDirectory}wardrobez-backup.json`;
+              const exists = await FileSystem.getInfoAsync(path);
+              if (!exists.exists) {
+                Alert.alert("No Backup Found", "Place a wardrobez-backup.json file in the app's document directory first.");
+                return;
+              }
+              const raw = await FileSystem.readAsStringAsync(path);
+              const data = JSON.parse(raw);
+              if (!data.clothing_items || !data.outfits) {
+                Alert.alert("Invalid Backup", "The backup file doesn't contain valid wardrobe data.");
+                return;
+              }
+              const AsyncStorage = (await import("@react-native-async-storage/async-storage")).default;
+              await AsyncStorage.setItem("wardrobez:clothing_items", JSON.stringify(data.clothing_items));
+              await AsyncStorage.setItem("wardrobez:outfits", JSON.stringify(data.outfits));
+              Alert.alert("Import Complete", "Your wardrobe has been restored from the backup. Restart the app to see changes.");
+            } catch {
+              Alert.alert("Import Failed", "Could not import the backup file.");
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  /* --- Unarchive --- */
+  const handleUnarchive = (item: ClothingItem) => {
+    Alert.alert(
+      "Unarchive Item",
+      `Move "${item.name}" back to your active wardrobe?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Unarchive",
+          onPress: () => unarchiveItem(item.id),
+        },
+      ]
+    );
+  };
+
   /* ---------------------------------------------------------------- */
   /*  Sub-components                                                    */
   /* ---------------------------------------------------------------- */
@@ -204,7 +297,7 @@ export default function ProfileScreen() {
         </Pressable>
       </View>
 
-      {/* -------- Quick Stats -------- */}
+      {/* -------- Quick Stats (items, outfits, utilization) -------- */}
       <View style={styles.statsRow}>
         <View style={styles.statCard}>
           <Text style={styles.statValue}>{allActive.length}</Text>
@@ -215,9 +308,86 @@ export default function ProfileScreen() {
           <Text style={styles.statLabel}>Outfits</Text>
         </View>
         <View style={styles.statCard}>
-          <Text style={styles.statValue}>{fmt(totalSpent)}</Text>
-          <Text style={styles.statLabel}>Spent</Text>
+          <Text style={styles.statValue}>{utilizationRate}%</Text>
+          <Text style={styles.statLabel}>Utilisation</Text>
         </View>
+      </View>
+
+      <Text style={styles.utilNote}>
+        Items worn in the last 120 days
+      </Text>
+
+      {/* ============================================================ */}
+      {/*  SPENDING                                                     */}
+      {/* ============================================================ */}
+      <View style={styles.card}>
+        <SectionHeader
+          icon="wallet-outline"
+          label="Spending"
+          open={spendingOpen}
+          onPress={() => setSpendingOpen((v) => !v)}
+        />
+
+        {spendingOpen && (
+          <View style={styles.sectionBody}>
+            <View style={styles.spendTotalRow}>
+              <Text style={styles.spendTotalLabel}>Total Spent</Text>
+              <Text style={styles.spendTotalValue}>{fmt(totalSpent)}</Text>
+            </View>
+
+            <Divider />
+
+            {/* Spending by Category */}
+            <SubHeading>By Category</SubHeading>
+            {spendingByCategory.length === 0 ? (
+              <Text style={styles.emptyText}>No cost data recorded.</Text>
+            ) : (
+              spendingByCategory.map(({ category, total }) => (
+                <View key={category} style={styles.barRow}>
+                  <View style={styles.barLabelRow}>
+                    <Text style={styles.barLabel}>
+                      {CATEGORY_LABELS[category]}
+                    </Text>
+                    <Text style={styles.barValue}>{fmt(total)}</Text>
+                  </View>
+                  <View style={styles.barTrack}>
+                    <View
+                      style={[
+                        styles.barFill,
+                        { width: `${(total / maxSpend) * 100}%` },
+                      ]}
+                    />
+                  </View>
+                </View>
+              ))
+            )}
+
+            <Divider />
+
+            {/* Cost per Wear */}
+            <SubHeading>Cost per Wear</SubHeading>
+            {costPerWear.length === 0 ? (
+              <Text style={styles.emptyText}>
+                No items with cost and wear data.
+              </Text>
+            ) : (
+              costPerWear.map(({ item, cpw }) => (
+                <View key={item.id} style={styles.listItem}>
+                  <View style={styles.listItemLeft}>
+                    <Text style={styles.listItemName} numberOfLines={1}>
+                      {item.name}
+                    </Text>
+                    <Text style={styles.listItemSub}>
+                      {CATEGORY_LABELS[item.category]} - {item.wearCount} wear
+                      {item.wearCount !== 1 ? "s" : ""}
+                    </Text>
+                  </View>
+                  <Text style={styles.cpwValue}>{fmt(cpw)}</Text>
+                </View>
+              ))
+            )}
+          </View>
+        )}
       </View>
 
       {/* ============================================================ */}
@@ -347,58 +517,6 @@ export default function ProfileScreen() {
                 );
               })
             )}
-
-            <Divider />
-
-            {/* Spending by Category */}
-            <SubHeading>Spending by Category</SubHeading>
-            {spendingByCategory.length === 0 ? (
-              <Text style={styles.emptyText}>No cost data recorded.</Text>
-            ) : (
-              spendingByCategory.map(({ category, total }) => (
-                <View key={category} style={styles.barRow}>
-                  <View style={styles.barLabelRow}>
-                    <Text style={styles.barLabel}>
-                      {CATEGORY_LABELS[category]}
-                    </Text>
-                    <Text style={styles.barValue}>{fmt(total)}</Text>
-                  </View>
-                  <View style={styles.barTrack}>
-                    <View
-                      style={[
-                        styles.barFill,
-                        { width: `${(total / maxSpend) * 100}%` },
-                      ]}
-                    />
-                  </View>
-                </View>
-              ))
-            )}
-
-            <Divider />
-
-            {/* Cost per Wear */}
-            <SubHeading>Average Cost per Wear</SubHeading>
-            {costPerWear.length === 0 ? (
-              <Text style={styles.emptyText}>
-                No items with cost and wear data.
-              </Text>
-            ) : (
-              costPerWear.map(({ item, cpw }) => (
-                <View key={item.id} style={styles.listItem}>
-                  <View style={styles.listItemLeft}>
-                    <Text style={styles.listItemName} numberOfLines={1}>
-                      {item.name}
-                    </Text>
-                    <Text style={styles.listItemSub}>
-                      {CATEGORY_LABELS[item.category]} - {item.wearCount} wear
-                      {item.wearCount !== 1 ? "s" : ""}
-                    </Text>
-                  </View>
-                  <Text style={styles.cpwValue}>{fmt(cpw)}</Text>
-                </View>
-              ))
-            )}
           </View>
         )}
       </View>
@@ -434,6 +552,13 @@ export default function ProfileScreen() {
                         : ""}
                     </Text>
                   </View>
+                  <Pressable
+                    style={styles.unarchiveBtn}
+                    onPress={() => handleUnarchive(item)}
+                  >
+                    <Ionicons name="arrow-undo-outline" size={14} color={Theme.colors.primary} />
+                    <Text style={styles.unarchiveBtnText}>Unarchive</Text>
+                  </Pressable>
                 </View>
               ))
             )}
@@ -442,12 +567,12 @@ export default function ProfileScreen() {
       </View>
 
       {/* ============================================================ */}
-      {/*  FAVORITES                                                    */}
+      {/*  FAVOURITES                                                   */}
       {/* ============================================================ */}
       <View style={styles.card}>
         <SectionHeader
           icon="heart-outline"
-          label="Favorites"
+          label="Favourites"
           open={favoritesOpen}
           onPress={() => setFavoritesOpen((v) => !v)}
         />
@@ -455,7 +580,7 @@ export default function ProfileScreen() {
         {favoritesOpen && (
           <View style={styles.sectionBody}>
             {favorites.length === 0 ? (
-              <Text style={styles.emptyText}>No favorite items yet.</Text>
+              <Text style={styles.emptyText}>No favourite items yet.</Text>
             ) : (
               favorites.map((item) => (
                 <View key={item.id} style={styles.listItem}>
@@ -478,6 +603,26 @@ export default function ProfileScreen() {
             )}
           </View>
         )}
+      </View>
+
+      {/* ============================================================ */}
+      {/*  BACKUP & RESTORE                                             */}
+      {/* ============================================================ */}
+      <View style={styles.card}>
+        <View style={styles.backupSection}>
+          <Ionicons name="cloud-download-outline" size={20} color={Theme.colors.primary} style={styles.menuIcon} />
+          <Text style={styles.menuLabel}>Backup & Restore</Text>
+        </View>
+        <View style={styles.backupButtons}>
+          <Pressable style={styles.backupBtn} onPress={handleExport}>
+            <Ionicons name="download-outline" size={18} color={Theme.colors.primary} />
+            <Text style={styles.backupBtnText}>Export Backup</Text>
+          </Pressable>
+          <Pressable style={styles.backupBtn} onPress={handleImport}>
+            <Ionicons name="push-outline" size={18} color={Theme.colors.primary} />
+            <Text style={styles.backupBtnText}>Import Backup</Text>
+          </Pressable>
+        </View>
       </View>
     </ScrollView>
   );
@@ -514,7 +659,7 @@ const styles = StyleSheet.create({
   statsRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    marginBottom: Theme.spacing.lg,
+    marginBottom: Theme.spacing.xs,
   },
   statCard: {
     flex: 1,
@@ -538,6 +683,12 @@ const styles = StyleSheet.create({
     fontSize: Theme.fontSize.sm,
     color: Theme.colors.textSecondary,
     marginTop: Theme.spacing.xs,
+  },
+  utilNote: {
+    fontSize: Theme.fontSize.xs,
+    color: Theme.colors.textLight,
+    textAlign: "center",
+    marginBottom: Theme.spacing.lg,
   },
 
   /* Card wrapper for each section */
@@ -593,6 +744,24 @@ const styles = StyleSheet.create({
     height: StyleSheet.hairlineWidth,
     backgroundColor: Theme.colors.border,
     marginVertical: Theme.spacing.md,
+  },
+
+  /* Spending total */
+  spendTotalRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: Theme.spacing.sm,
+  },
+  spendTotalLabel: {
+    fontSize: Theme.fontSize.lg,
+    fontWeight: "600",
+    color: Theme.colors.text,
+  },
+  spendTotalValue: {
+    fontSize: Theme.fontSize.xl,
+    fontWeight: "700",
+    color: Theme.colors.primary,
   },
 
   /* Generic list item row */
@@ -678,5 +847,50 @@ const styles = StyleSheet.create({
     color: Theme.colors.textLight,
     fontStyle: "italic",
     paddingVertical: Theme.spacing.sm,
+  },
+
+  /* Unarchive button */
+  unarchiveBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: Theme.borderRadius.sm,
+    backgroundColor: Theme.colors.primary + "12",
+  },
+  unarchiveBtnText: {
+    fontSize: Theme.fontSize.xs,
+    fontWeight: "600",
+    color: Theme.colors.primary,
+  },
+
+  /* Backup section */
+  backupSection: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: Theme.spacing.md,
+    paddingVertical: Theme.spacing.md,
+  },
+  backupButtons: {
+    flexDirection: "row",
+    paddingHorizontal: Theme.spacing.md,
+    paddingBottom: Theme.spacing.md,
+    gap: Theme.spacing.sm,
+  },
+  backupBtn: {
+    flex: 1,
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 6,
+    paddingVertical: 10,
+    borderRadius: Theme.borderRadius.sm,
+    backgroundColor: Theme.colors.primary + "12",
+  },
+  backupBtnText: {
+    fontSize: Theme.fontSize.sm,
+    fontWeight: "600",
+    color: Theme.colors.primary,
   },
 });

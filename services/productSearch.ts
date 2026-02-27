@@ -208,6 +208,23 @@ const BRAND_DOMAINS: Record<string, string> = {
   "free people": "freepeople.com",
   express: "express.com",
   "forever 21": "forever21.com",
+  "club monaco": "clubmonaco.com",
+  "theory": "theory.com",
+  "massimo dutti": "massimodutti.com",
+  "cos": "cos.com",
+  "& other stories": "stories.com",
+  roots: "roots.com",
+  simons: "simons.ca",
+  holtrenfrew: "holtrenfrew.com",
+  "hudson's bay": "thebay.com",
+  aldo: "aldoshoes.com",
+  "steve madden": "stevemadden.com",
+  sephora: "sephora.com",
+  amazon: "amazon.com",
+  shein: "shein.com",
+  "fashion nova": "fashionnova.com",
+  abercrombie: "abercrombie.com",
+  "american eagle": "ae.com",
 };
 
 // Realistic store data for search results
@@ -411,6 +428,34 @@ export async function searchProductsOnline(
  * Parses the URL path/hostname for brand, category, color, and fabric keywords.
  * Also constructs a likely product image URL from the page.
  */
+// Filler words to strip from product names
+const FILLER_WORDS = new Set([
+  "the", "a", "an", "in", "on", "for", "with", "and", "or",
+  "new", "buy", "shop", "product", "item", "detail", "details",
+  "page", "collection", "collections", "category", "style",
+  "view", "show", "store", "online", "sale", "limited",
+]);
+
+/**
+ * Builds a short, clean product name from a URL path segment.
+ * Strips filler words, product IDs, and unnecessary tokens.
+ */
+function buildShortName(raw: string): string {
+  let name = raw
+    .replace(/[-_]/g, " ")
+    .replace(/\d{5,}/g, "") // remove product IDs (5+ digits)
+    .replace(/\b[a-z0-9]{20,}\b/gi, "") // remove hash-like tokens
+    .replace(/\.(html?|aspx?|php|jsp)/gi, "") // remove file extensions
+    .toLowerCase()
+    .split(/\s+/)
+    .filter((w) => w.length > 1 && !FILLER_WORDS.has(w))
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .slice(0, 5) // max 5 words
+    .join(" ")
+    .trim();
+  return name;
+}
+
 export async function fetchProductFromUrl(
   url: string
 ): Promise<ProductSearchResult | null> {
@@ -424,31 +469,39 @@ export async function fetchProductFromUrl(
 
     const result = inferAttributes(fullText);
 
-    // Try to extract brand from hostname
+    // Extract brand from hostname FIRST (prioritise this)
     for (const [brandName, domain] of Object.entries(BRAND_DOMAINS)) {
       if (hostname.includes(domain.replace(".com", ""))) {
-        result.brand = brandName.charAt(0).toUpperCase() + brandName.slice(1);
+        // Proper case for multi-word brands
+        result.brand = brandName
+          .split(/[\s&]+/)
+          .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+          .join(brandName.includes("&") ? " & " : " ");
         break;
       }
     }
 
-    // Try to extract product name from URL path segments
-    const segments = parsed.pathname.split("/").filter(Boolean);
-    const lastSegment = segments[segments.length - 1];
-    if (lastSegment) {
-      const cleanName = lastSegment
-        .replace(/[-_]/g, " ")
-        .replace(/\b\w/g, (c) => c.toUpperCase())
-        .replace(/\d{5,}/g, "") // Remove product IDs
-        .trim();
-      if (cleanName.length > 2) {
-        result.name = cleanName;
+    // If no brand matched, try to infer from the hostname itself
+    if (!result.brand) {
+      const hostParts = hostname.replace(".com", "").replace(".ca", "").replace(".co.uk", "").split(".");
+      const potentialBrand = hostParts[hostParts.length - 1];
+      if (potentialBrand && potentialBrand.length > 2 && potentialBrand.length < 20) {
+        result.brand = potentialBrand.charAt(0).toUpperCase() + potentialBrand.slice(1);
       }
     }
 
-    // Construct a plausible product image URL from the page
-    // In production, this would fetch the page and extract og:image or the main product image.
-    // For now, we construct a simulated product image from the URL.
+    // Extract a clean, short product name from URL segments
+    const segments = parsed.pathname.split("/").filter(Boolean);
+    // Try the last segment first, then second-to-last
+    for (let i = segments.length - 1; i >= Math.max(0, segments.length - 2); i--) {
+      const name = buildShortName(segments[i]);
+      if (name.length > 2) {
+        result.name = name;
+        break;
+      }
+    }
+
+    // Construct a plausible product image URL
     result.imageUri = constructProductImageUri(parsed, hostname);
 
     const matchCount =

@@ -446,9 +446,23 @@ export default function AddItemScreen() {
 
         {showSecondaryColor && (
           <>
-            <Text style={styles.sectionTitle}>
-              Secondary Colour{secondaryColorIdx !== null ? ` — ${PRESET_COLORS[secondaryColorIdx].name}` : ""}
-            </Text>
+            <View style={styles.colorHeader}>
+              <Text style={styles.sectionTitle}>
+                Secondary Colour{secondaryColorIdx !== null ? ` — ${PRESET_COLORS[secondaryColorIdx].name}` : ""}
+              </Text>
+              {imageUris.length > 0 && (
+                <Pressable
+                  style={styles.colorPickerBtn}
+                  onPress={() => {
+                    setDropperTarget("secondary");
+                    setShowDropper(true);
+                  }}
+                >
+                  <Ionicons name="eyedrop-outline" size={16} color={Theme.colors.primary} />
+                  <Text style={styles.colorPickerBtnText}>Dropper</Text>
+                </Pressable>
+              )}
+            </View>
             <View style={styles.colorGrid}>
               {PRESET_COLORS.map((c, i) => (
                 <Pressable
