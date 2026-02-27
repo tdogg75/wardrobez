@@ -5,6 +5,7 @@ import type {
   Season,
   FabricType,
   Outfit,
+  HardwareColour,
 } from "@/models/types";
 import { hexToHSL } from "@/constants/colors";
 
@@ -212,16 +213,68 @@ function seasonalScore(items: ClothingItem[], season: Season): number {
   return total / items.length;
 }
 
+// --- Hardware Colour Matching ---
+
+const HARDWARE_COMPATIBLE: Record<string, string[]> = {
+  gold: ["gold", "rose_gold"],
+  rose_gold: ["rose_gold", "gold"],
+  silver: ["silver", "gunmetal"],
+  gunmetal: ["gunmetal", "silver"],
+  black: ["black"],
+  bronze: ["bronze"],
+};
+
+function hardwareCompatibility(items: ClothingItem[]): number {
+  const withHardware = items.filter((i) => i.hardwareColour);
+  if (withHardware.length < 2) return 1.0; // no conflict possible
+
+  let totalScore = 0;
+  let pairs = 0;
+
+  for (let i = 0; i < withHardware.length; i++) {
+    for (let j = i + 1; j < withHardware.length; j++) {
+      const a = withHardware[i].hardwareColour!;
+      const b = withHardware[j].hardwareColour!;
+      if (a === b) {
+        totalScore += 1.0; // exact match
+      } else if (HARDWARE_COMPATIBLE[a]?.includes(b)) {
+        totalScore += 0.8; // compatible pair
+      } else {
+        totalScore += 0.4; // mismatched
+      }
+      pairs++;
+    }
+  }
+
+  return pairs > 0 ? totalScore / pairs : 1.0;
+}
+
 // --- Outfit Rules & Validation ---
 
-const JEWELRY_SUBS = ["earrings", "necklaces", "bracelets", "rings"];
+const JEWELRY_SUBS = ["earrings", "necklaces", "bracelets", "rings", "watches"];
 
 function isBlazer(item: ClothingItem): boolean {
   return item.category === "blazers";
 }
 
+/**
+ * Check if an item is an "open" top — requires a non-open top underneath.
+ * Blazers are always open. Cardigans and zip-ups are always open.
+ * Items with isOpen === true are open.
+ */
+function isOpenTop(item: ClothingItem): boolean {
+  if (item.isOpen === true) return true;
+  if (item.category === "blazers") return true;
+  const openSubs = ["cardigan", "zip_up"];
+  return !!(item.subCategory && openSubs.includes(item.subCategory));
+}
+
+/**
+ * Non-open shirt-like top that can serve as a layer underneath open tops.
+ */
 function isShirtLike(item: ClothingItem): boolean {
   if (item.category !== "tops") return false;
+  if (isOpenTop(item)) return false;
   const shirtSubs = ["tank_top", "tshirt", "long_sleeve", "blouse", "sweater", "sweatshirt", "hoodie", "polo", "workout_shirt"];
   return !item.subCategory || shirtSubs.includes(item.subCategory);
 }
@@ -248,23 +301,34 @@ function isSwimBottom(item: ClothingItem): boolean {
 function isValidCombo(combo: ClothingItem[]): boolean {
   const hasDress = combo.some(isDress);
   const hasBottoms = combo.some((i) => i.category === "bottoms");
-  const hasBlazer = combo.some(isBlazer);
-  const hasShirtUnderneath = combo.some((i) => isShirtLike(i));
+  const hasNonOpenTop = combo.some((i) => isShirtLike(i));
+  const hasAnyOpenTop = combo.some((i) => isOpenTop(i));
+  const hasTops = combo.some((i) => i.category === "tops");
 
   if (hasDress && hasBottoms) return false;
-  if (hasBlazer && !hasShirtUnderneath && !hasDress) return false;
+
+  // Any open top (blazer, cardigan, zip-up, or isOpen items) needs a non-open top underneath
+  if (hasAnyOpenTop && !hasNonOpenTop && !hasDress) return false;
+
+  // Regular (non-swim, non-dress) outfits must have at minimum a top + bottoms
+  const hasSwimwear = combo.some((i) => i.category === "swimwear");
+  if (!hasDress && !hasSwimwear) {
+    if (!hasTops || !hasBottoms) return false;
+  }
 
   // Swimwear rules:
-  // One piece can't combine with swim tops or swim bottoms
   const hasOnePiece = combo.some(isSwimOnePiece);
   const hasSwimTop = combo.some(isSwimTop);
   const hasSwimBottom = combo.some(isSwimBottom);
 
+  // One piece can't combine with swim tops or swim bottoms
   if (hasOnePiece && (hasSwimTop || hasSwimBottom)) return false;
 
+  // Swim top+bottom must come as a pair (not just one)
+  if (hasSwimTop && !hasSwimBottom) return false;
+  if (hasSwimBottom && !hasSwimTop) return false;
+
   // Swimwear shouldn't combine with regular tops or bottoms
-  const hasSwimwear = combo.some((i) => i.category === "swimwear");
-  const hasTops = combo.some((i) => i.category === "tops");
   if (hasSwimwear && hasTops) return false;
   if (hasSwimwear && hasBottoms) return false;
 
@@ -305,11 +369,15 @@ function getCategoryCombinations(): ClothingCategory[][] {
     ["dresses", "blazers"],
     ["dresses", "blazers", "shoes"],
 
-    // Swimwear
+    // Swimwear — one-piece (single pick) or swim top + swim bottom (double pick)
     ["swimwear"],
-    ["swimwear", "accessories"],
     ["swimwear", "shoes"],
+    ["swimwear", "accessories"],
     ["swimwear", "shoes", "accessories"],
+    ["swimwear", "swimwear"],
+    ["swimwear", "swimwear", "shoes"],
+    ["swimwear", "swimwear", "accessories"],
+    ["swimwear", "swimwear", "shoes", "accessories"],
   ];
 }
 
@@ -322,6 +390,45 @@ function pickOnePerCategory(
   const [first, ...rest] = categories;
   const pool = itemsByCategory.get(first) ?? [];
   if (pool.length === 0) return [];
+
+  // Special handling: when we see two consecutive "swimwear" entries,
+  // pick one swim top + one swim bottom pair instead of two arbitrary items.
+  if (first === "swimwear" && rest.length > 0 && rest[0] === "swimwear") {
+    const swimTops = pool.filter(isSwimTop);
+    const swimBottoms = pool.filter(isSwimBottom);
+    if (swimTops.length === 0 || swimBottoms.length === 0) return [];
+
+    const remainingCategories = rest.slice(1); // skip the second "swimwear"
+    const subCombos = pickOnePerCategory(itemsByCategory, remainingCategories);
+    const results: OutfitCombo[] = [];
+
+    for (const top of swimTops) {
+      for (const bottom of swimBottoms) {
+        for (const sub of subCombos) {
+          results.push([top, bottom, ...sub]);
+        }
+      }
+    }
+
+    return results;
+  }
+
+  // Single "swimwear" entry: for one-piece swimsuits (or cover-ups as solo items)
+  if (first === "swimwear") {
+    const onePieces = pool.filter(isSwimOnePiece);
+    if (onePieces.length === 0) return [];
+
+    const subCombos = pickOnePerCategory(itemsByCategory, rest);
+    const results: OutfitCombo[] = [];
+
+    for (const item of onePieces) {
+      for (const sub of subCombos) {
+        results.push([item, ...sub]);
+      }
+    }
+
+    return results;
+  }
 
   const subCombos = pickOnePerCategory(itemsByCategory, rest);
   const results: OutfitCombo[] = [];
@@ -340,16 +447,19 @@ function pickOnePerCategory(
  */
 function enrichWithAccessories(
   combo: OutfitCombo,
-  allAccessories: ClothingItem[]
+  allAccessories: ClothingItem[],
+  allItems: ClothingItem[]
 ): OutfitCombo {
-  if (allAccessories.length === 0) return combo;
+  if (allAccessories.length === 0 && allItems.length === 0) return combo;
 
   const hasBottoms = combo.some((i) => i.category === "bottoms");
   const hasBlazer = combo.some((i) => i.category === "blazers");
   const isFormalish = hasBlazer;
+  const hasSwimwear = combo.some((i) => i.category === "swimwear");
 
   const extras: ClothingItem[] = [];
   const usedSubs = new Set<string>();
+  const usedIds = new Set(combo.map((i) => i.id));
 
   for (const item of combo) {
     if ((item.category === "accessories" || item.category === "jewelry") && item.subCategory) {
@@ -359,21 +469,53 @@ function enrichWithAccessories(
 
   // Add a belt when wearing pants/jeans
   if (hasBottoms && !usedSubs.has("belts")) {
-    const belt = allAccessories.find((a) => a.subCategory === "belts");
+    const belt = allAccessories.find((a) => a.subCategory === "belts" && !usedIds.has(a.id));
     if (belt) {
       extras.push(belt);
       usedSubs.add("belts");
+      usedIds.add(belt.id);
     }
   }
 
-  // For formal outfits with blazers, add 1-2 pieces of jewelry
-  if (isFormalish) {
-    for (const sub of JEWELRY_SUBS) {
-      if (usedSubs.has(sub) || extras.length >= 2) break;
-      const piece = allAccessories.find((a) => a.subCategory === sub && !usedSubs.has(sub));
-      if (piece) {
-        extras.push(piece);
-        usedSubs.add(sub);
+  // Try to add a hat when available
+  if (!usedSubs.has("hats")) {
+    const hat = allAccessories.find((a) => a.subCategory === "hats" && !usedIds.has(a.id));
+    if (hat) {
+      extras.push(hat);
+      usedSubs.add("hats");
+      usedIds.add(hat.id);
+    }
+  }
+
+  // Add jewellery pieces (watches, necklaces, etc.)
+  // For formal outfits allow up to 2, for others allow 1
+  const maxJewelry = isFormalish ? 2 : 1;
+  let jewelryAdded = 0;
+  for (const sub of JEWELRY_SUBS) {
+    if (usedSubs.has(sub) || jewelryAdded >= maxJewelry) break;
+    const piece = allAccessories.find((a) => a.subCategory === sub && !usedIds.has(a.id));
+    if (piece) {
+      extras.push(piece);
+      usedSubs.add(sub);
+      usedIds.add(piece.id);
+      jewelryAdded++;
+    }
+  }
+
+  // For swimwear outfits, try to add a cover-up from swimwear subcategory
+  if (hasSwimwear) {
+    const hasCoverUp = combo.some(
+      (i) => i.subCategory === "cover_up"
+    );
+    if (!hasCoverUp) {
+      const coverUp = allItems.find(
+        (i) =>
+          i.subCategory === "cover_up" &&
+          !usedIds.has(i.id)
+      );
+      if (coverUp) {
+        extras.push(coverUp);
+        usedIds.add(coverUp.id);
       }
     }
   }
@@ -417,7 +559,7 @@ export function suggestOutfits(
     const combos = pickOnePerCategory(byCategory, categorySet);
     for (const combo of combos) {
       if (!isValidCombo(combo)) continue;
-      const enriched = enrichWithAccessories(combo, allAccessories);
+      const enriched = enrichWithAccessories(combo, allAccessories, allItems);
       allCombos.push(enriched);
     }
   }
@@ -457,6 +599,12 @@ export function suggestOutfits(
     } else {
       score += 10;
     }
+
+    // Hardware colour matching — 5% weight (small bonus/penalty)
+    const hw = hardwareCompatibility(combo);
+    score += hw * 5;
+    if (hw >= 0.95) reasons.push("Matching hardware");
+    else if (hw < 0.6) reasons.push("Mixed hardware tones");
 
     // Bonus for completeness
     const categories = new Set(combo.map((i) => i.category));
@@ -500,14 +648,14 @@ export function validateOutfit(items: ClothingItem[]): string[] {
   const warnings: string[] = [];
   const hasDress = items.some(isDress);
   const hasBottoms = items.some((i) => i.category === "bottoms");
-  const hasBlazer = items.some(isBlazer);
-  const hasShirt = items.some(isShirtLike);
+  const hasAnyOpenTop = items.some(isOpenTop);
+  const hasNonOpenTop = items.some(isShirtLike);
 
   if (hasDress && hasBottoms) {
     warnings.push("A dress typically doesn't pair with pants or bottoms");
   }
-  if (hasBlazer && !hasShirt && !hasDress) {
-    warnings.push("A blazer usually needs a shirt or top underneath");
+  if (hasAnyOpenTop && !hasNonOpenTop && !hasDress) {
+    warnings.push("Open layers (blazers, cardigans, zip-ups) usually need a shirt or top underneath");
   }
   if (items.length === 0) {
     warnings.push("Select at least one item to create an outfit");

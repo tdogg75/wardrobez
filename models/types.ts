@@ -38,6 +38,19 @@ export type FabricType =
 
 export type ArchiveReason = "donated" | "sold" | "worn_out" | "given_away";
 
+export type HardwareColour = "gold" | "silver" | "rose_gold" | "black" | "bronze" | "gunmetal";
+
+export type ItemFlag =
+  | "too_big"
+  | "too_small"
+  | "needs_repair"
+  | "needs_dry_clean"
+  | "flawed"
+  | "stained"
+  | "pilling"
+  | "missing_button"
+  | "other";
+
 export interface ClothingItem {
   id: string;
   name: string;
@@ -58,6 +71,16 @@ export interface ClothingItem {
   archiveReason?: ArchiveReason;
   archivedAt?: number;
   createdAt: number;
+  // Open top: blazers, cardigans, zip-ups that require a shirt underneath
+  isOpen?: boolean;
+  // Hardware colour for items with buttons, buckles, clasps
+  hardwareColour?: HardwareColour;
+  // Optional notes
+  notes?: string;
+  // Original auto-detected colour from image (for revert)
+  originalAutoColor?: string;
+  // Item condition flags
+  itemFlags?: ItemFlag[];
   // Legacy field - kept for migration but no longer used in UI
   occasions?: Occasion[];
 }
@@ -74,6 +97,10 @@ export interface Outfit {
   wornDates: string[]; // ISO date strings for each time worn
   hasRemovedItems?: boolean;
   removedItemNotified?: boolean;
+  // Optional notes
+  notes?: string;
+  // Custom tags
+  tags?: string[];
 }
 
 export const CATEGORY_LABELS: Record<ClothingCategory, string> = {
@@ -85,7 +112,7 @@ export const CATEGORY_LABELS: Record<ClothingCategory, string> = {
   shoes: "Shoes",
   accessories: "Accessories",
   swimwear: "Swimwear",
-  jewelry: "Jewelry",
+  jewelry: "Jewellery",
 };
 
 export const SUBCATEGORIES: Record<ClothingCategory, { value: string; label: string }[]> = {
@@ -95,6 +122,8 @@ export const SUBCATEGORIES: Record<ClothingCategory, { value: string; label: str
     { value: "long_sleeve", label: "Long Sleeve" },
     { value: "blouse", label: "Blouse" },
     { value: "sweater", label: "Sweater" },
+    { value: "cardigan", label: "Cardigan" },
+    { value: "zip_up", label: "Zip-Up" },
     { value: "sweatshirt", label: "Sweatshirt" },
     { value: "hoodie", label: "Hoodie" },
     { value: "polo", label: "Polo" },
@@ -194,3 +223,38 @@ export const ARCHIVE_REASON_LABELS: Record<ArchiveReason, string> = {
   worn_out: "Worn Out",
   given_away: "Given Away",
 };
+
+export const HARDWARE_COLOUR_LABELS: Record<HardwareColour, string> = {
+  gold: "Gold",
+  silver: "Silver",
+  rose_gold: "Rose Gold",
+  black: "Black",
+  bronze: "Bronze",
+  gunmetal: "Gunmetal",
+};
+
+export const ITEM_FLAG_LABELS: Record<ItemFlag, string> = {
+  too_big: "Too Big",
+  too_small: "Too Small",
+  needs_repair: "Needs Repair",
+  needs_dry_clean: "Needs Dry Clean",
+  flawed: "Flawed",
+  stained: "Stained",
+  pilling: "Pilling",
+  missing_button: "Missing Button",
+  other: "Other",
+};
+
+// Items that can have hardware (buttons, buckles, clasps)
+export const HARDWARE_CATEGORIES: ClothingCategory[] = ["blazers", "accessories", "jewelry"];
+export const HARDWARE_SUBCATEGORIES: string[] = [
+  "casual_blazer", "formal_blazer", "sport_coat",
+  "belts", "watches", "bracelets", "necklaces",
+  "cardigan", "zip_up",
+];
+
+// Subcategories that are always considered "open" (require a shirt under)
+export const ALWAYS_OPEN_SUBCATEGORIES: string[] = [
+  "casual_blazer", "formal_blazer", "sport_coat",
+  "cardigan", "zip_up",
+];

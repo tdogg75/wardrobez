@@ -5,6 +5,7 @@ import {
   saveOutfit,
   deleteOutfit as removeOutfit,
   logOutfitWorn,
+  removeWornDate as removeWornDateStorage,
   markOutfitNotified,
 } from "@/services/storage";
 
@@ -15,6 +16,7 @@ interface OutfitsContextValue {
   addOrUpdate: (outfit: Outfit) => Promise<void>;
   remove: (id: string) => Promise<void>;
   logWorn: (outfitId: string) => Promise<void>;
+  removeWornDate: (outfitId: string, dateIndex: number) => Promise<void>;
   markNotified: (outfitId: string) => Promise<void>;
   updateRating: (outfitId: string, rating: number) => Promise<void>;
 }
@@ -60,6 +62,14 @@ export function OutfitsProvider({ children }: { children: React.ReactNode }) {
     [reload]
   );
 
+  const removeWornDate = useCallback(
+    async (outfitId: string, dateIndex: number) => {
+      await removeWornDateStorage(outfitId, dateIndex);
+      await reload();
+    },
+    [reload]
+  );
+
   const markNotified = useCallback(
     async (outfitId: string) => {
       await markOutfitNotified(outfitId);
@@ -85,6 +95,7 @@ export function OutfitsProvider({ children }: { children: React.ReactNode }) {
     addOrUpdate,
     remove,
     logWorn,
+    removeWornDate,
     markNotified,
     updateRating,
   };

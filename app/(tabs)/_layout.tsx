@@ -34,6 +34,7 @@ export default function TabLayout() {
         name="index"
         options={{
           title: "Wardrobe",
+          headerShown: false,
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="shirt-outline" size={size} color={color} />
           ),

@@ -33,11 +33,18 @@ import {
 import type {
   ClothingCategory,
   FabricType,
+  HardwareColour,
+  ItemFlag,
 } from "@/models/types";
 import {
   CATEGORY_LABELS,
   SUBCATEGORIES,
   FABRIC_TYPE_LABELS,
+  ALWAYS_OPEN_SUBCATEGORIES,
+  HARDWARE_COLOUR_LABELS,
+  HARDWARE_SUBCATEGORIES,
+  HARDWARE_CATEGORIES,
+  ITEM_FLAG_LABELS,
 } from "@/models/types";
 
 function generateId(): string {
@@ -58,6 +65,21 @@ export default function AddItemScreen() {
   const [productUrl, setProductUrl] = useState("");
   const [fetchingUrl, setFetchingUrl] = useState(false);
   const [cost, setCost] = useState("");
+
+  // Open top detection
+  const [isOpen, setIsOpen] = useState(false);
+
+  // Hardware colour
+  const [hardwareColour, setHardwareColour] = useState<HardwareColour | undefined>(undefined);
+
+  // Item flags
+  const [itemFlags, setItemFlags] = useState<ItemFlag[]>([]);
+
+  // Notes
+  const [notes, setNotes] = useState("");
+
+  // Original auto-detected colour
+  const [originalAutoColor, setOriginalAutoColor] = useState<string | undefined>(undefined);
 
   // HSL fine-tuning
   const [hslAdjust, setHslAdjust] = useState<{ h: number; s: number; l: number } | null>(null);
@@ -155,6 +177,7 @@ export default function AddItemScreen() {
 
   const handleDropperColorPicked = (hex: string) => {
     const hsl = hexToHSL(hex);
+    setOriginalAutoColor(hex);
     if (dropperTarget === "primary") {
       const idx = findClosestPresetIndex(hex);
       setColorIdx(idx);
@@ -164,6 +187,14 @@ export default function AddItemScreen() {
       setSecondaryColorIdx(idx);
       setShowSecondaryColor(true);
     }
+  };
+
+  const handleRevertToOriginalColor = () => {
+    if (!originalAutoColor) return;
+    const hsl = hexToHSL(originalAutoColor);
+    const idx = findClosestPresetIndex(originalAutoColor);
+    setColorIdx(idx);
+    setHslAdjust({ h: hsl.h, s: hsl.s, l: hsl.l });
   };
 
   const handleSave = async () => {
@@ -192,6 +223,11 @@ export default function AddItemScreen() {
       wearCount: 0,
       archived: false,
       createdAt: Date.now(),
+      isOpen,
+      hardwareColour,
+      notes: notes.trim() || undefined,
+      originalAutoColor,
+      itemFlags: itemFlags.length > 0 ? itemFlags : undefined,
     });
 
     router.back();
@@ -295,6 +331,7 @@ export default function AddItemScreen() {
               onPress={() => {
                 setCategory(cat);
                 setSubCategory(undefined);
+                setIsOpen(false);
               }}
             />
           ))}
@@ -310,19 +347,50 @@ export default function AddItemScreen() {
                   key={sc.value}
                   label={sc.label}
                   selected={subCategory === sc.value}
-                  onPress={() =>
-                    setSubCategory(subCategory === sc.value ? undefined : sc.value)
-                  }
+                  onPress={() => {
+                    const newSub = subCategory === sc.value ? undefined : sc.value;
+                    setSubCategory(newSub);
+                    if (newSub && ALWAYS_OPEN_SUBCATEGORIES.includes(newSub)) {
+                      setIsOpen(true);
+                    } else {
+                      setIsOpen(false);
+                    }
+                  }}
                 />
               ))}
             </View>
           </>
         )}
 
-        {/* Primary Color */}
+        {/* Open Top Detection */}
+        {(category === "tops" || category === "blazers") && subCategory && !ALWAYS_OPEN_SUBCATEGORIES.includes(subCategory) && (
+          <Pressable
+            style={styles.openToggle}
+            onPress={() => setIsOpen(!isOpen)}
+          >
+            <Ionicons
+              name={isOpen ? "checkbox" : "square-outline"}
+              size={22}
+              color={isOpen ? Theme.colors.primary : Theme.colors.textLight}
+            />
+            <Text style={styles.openToggleText}>
+              Does this top require a shirt underneath?
+            </Text>
+          </Pressable>
+        )}
+        {(category === "tops" || category === "blazers") && subCategory && ALWAYS_OPEN_SUBCATEGORIES.includes(subCategory) && (
+          <View style={styles.openToggle}>
+            <Ionicons name="checkbox" size={22} color={Theme.colors.primary} />
+            <Text style={styles.openToggleText}>
+              This item requires a shirt underneath (always open)
+            </Text>
+          </View>
+        )}
+
+        {/* Primary Colour */}
         <View style={styles.colorHeader}>
           <Text style={styles.sectionTitle}>
-            Color — {finalColorName}
+            Colour — {finalColorName}
           </Text>
           <View style={{ flexDirection: "row", gap: 6 }}>
             {imageUris.length > 0 && (
@@ -335,6 +403,12 @@ export default function AddItemScreen() {
               >
                 <Ionicons name="eyedrop-outline" size={16} color={Theme.colors.primary} />
                 <Text style={styles.colorPickerBtnText}>Dropper</Text>
+              </Pressable>
+            )}
+            {originalAutoColor && (
+              <Pressable style={styles.colorPickerBtn} onPress={handleRevertToOriginalColor}>
+                <Ionicons name="refresh-outline" size={16} color={Theme.colors.primary} />
+                <Text style={styles.colorPickerBtnText}>Revert to original colour</Text>
               </Pressable>
             )}
             <Pressable style={styles.colorPickerBtn} onPress={openColorPicker}>
@@ -366,14 +440,14 @@ export default function AddItemScreen() {
             color={Theme.colors.primary}
           />
           <Text style={styles.secondaryToggleText}>
-            {showSecondaryColor ? "Hide secondary color" : "Add secondary color (optional)"}
+            {showSecondaryColor ? "Hide secondary colour" : "Add secondary colour (optional)"}
           </Text>
         </Pressable>
 
         {showSecondaryColor && (
           <>
             <Text style={styles.sectionTitle}>
-              Secondary Color{secondaryColorIdx !== null ? ` — ${PRESET_COLORS[secondaryColorIdx].name}` : ""}
+              Secondary Colour{secondaryColorIdx !== null ? ` — ${PRESET_COLORS[secondaryColorIdx].name}` : ""}
             </Text>
             <View style={styles.colorGrid}>
               {PRESET_COLORS.map((c, i) => (
@@ -402,6 +476,55 @@ export default function AddItemScreen() {
           ))}
         </View>
 
+        {/* Hardware Colour */}
+        {(HARDWARE_CATEGORIES.includes(category) || (subCategory && HARDWARE_SUBCATEGORIES.includes(subCategory))) && (
+          <>
+            <Text style={styles.sectionTitle}>Hardware Colour</Text>
+            <View style={styles.chipRow}>
+              {(Object.keys(HARDWARE_COLOUR_LABELS) as HardwareColour[]).map((hc) => (
+                <Chip
+                  key={hc}
+                  label={HARDWARE_COLOUR_LABELS[hc]}
+                  selected={hardwareColour === hc}
+                  onPress={() => setHardwareColour(hardwareColour === hc ? undefined : hc)}
+                />
+              ))}
+            </View>
+          </>
+        )}
+
+        {/* Item Flags */}
+        <Text style={styles.sectionTitle}>Flags — Watch Out For</Text>
+        <View style={styles.chipRow}>
+          {(Object.keys(ITEM_FLAG_LABELS) as ItemFlag[]).map((flag) => (
+            <Chip
+              key={flag}
+              label={ITEM_FLAG_LABELS[flag]}
+              selected={itemFlags.includes(flag)}
+              onPress={() => {
+                setItemFlags((prev) =>
+                  prev.includes(flag)
+                    ? prev.filter((f) => f !== flag)
+                    : [...prev, flag]
+                );
+              }}
+            />
+          ))}
+        </View>
+
+        {/* Notes */}
+        <Text style={styles.sectionTitle}>Notes (optional)</Text>
+        <TextInput
+          style={[styles.input, styles.notesInput]}
+          placeholder="Any additional notes about this item..."
+          placeholderTextColor={Theme.colors.textLight}
+          value={notes}
+          onChangeText={setNotes}
+          multiline
+          numberOfLines={3}
+          textAlignVertical="top"
+        />
+
         {/* Save Button */}
         <Pressable style={styles.saveBtn} onPress={handleSave}>
           <Text style={styles.saveBtnText}>Add to Wardrobe</Text>
@@ -417,7 +540,7 @@ export default function AddItemScreen() {
       >
         <View style={styles.modalContainer}>
           <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Fine-tune Color</Text>
+            <Text style={styles.modalTitle}>Fine-tune Colour</Text>
             <Pressable onPress={() => setShowColorPicker(false)}>
               <Ionicons name="close" size={24} color={Theme.colors.text} />
             </Pressable>
@@ -690,7 +813,7 @@ const styles = StyleSheet.create({
   colorBtn: {
     padding: 2,
   },
-  // Secondary Color
+  // Secondary Colour
   secondaryToggle: {
     flexDirection: "row",
     alignItems: "center",
@@ -734,7 +857,7 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: Theme.colors.text,
   },
-  // Color Picker Modal
+  // Colour Picker Modal
   colorPickerContent: {
     padding: Theme.spacing.md,
     alignItems: "center",
