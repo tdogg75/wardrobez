@@ -32,7 +32,13 @@
     "react-native-reanimated": "~3.16.0",
     "react-native-web": "~0.19.13",
     "react-dom": "18.3.1",
-    "uuid": "^9.0.0"
+    "uuid": "^9.0.0",
+    "react-native-webview": "13.12.5",
+    "expo-auth-session": "~6.0.0",
+    "expo-web-browser": "~14.0.0",
+    "expo-crypto": "~14.0.0",
+    "expo-sharing": "~13.0.0",
+    "expo-document-picker": "~13.0.0"
   },
   "devDependencies": {
     "@babel/core": "^7.25.0",

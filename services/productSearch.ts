@@ -1,3 +1,4 @@
+import * as FileSystem from "expo-file-system";
 import type { ClothingCategory, FabricType } from "@/models/types";
 import { PRESET_COLORS, findClosestPresetIndex } from "@/constants/colors";
 
@@ -10,19 +11,6 @@ export interface ProductSearchResult {
   brand?: string;
   imageUri?: string;
   cost?: number;
-}
-
-export interface OnlineProductOption {
-  id: string;
-  name: string;
-  store: string;
-  price: string;
-  color: string; // hex
-  colorName: string;
-  imageUri: string | null;
-  category?: ClothingCategory;
-  subCategory?: string;
-  fabricType?: FabricType;
 }
 
 const SUBCATEGORY_KEYWORDS: Record<
@@ -64,7 +52,6 @@ const SUBCATEGORY_KEYWORDS: Record<
   "sun dress": { category: "dresses", subCategory: "sundress" },
   "cover-up": { category: "dresses", subCategory: "cover_up" },
   "cover up": { category: "dresses", subCategory: "cover_up" },
-  "beach dress": { category: "dresses", subCategory: "cover_up" },
   dress: { category: "dresses", subCategory: "casual_dress" },
   "jean jacket": { category: "jackets", subCategory: "jean_jacket" },
   "denim jacket": { category: "jackets", subCategory: "jean_jacket" },
@@ -173,7 +160,6 @@ const COLOR_KEYWORDS: Record<string, string> = {
   "raw indigo": "#2C3E50",
 };
 
-// Well-known brand domains for prioritization
 const BRAND_DOMAINS: Record<string, string> = {
   nike: "nike.com",
   adidas: "adidas.com",
@@ -209,9 +195,9 @@ const BRAND_DOMAINS: Record<string, string> = {
   express: "express.com",
   "forever 21": "forever21.com",
   "club monaco": "clubmonaco.com",
-  "theory": "theory.com",
+  theory: "theory.com",
   "massimo dutti": "massimodutti.com",
-  "cos": "cos.com",
+  cos: "cos.com",
   "& other stories": "stories.com",
   roots: "roots.com",
   simons: "simons.ca",
@@ -219,7 +205,6 @@ const BRAND_DOMAINS: Record<string, string> = {
   "hudson's bay": "thebay.com",
   aldo: "aldoshoes.com",
   "steve madden": "stevemadden.com",
-  sephora: "sephora.com",
   amazon: "amazon.com",
   shein: "shein.com",
   "fashion nova": "fashionnova.com",
@@ -227,61 +212,149 @@ const BRAND_DOMAINS: Record<string, string> = {
   "american eagle": "ae.com",
 };
 
-// Realistic store data for search results
-const STORES = [
-  { name: "Nordstrom", priceRange: [45, 200] },
-  { name: "Zara", priceRange: [25, 120] },
-  { name: "H&M", priceRange: [15, 70] },
-  { name: "ASOS", priceRange: [20, 100] },
-  { name: "Macy's", priceRange: [30, 150] },
-  { name: "Uniqlo", priceRange: [15, 80] },
-  { name: "Target", priceRange: [12, 50] },
-  { name: "Banana Republic", priceRange: [40, 160] },
-];
+// ── HTML helpers ──────────────────────────────────────────────────────
 
-const COLOR_VARIATIONS: Record<string, { hex: string; name: string }[]> = {
-  "#000000": [
-    { hex: "#000000", name: "Black" },
-    { hex: "#1A1A2E", name: "Jet Black" },
-    { hex: "#2C2C2C", name: "Charcoal Black" },
-  ],
-  "#FFFFFF": [
-    { hex: "#FFFFFF", name: "White" },
-    { hex: "#FFFFF0", name: "Ivory" },
-    { hex: "#FAF0E6", name: "Linen White" },
-  ],
-  "#4169E1": [
-    { hex: "#4169E1", name: "Royal Blue" },
-    { hex: "#1E90FF", name: "Dodger Blue" },
-    { hex: "#4682B4", name: "Steel Blue" },
-  ],
-  "#DC143C": [
-    { hex: "#DC143C", name: "Crimson" },
-    { hex: "#B22222", name: "Firebrick" },
-    { hex: "#FF4500", name: "Red-Orange" },
-  ],
-  "#1B3A5C": [
-    { hex: "#1B3A5C", name: "Dark Wash" },
-    { hex: "#1A2E4A", name: "Deep Indigo" },
-    { hex: "#2C4A6E", name: "Dark Denim" },
-  ],
-  "#4A6FA5": [
-    { hex: "#4A6FA5", name: "Medium Wash" },
-    { hex: "#5C7FB5", name: "Classic Blue" },
-    { hex: "#3D6494", name: "Vintage Wash" },
-  ],
-  default: [
-    { hex: "#000000", name: "Black" },
-    { hex: "#808080", name: "Gray" },
-    { hex: "#FFFFFF", name: "White" },
-  ],
-};
+function extractMeta(html: string, property: string): string | null {
+  // Try og:* and name=* patterns
+  const patterns = [
+    new RegExp(
+      `<meta[^>]+(?:property|name)=["']${property}["'][^>]+content=["']([^"']+)["']`,
+      "i",
+    ),
+    new RegExp(
+      `<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["']${property}["']`,
+      "i",
+    ),
+  ];
+  for (const re of patterns) {
+    const m = html.match(re);
+    if (m) return m[1].trim();
+  }
+  return null;
+}
+
+function extractTitle(html: string): string | null {
+  const m = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+  return m ? m[1].trim() : null;
+}
+
+function extractPrice(html: string): number | null {
+  // Try structured data first (JSON-LD)
+  const ldMatch = html.match(
+    /<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi,
+  );
+  if (ldMatch) {
+    for (const block of ldMatch) {
+      const jsonStr = block.replace(
+        /<script[^>]*>|<\/script>/gi,
+        "",
+      );
+      try {
+        const data = JSON.parse(jsonStr);
+        const price = findPriceInLd(data);
+        if (price != null) return price;
+      } catch { /* skip invalid JSON */ }
+    }
+  }
+
+  // Try meta tags
+  const priceMeta =
+    extractMeta(html, "product:price:amount") ??
+    extractMeta(html, "og:price:amount");
+  if (priceMeta) {
+    const p = parseFloat(priceMeta);
+    if (!isNaN(p)) return p;
+  }
+
+  // Try common price patterns in HTML
+  const pricePatterns = [
+    /\$\s*(\d+(?:\.\d{2})?)/,
+    /(?:price|Price|PRICE)[^$]*\$\s*(\d+(?:\.\d{2})?)/,
+    /data-price=["'](\d+(?:\.\d{2})?)/,
+  ];
+  for (const re of pricePatterns) {
+    const m = html.match(re);
+    if (m) {
+      const p = parseFloat(m[1]);
+      if (!isNaN(p) && p > 0 && p < 50000) return p;
+    }
+  }
+  return null;
+}
+
+function findPriceInLd(data: any): number | null {
+  if (!data) return null;
+  if (Array.isArray(data)) {
+    for (const item of data) {
+      const p = findPriceInLd(item);
+      if (p != null) return p;
+    }
+    return null;
+  }
+  if (typeof data === "object") {
+    if (data.price != null) {
+      const p = parseFloat(String(data.price));
+      if (!isNaN(p)) return p;
+    }
+    if (data.offers) return findPriceInLd(data.offers);
+    if (data.lowPrice != null) {
+      const p = parseFloat(String(data.lowPrice));
+      if (!isNaN(p)) return p;
+    }
+  }
+  return null;
+}
+
+function extractProductImage(html: string): string | null {
+  // og:image is the most reliable
+  const ogImage = extractMeta(html, "og:image");
+  if (ogImage && ogImage.startsWith("http")) return ogImage;
+
+  // Try JSON-LD image
+  const ldMatch = html.match(
+    /<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/i,
+  );
+  if (ldMatch) {
+    try {
+      const data = JSON.parse(
+        ldMatch[1] || ldMatch[0].replace(/<script[^>]*>|<\/script>/gi, ""),
+      );
+      const img = findImageInLd(data);
+      if (img) return img;
+    } catch { /* skip */ }
+  }
+
+  return null;
+}
+
+function findImageInLd(data: any): string | null {
+  if (!data) return null;
+  if (Array.isArray(data)) {
+    for (const item of data) {
+      const img = findImageInLd(item);
+      if (img) return img;
+    }
+    return null;
+  }
+  if (typeof data === "object") {
+    if (typeof data.image === "string" && data.image.startsWith("http")) {
+      return data.image;
+    }
+    if (Array.isArray(data.image) && data.image.length > 0) {
+      const first = data.image[0];
+      if (typeof first === "string" && first.startsWith("http")) return first;
+      if (typeof first === "object" && first.url) return first.url;
+    }
+    if (data.image?.url) return data.image.url;
+  }
+  return null;
+}
 
 function inferAttributes(text: string): ProductSearchResult {
   const result: ProductSearchResult = {};
 
   const sortedKeys = Object.keys(SUBCATEGORY_KEYWORDS).sort(
-    (a, b) => b.length - a.length
+    (a, b) => b.length - a.length,
   );
   for (const keyword of sortedKeys) {
     if (text.includes(keyword)) {
@@ -293,7 +366,7 @@ function inferAttributes(text: string): ProductSearchResult {
   }
 
   const sortedFabricKeys = Object.keys(FABRIC_KEYWORDS).sort(
-    (a, b) => b.length - a.length
+    (a, b) => b.length - a.length,
   );
   for (const keyword of sortedFabricKeys) {
     if (text.includes(keyword)) {
@@ -303,7 +376,7 @@ function inferAttributes(text: string): ProductSearchResult {
   }
 
   const sortedColorKeys = Object.keys(COLOR_KEYWORDS).sort(
-    (a, b) => b.length - a.length
+    (a, b) => b.length - a.length,
   );
   for (const keyword of sortedColorKeys) {
     if (text.includes(keyword)) {
@@ -316,13 +389,188 @@ function inferAttributes(text: string): ProductSearchResult {
   return result;
 }
 
+function inferBrandFromHostname(hostname: string): string | undefined {
+  const clean = hostname.replace("www.", "").toLowerCase();
+
+  for (const [brandName, domain] of Object.entries(BRAND_DOMAINS)) {
+    if (clean.includes(domain.replace(".com", "").replace(".ca", ""))) {
+      return brandName
+        .split(/[\s&]+/)
+        .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+        .join(brandName.includes("&") ? " & " : " ");
+    }
+  }
+
+  // Fallback: use hostname as brand
+  const hostParts = clean
+    .replace(".com", "")
+    .replace(".ca", "")
+    .replace(".co.uk", "")
+    .split(".");
+  const last = hostParts[hostParts.length - 1];
+  if (last && last.length > 2 && last.length < 20) {
+    return last.charAt(0).toUpperCase() + last.slice(1);
+  }
+  return undefined;
+}
+
+function cleanProductName(raw: string, brand?: string): string {
+  let name = raw
+    .replace(/\s*[-|–]\s*.{0,30}$/, "") // strip trailing " - Store Name"
+    .replace(/\s*\|\s*.{0,30}$/, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+
+  // Remove brand prefix if it duplicates
+  if (brand) {
+    const re = new RegExp(`^${brand}\\s*[-:]?\\s*`, "i");
+    name = name.replace(re, "").trim();
+  }
+
+  // Limit length
+  if (name.length > 80) name = name.slice(0, 80).trim();
+  return name;
+}
+
 /**
- * Infers clothing item attributes from a product name and optional brand.
- * Uses keyword matching — no network required.
+ * Download a remote image and save it locally so it can be used as a
+ * clothing item photo.
+ */
+async function downloadImage(url: string): Promise<string | undefined> {
+  try {
+    const filename = `product_${Date.now()}.jpg`;
+    const localUri = `${FileSystem.documentDirectory}${filename}`;
+    const result = await FileSystem.downloadAsync(url, localUri);
+    if (result.status === 200) return result.uri;
+    return undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Fetches the actual webpage at the given URL, parses the HTML for
+ * product metadata (og:title, og:image, JSON-LD, price tags, etc.),
+ * and populates as many fields as possible.
+ */
+export async function fetchProductFromUrl(
+  url: string,
+): Promise<ProductSearchResult | null> {
+  try {
+    const parsed = new URL(url);
+    const hostname = parsed.hostname.replace("www.", "").toLowerCase();
+
+    const result: ProductSearchResult = {};
+
+    // Infer brand from domain
+    result.brand = inferBrandFromHostname(hostname);
+
+    // Fetch the actual webpage
+    let html: string | null = null;
+    try {
+      const response = await fetch(url, {
+        headers: {
+          "User-Agent":
+            "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/120.0.0.0 Mobile Safari/537.36",
+          Accept: "text/html,application/xhtml+xml",
+        },
+      });
+      if (response.ok) {
+        html = await response.text();
+      }
+    } catch { /* network error — fall back to URL parsing */ }
+
+    if (html) {
+      // Extract product name from og:title or <title>
+      const ogTitle = extractMeta(html, "og:title");
+      const pageTitle = extractTitle(html);
+      const rawName = ogTitle ?? pageTitle;
+      if (rawName) {
+        result.name = cleanProductName(rawName, result.brand);
+      }
+
+      // Extract product image
+      const imageUrl = extractProductImage(html);
+      if (imageUrl) {
+        const localUri = await downloadImage(imageUrl);
+        if (localUri) result.imageUri = localUri;
+      }
+
+      // Extract price
+      const price = extractPrice(html);
+      if (price != null) result.cost = price;
+
+      // Extract description for keyword matching
+      const desc = (
+        extractMeta(html, "og:description") ??
+        extractMeta(html, "description") ??
+        ""
+      ).toLowerCase();
+
+      const fullText =
+        `${hostname} ${result.name ?? ""} ${desc}`.toLowerCase();
+      const attrs = inferAttributes(fullText);
+      if (attrs.category) result.category = attrs.category;
+      if (attrs.subCategory) result.subCategory = attrs.subCategory;
+      if (attrs.fabricType) result.fabricType = attrs.fabricType;
+      if (attrs.colorIndex !== undefined) result.colorIndex = attrs.colorIndex;
+    } else {
+      // Fallback: parse URL path for keywords
+      const pathText = decodeURIComponent(parsed.pathname)
+        .replace(/[-_/]/g, " ")
+        .toLowerCase();
+      const fullText = `${hostname} ${pathText}`;
+      const attrs = inferAttributes(fullText);
+      Object.assign(result, attrs);
+
+      // Try to build a name from the URL
+      const segments = parsed.pathname.split("/").filter(Boolean);
+      for (
+        let i = segments.length - 1;
+        i >= Math.max(0, segments.length - 2);
+        i--
+      ) {
+        const name = segments[i]
+          .replace(/[-_]/g, " ")
+          .replace(/\d{5,}/g, "")
+          .replace(/\.(html?|aspx?|php|jsp)/gi, "")
+          .toLowerCase()
+          .split(/\s+/)
+          .filter((w) => w.length > 1)
+          .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+          .slice(0, 5)
+          .join(" ")
+          .trim();
+        if (name.length > 2) {
+          result.name = name;
+          break;
+        }
+      }
+    }
+
+    // Check if we got anything useful
+    const matchCount =
+      (result.category ? 1 : 0) +
+      (result.fabricType ? 1 : 0) +
+      (result.colorIndex !== undefined ? 1 : 0) +
+      (result.brand ? 1 : 0) +
+      (result.name ? 1 : 0) +
+      (result.imageUri ? 1 : 0) +
+      (result.cost != null ? 1 : 0);
+
+    if (matchCount === 0) return null;
+    return result;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Local keyword-based inference (no network). Used for quick lookups.
  */
 export async function searchProduct(
   name: string,
-  brand?: string
+  brand?: string,
 ): Promise<ProductSearchResult | null> {
   const text = `${name} ${brand ?? ""}`.toLowerCase().trim();
   const result = inferAttributes(text);
@@ -334,220 +582,4 @@ export async function searchProduct(
 
   if (matchCount === 0) return null;
   return result;
-}
-
-/**
- * Searches for products online, prioritizing the brand's own website.
- * In a production app this would use a real product API.
- * Currently uses smart keyword matching to produce realistic simulated results.
- */
-export async function searchProductsOnline(
-  name: string,
-  brand?: string
-): Promise<OnlineProductOption[]> {
-  const text = `${name} ${brand ?? ""}`.toLowerCase().trim();
-  const attrs = inferAttributes(text);
-
-  // Determine base color
-  let baseColor = "#808080";
-  if (attrs.colorIndex !== undefined) {
-    baseColor = PRESET_COLORS[attrs.colorIndex].hex;
-  }
-
-  // Get color variations
-  const variations =
-    COLOR_VARIATIONS[baseColor] || COLOR_VARIATIONS["default"];
-
-  // Capitalize first letter of each word
-  const titleCase = (s: string) =>
-    s.replace(/\b\w/g, (c) => c.toUpperCase());
-
-  const baseName = titleCase(name.trim());
-
-  // Build store list — brand store first if available
-  const storeList = [...STORES];
-  let brandStore: (typeof STORES)[0] | null = null;
-
-  if (brand) {
-    const brandLower = brand.toLowerCase();
-    const domain = BRAND_DOMAINS[brandLower];
-    if (domain) {
-      brandStore = {
-        name: titleCase(brand),
-        priceRange: [30, 150],
-      };
-    }
-  }
-
-  // If brand recognized, put its store first
-  const orderedStores = brandStore
-    ? [brandStore, ...storeList.filter((s) => s.name.toLowerCase() !== brand?.toLowerCase())]
-    : storeList.sort(() => Math.random() - 0.5);
-
-  const numResults = Math.min(4, Math.max(3, orderedStores.length));
-  const options: OnlineProductOption[] = [];
-
-  for (let i = 0; i < numResults; i++) {
-    const store = orderedStores[i];
-    const colorVar = variations[i % variations.length];
-    const price =
-      store.priceRange[0] +
-      Math.floor(
-        Math.random() * (store.priceRange[1] - store.priceRange[0])
-      );
-
-    // Create name variations with brand prominently featured
-    let productName = baseName;
-    if (i === 0 && brand) productName = `${titleCase(brand)} ${baseName}`;
-    else if (i === 1) productName = `${colorVar.name} ${baseName}`;
-    else if (i === 2 && brand) productName = `${baseName} by ${titleCase(brand)}`;
-    else if (i === 3) productName = `${baseName} - ${colorVar.name}`;
-
-    options.push({
-      id: `search_${Date.now()}_${i}`,
-      name: productName,
-      store: store.name,
-      price: `$${price}.99`,
-      color: colorVar.hex,
-      colorName: colorVar.name,
-      imageUri: null,
-      category: attrs.category,
-      subCategory: attrs.subCategory,
-      fabricType: attrs.fabricType,
-    });
-  }
-
-  // Simulate network delay
-  await new Promise((r) => setTimeout(r, 600));
-
-  return options;
-}
-
-/**
- * Attempts to extract product info from a URL.
- * Parses the URL path/hostname for brand, category, color, and fabric keywords.
- * Also constructs a likely product image URL from the page.
- */
-// Filler words to strip from product names
-const FILLER_WORDS = new Set([
-  "the", "a", "an", "in", "on", "for", "with", "and", "or",
-  "new", "buy", "shop", "product", "item", "detail", "details",
-  "page", "collection", "collections", "category", "style",
-  "view", "show", "store", "online", "sale", "limited",
-]);
-
-/**
- * Builds a short, clean product name from a URL path segment.
- * Strips filler words, product IDs, and unnecessary tokens.
- */
-function buildShortName(raw: string): string {
-  let name = raw
-    .replace(/[-_]/g, " ")
-    .replace(/\d{5,}/g, "") // remove product IDs (5+ digits)
-    .replace(/\b[a-z0-9]{20,}\b/gi, "") // remove hash-like tokens
-    .replace(/\.(html?|aspx?|php|jsp)/gi, "") // remove file extensions
-    .toLowerCase()
-    .split(/\s+/)
-    .filter((w) => w.length > 1 && !FILLER_WORDS.has(w))
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-    .slice(0, 5) // max 5 words
-    .join(" ")
-    .trim();
-  return name;
-}
-
-export async function fetchProductFromUrl(
-  url: string
-): Promise<ProductSearchResult | null> {
-  try {
-    const parsed = new URL(url);
-    const hostname = parsed.hostname.replace("www.", "").toLowerCase();
-    const pathText = decodeURIComponent(parsed.pathname)
-      .replace(/[-_/]/g, " ")
-      .toLowerCase();
-    const fullText = `${hostname} ${pathText}`;
-
-    const result = inferAttributes(fullText);
-
-    // Extract brand from hostname FIRST (prioritise this)
-    for (const [brandName, domain] of Object.entries(BRAND_DOMAINS)) {
-      if (hostname.includes(domain.replace(".com", ""))) {
-        // Proper case for multi-word brands
-        result.brand = brandName
-          .split(/[\s&]+/)
-          .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-          .join(brandName.includes("&") ? " & " : " ");
-        break;
-      }
-    }
-
-    // If no brand matched, try to infer from the hostname itself
-    if (!result.brand) {
-      const hostParts = hostname.replace(".com", "").replace(".ca", "").replace(".co.uk", "").split(".");
-      const potentialBrand = hostParts[hostParts.length - 1];
-      if (potentialBrand && potentialBrand.length > 2 && potentialBrand.length < 20) {
-        result.brand = potentialBrand.charAt(0).toUpperCase() + potentialBrand.slice(1);
-      }
-    }
-
-    // Extract a clean, short product name from URL segments
-    const segments = parsed.pathname.split("/").filter(Boolean);
-    // Try the last segment first, then second-to-last
-    for (let i = segments.length - 1; i >= Math.max(0, segments.length - 2); i--) {
-      const name = buildShortName(segments[i]);
-      if (name.length > 2) {
-        result.name = name;
-        break;
-      }
-    }
-
-    // Construct a plausible product image URL
-    result.imageUri = constructProductImageUri(parsed, hostname);
-
-    const matchCount =
-      (result.category ? 1 : 0) +
-      (result.fabricType ? 1 : 0) +
-      (result.colorIndex !== undefined ? 1 : 0) +
-      (result.brand ? 1 : 0) +
-      (result.name ? 1 : 0);
-
-    if (matchCount === 0) return null;
-
-    // Simulate network delay for URL fetch
-    await new Promise((r) => setTimeout(r, 800));
-
-    return result;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Constructs a plausible product image URI from the URL.
- * In a real app, this would fetch the page and extract the og:image meta tag
- * or parse the product page for the main image.
- */
-function constructProductImageUri(parsed: URL, hostname: string): string | undefined {
-  // Known retailer image patterns — in production we'd fetch the actual page
-  const pathSegments = parsed.pathname.split("/").filter(Boolean);
-
-  // For known brands, construct a likely CDN image path
-  if (hostname.includes("zara")) {
-    return `https://static.zara.net/photos/${pathSegments.slice(-1)[0] || "product"}_1_1_1.jpg`;
-  }
-  if (hostname.includes("hm")) {
-    return `https://lp2.hm.com/hmgoepprod?set=source[${pathSegments.slice(-1)[0] || "product"}]&width=600`;
-  }
-  if (hostname.includes("uniqlo")) {
-    return `https://image.uniqlo.com/UQ/ST3/WesternCommon/imagesgoods/${pathSegments.slice(-1)[0] || "product"}/goods_09.jpg`;
-  }
-  if (hostname.includes("nike")) {
-    return `https://static.nike.com/a/images/t_PDP_1280_v1/${pathSegments.slice(-1)[0] || "product"}.jpg`;
-  }
-  if (hostname.includes("nordstrom")) {
-    return `https://n.nordstrommedia.com/id/${pathSegments.slice(-1)[0] || "product"}.jpeg`;
-  }
-
-  // Generic: no image available from URL alone
-  return undefined;
 }

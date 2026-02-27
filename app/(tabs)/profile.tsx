@@ -7,6 +7,7 @@ import {
   StyleSheet,
   Alert,
 } from "react-native";
+import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useClothingItems } from "@/hooks/useClothingItems";
 import { useOutfits } from "@/hooks/useOutfits";
@@ -15,6 +16,8 @@ import { Theme } from "@/constants/theme";
 import { CATEGORY_LABELS, ARCHIVE_REASON_LABELS } from "@/models/types";
 import type { ClothingCategory, ClothingItem } from "@/models/types";
 import * as FileSystem from "expo-file-system";
+import * as Sharing from "expo-sharing";
+import * as DocumentPicker from "expo-document-picker";
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                            */
@@ -31,6 +34,7 @@ const daysBetween = (a: Date, b: Date) =>
 /* ------------------------------------------------------------------ */
 
 export default function ProfileScreen() {
+  const router = useRouter();
   const { items, archivedItems, getFavorites, unarchiveItem } = useClothingItems();
   const { outfits } = useOutfits();
 
@@ -166,12 +170,22 @@ export default function ProfileScreen() {
   const handleExport = async () => {
     try {
       const backup = await exportAllData();
-      const path = `${FileSystem.documentDirectory}wardrobez-backup.json`;
+      const path = `${FileSystem.cacheDirectory}wardrobez-backup.json`;
       await FileSystem.writeAsStringAsync(path, backup);
-      Alert.alert(
-        "Backup Saved",
-        `Your wardrobe backup has been saved to:\n${path}\n\nYou can share this file to keep a copy.`
-      );
+
+      const canShare = await Sharing.isAvailableAsync();
+      if (canShare) {
+        await Sharing.shareAsync(path, {
+          mimeType: "application/json",
+          dialogTitle: "Save Wardrobez Backup",
+          UTI: "public.json",
+        });
+      } else {
+        Alert.alert(
+          "Backup Created",
+          "Sharing is not available on this device. The backup file was saved internally."
+        );
+      }
     } catch {
       Alert.alert("Export Failed", "Could not export your wardrobe data.");
     }
@@ -188,17 +202,24 @@ export default function ProfileScreen() {
           style: "destructive",
           onPress: async () => {
             try {
-              const path = `${FileSystem.documentDirectory}wardrobez-backup.json`;
-              const exists = await FileSystem.getInfoAsync(path);
-              if (!exists.exists) {
-                Alert.alert("No Backup Found", "Place a wardrobez-backup.json file in the app's document directory first.");
+              const result = await DocumentPicker.getDocumentAsync({
+                type: "application/json",
+                copyToCacheDirectory: true,
+              });
+
+              if (result.canceled || !result.assets?.[0]) {
                 return;
               }
-              const raw = await FileSystem.readAsStringAsync(path);
+
+              const fileUri = result.assets[0].uri;
+              const raw = await FileSystem.readAsStringAsync(fileUri);
               await importAllData(raw);
-              Alert.alert("Import Complete", "Your wardrobe has been restored from the backup. Restart the app to see changes.");
+              Alert.alert(
+                "Import Complete",
+                "Your wardrobe has been restored from the backup. Restart the app to see changes."
+              );
             } catch {
-              Alert.alert("Import Failed", "Could not import the backup file.");
+              Alert.alert("Import Failed", "Could not import the backup file. Make sure it's a valid wardrobez-backup.json file.");
             }
           },
         },
@@ -591,6 +612,36 @@ export default function ProfileScreen() {
       </View>
 
       {/* ============================================================ */}
+      {/*  GMAIL PURCHASES                                              */}
+      {/* ============================================================ */}
+      <View style={styles.card}>
+        <Pressable
+          style={styles.gmailSection}
+          onPress={() => router.push("/gmail-purchases")}
+        >
+          <View style={styles.menuLeft}>
+            <Ionicons
+              name="mail-outline"
+              size={20}
+              color={Theme.colors.primary}
+              style={styles.menuIcon}
+            />
+            <View>
+              <Text style={styles.menuLabel}>Import from Gmail</Text>
+              <Text style={styles.gmailHint}>
+                Scan purchase emails for clothing & accessories
+              </Text>
+            </View>
+          </View>
+          <Ionicons
+            name="chevron-forward"
+            size={20}
+            color={Theme.colors.textSecondary}
+          />
+        </Pressable>
+      </View>
+
+      {/* ============================================================ */}
       {/*  BACKUP & RESTORE                                             */}
       {/* ============================================================ */}
       <View style={styles.card}>
@@ -848,6 +899,20 @@ const styles = StyleSheet.create({
     fontSize: Theme.fontSize.xs,
     fontWeight: "600",
     color: Theme.colors.primary,
+  },
+
+  /* Gmail section */
+  gmailSection: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: Theme.spacing.md,
+    paddingVertical: Theme.spacing.md,
+  },
+  gmailHint: {
+    fontSize: Theme.fontSize.xs,
+    color: Theme.colors.textSecondary,
+    marginTop: 2,
   },
 
   /* Backup section */
