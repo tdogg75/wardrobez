@@ -38,6 +38,17 @@
     "plugins": [
       "expo-router",
       [
+        "expo-build-properties",
+        {
+          "android": {
+            "kotlinVersion": "1.9.24",
+            "compileSdkVersion": 35,
+            "targetSdkVersion": 34,
+            "minSdkVersion": 24
+          }
+        }
+      ],
+      [
         "expo-image-picker",
         {
           "photosPermission": "Wardrobez needs access to your photos to add clothing item images.",
