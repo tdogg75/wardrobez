@@ -37,6 +37,7 @@
     },
     "plugins": [
       "expo-router",
+      "./plugins/suppress-kotlin-compat-check",
       [
         "expo-build-properties",
         {
