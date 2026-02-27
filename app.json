@@ -7,7 +7,10 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
     "scheme": "wardrobez",
+    "newArchEnabled": true,
     "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
       "backgroundColor": "#1a1a2e"
     },
     "ios": {
@@ -16,14 +19,36 @@
     },
     "android": {
       "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#1a1a2e"
       },
-      "package": "com.wardrobez.app"
+      "package": "com.wardrobez.app",
+      "versionCode": 1,
+      "permissions": [
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE",
+        "READ_MEDIA_IMAGES"
+      ]
     },
     "web": {
       "bundler": "metro",
       "favicon": "./assets/favicon.png"
     },
-    "plugins": ["expo-router", "expo-image-picker"]
+    "plugins": [
+      "expo-router",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Wardrobez needs access to your photos to add clothing item images.",
+          "cameraPermission": "Wardrobez needs access to your camera to photograph clothing items."
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "wardrobez-local"
+      }
+    }
   }
 }

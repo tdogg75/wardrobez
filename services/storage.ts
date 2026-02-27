@@ -1,10 +1,89 @@
+import * as FileSystem from "expo-file-system";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { ClothingItem, Outfit, FabricType, ArchiveReason } from "@/models/types";
 
-const KEYS = {
+// --- File-System Storage Layer ---
+// Data is persisted as JSON files in the app's document directory.
+// This ensures wardrobe data is saved directly to device storage and
+// survives app updates. AsyncStorage is used only as a migration source.
+
+const DATA_DIR = `${FileSystem.documentDirectory}wardrobez-data/`;
+const FILES = {
+  CLOTHING_ITEMS: `${DATA_DIR}clothing-items.json`,
+  OUTFITS: `${DATA_DIR}outfits.json`,
+} as const;
+
+// Legacy AsyncStorage keys for one-time migration
+const LEGACY_KEYS = {
   CLOTHING_ITEMS: "wardrobez:clothing_items",
   OUTFITS: "wardrobez:outfits",
 } as const;
+
+let initialized = false;
+
+async function ensureDataDir(): Promise<void> {
+  if (initialized) return;
+  const info = await FileSystem.getInfoAsync(DATA_DIR);
+  if (!info.exists) {
+    await FileSystem.makeDirectoryAsync(DATA_DIR, { intermediates: true });
+  }
+  initialized = true;
+}
+
+async function readJsonFile<T>(path: string): Promise<T | null> {
+  try {
+    await ensureDataDir();
+    const info = await FileSystem.getInfoAsync(path);
+    if (!info.exists) return null;
+    const raw = await FileSystem.readAsStringAsync(path);
+    return JSON.parse(raw) as T;
+  } catch {
+    return null;
+  }
+}
+
+async function writeJsonFile(path: string, data: unknown): Promise<void> {
+  await ensureDataDir();
+  await FileSystem.writeAsStringAsync(path, JSON.stringify(data));
+}
+
+/**
+ * One-time migration from AsyncStorage to file-system storage.
+ * Checks if data exists in AsyncStorage but not yet in the file system,
+ * and copies it over. After migration, AsyncStorage data is left intact
+ * as a safety net but will no longer be read.
+ */
+async function migrateFromAsyncStorage(): Promise<void> {
+  try {
+    // Only migrate if file-system files don't exist yet
+    const itemsInfo = await FileSystem.getInfoAsync(FILES.CLOTHING_ITEMS);
+    const outfitsInfo = await FileSystem.getInfoAsync(FILES.OUTFITS);
+
+    if (itemsInfo.exists && outfitsInfo.exists) return; // Already migrated
+
+    // Read from AsyncStorage
+    const rawItems = await AsyncStorage.getItem(LEGACY_KEYS.CLOTHING_ITEMS);
+    const rawOutfits = await AsyncStorage.getItem(LEGACY_KEYS.OUTFITS);
+
+    if (!itemsInfo.exists && rawItems) {
+      await writeJsonFile(FILES.CLOTHING_ITEMS, JSON.parse(rawItems));
+    }
+    if (!outfitsInfo.exists && rawOutfits) {
+      await writeJsonFile(FILES.OUTFITS, JSON.parse(rawOutfits));
+    }
+  } catch {
+    // Migration failure is non-fatal — data will be created fresh
+  }
+}
+
+// Run migration on first import
+let migrationPromise: Promise<void> | null = null;
+function ensureMigrated(): Promise<void> {
+  if (!migrationPromise) {
+    migrationPromise = migrateFromAsyncStorage();
+  }
+  return migrationPromise;
+}
 
 // --- Data Migration ---
 
@@ -14,7 +93,6 @@ const WEIGHT_TO_FABRIC: Record<string, FabricType> = {
   heavy: "wool",
 };
 
-// Jewelry subcategories that should be migrated from accessories to jewelry
 const JEWELRY_SUBCATEGORIES = new Set([
   "watches",
   "earrings",
@@ -26,35 +104,29 @@ const JEWELRY_SUBCATEGORIES = new Set([
 function migrateClothingItem(item: any): ClothingItem {
   const migrated = { ...item };
 
-  // Migrate fabricWeight -> fabricType
   if (!migrated.fabricType && migrated.fabricWeight) {
     migrated.fabricType = WEIGHT_TO_FABRIC[migrated.fabricWeight] ?? "other";
     delete migrated.fabricWeight;
   }
 
-  // Migrate imageUri (string | null) -> imageUris (string[])
   if (migrated.imageUri !== undefined && migrated.imageUris === undefined) {
     migrated.imageUris = migrated.imageUri ? [migrated.imageUri] : [];
     delete migrated.imageUri;
   }
 
-  // Ensure imageUris is always an array
   if (!Array.isArray(migrated.imageUris)) {
     migrated.imageUris = [];
   }
 
-  // Migrate outerwear -> jackets
   if (migrated.category === "outerwear") {
     migrated.category = "jackets";
   }
 
-  // Migrate blazer subcategory under tops -> blazers category
   if (migrated.category === "tops" && migrated.subCategory === "blazer") {
     migrated.category = "blazers";
     migrated.subCategory = "casual_blazer";
   }
 
-  // Migrate jewelry subcategories from accessories to jewelry category
   if (
     migrated.category === "accessories" &&
     migrated.subCategory &&
@@ -63,8 +135,6 @@ function migrateClothingItem(item: any): ClothingItem {
     migrated.category = "jewelry";
   }
 
-  // Remove occasions from clothing items (legacy field)
-  // Keep the field but don't require it
   if (Array.isArray(migrated.occasions)) {
     migrated.occasions = migrated.occasions
       .map((o: string) => {
@@ -76,15 +146,12 @@ function migrateClothingItem(item: any): ClothingItem {
       .filter((o: string, i: number, arr: string[]) => arr.indexOf(o) === i);
   }
 
-  // Default new fields
   if (typeof migrated.wearCount !== "number") {
     migrated.wearCount = 0;
   }
   if (typeof migrated.archived !== "boolean") {
     migrated.archived = false;
   }
-
-  // Ensure new optional fields have sensible defaults
   if (!Array.isArray(migrated.itemFlags)) {
     migrated.itemFlags = migrated.itemFlags ?? [];
   }
@@ -94,36 +161,21 @@ function migrateClothingItem(item: any): ClothingItem {
 
 function migrateOutfit(outfit: any): Outfit {
   const migrated = { ...outfit };
-  // Ensure seasons array exists
-  if (!Array.isArray(migrated.seasons)) {
-    migrated.seasons = [];
-  }
-  // Ensure occasions array exists
-  if (!Array.isArray(migrated.occasions)) {
-    migrated.occasions = [];
-  }
-  // Ensure wornDates array exists
-  if (!Array.isArray(migrated.wornDates)) {
-    migrated.wornDates = [];
-  }
-  // Ensure hasRemovedItems defaults to false
-  if (typeof migrated.hasRemovedItems !== "boolean") {
-    migrated.hasRemovedItems = false;
-  }
-  // Ensure tags array exists
-  if (!Array.isArray(migrated.tags)) {
-    migrated.tags = [];
-  }
+  if (!Array.isArray(migrated.seasons)) migrated.seasons = [];
+  if (!Array.isArray(migrated.occasions)) migrated.occasions = [];
+  if (!Array.isArray(migrated.wornDates)) migrated.wornDates = [];
+  if (typeof migrated.hasRemovedItems !== "boolean") migrated.hasRemovedItems = false;
+  if (!Array.isArray(migrated.tags)) migrated.tags = [];
   return migrated as Outfit;
 }
 
 // --- Clothing Items ---
 
 export async function getClothingItems(): Promise<ClothingItem[]> {
-  const raw = await AsyncStorage.getItem(KEYS.CLOTHING_ITEMS);
-  if (!raw) return [];
-  const items = JSON.parse(raw) as any[];
-  return items.map(migrateClothingItem);
+  await ensureMigrated();
+  const data = await readJsonFile<any[]>(FILES.CLOTHING_ITEMS);
+  if (!data) return [];
+  return data.map(migrateClothingItem);
 }
 
 export async function saveClothingItem(item: ClothingItem): Promise<void> {
@@ -134,21 +186,20 @@ export async function saveClothingItem(item: ClothingItem): Promise<void> {
   } else {
     items.push(item);
   }
-  await AsyncStorage.setItem(KEYS.CLOTHING_ITEMS, JSON.stringify(items));
+  await writeJsonFile(FILES.CLOTHING_ITEMS, items);
 }
 
 export async function deleteClothingItem(id: string): Promise<void> {
   const items = await getClothingItems();
   const filtered = items.filter((i) => i.id !== id);
-  await AsyncStorage.setItem(KEYS.CLOTHING_ITEMS, JSON.stringify(filtered));
+  await writeJsonFile(FILES.CLOTHING_ITEMS, filtered);
 
-  // Also remove from any outfits
   const outfits = await getOutfits();
   const updated = outfits.map((o) => ({
     ...o,
     itemIds: o.itemIds.filter((itemId) => itemId !== id),
   }));
-  await AsyncStorage.setItem(KEYS.OUTFITS, JSON.stringify(updated));
+  await writeJsonFile(FILES.OUTFITS, updated);
 }
 
 // --- Archived Items ---
@@ -172,9 +223,8 @@ export async function archiveItem(
     archiveReason: reason,
     archivedAt: Date.now(),
   };
-  await AsyncStorage.setItem(KEYS.CLOTHING_ITEMS, JSON.stringify(items));
+  await writeJsonFile(FILES.CLOTHING_ITEMS, items);
 
-  // Mark affected outfits that contain this item
   const outfits = await getOutfits();
   let outfitsChanged = false;
   const updatedOutfits = outfits.map((o) => {
@@ -185,7 +235,7 @@ export async function archiveItem(
     return o;
   });
   if (outfitsChanged) {
-    await AsyncStorage.setItem(KEYS.OUTFITS, JSON.stringify(updatedOutfits));
+    await writeJsonFile(FILES.OUTFITS, updatedOutfits);
   }
 }
 
@@ -200,14 +250,12 @@ export async function unarchiveItem(id: string): Promise<void> {
     archiveReason: undefined,
     archivedAt: undefined,
   };
-  await AsyncStorage.setItem(KEYS.CLOTHING_ITEMS, JSON.stringify(items));
+  await writeJsonFile(FILES.CLOTHING_ITEMS, items);
 
-  // Re-check outfits: if all items are now active, clear the flag
   const outfits = await getOutfits();
   let outfitsChanged = false;
   const updatedOutfits = outfits.map((o) => {
     if (o.itemIds.includes(id) && o.hasRemovedItems) {
-      // Check if all items in this outfit are now unarchived
       const allActive = o.itemIds.every((itemId) => {
         const item = items.find((i) => i.id === itemId);
         return item && !item.archived;
@@ -220,17 +268,17 @@ export async function unarchiveItem(id: string): Promise<void> {
     return o;
   });
   if (outfitsChanged) {
-    await AsyncStorage.setItem(KEYS.OUTFITS, JSON.stringify(updatedOutfits));
+    await writeJsonFile(FILES.OUTFITS, updatedOutfits);
   }
 }
 
 // --- Outfits ---
 
 export async function getOutfits(): Promise<Outfit[]> {
-  const raw = await AsyncStorage.getItem(KEYS.OUTFITS);
-  if (!raw) return [];
-  const outfits = JSON.parse(raw) as any[];
-  return outfits.map(migrateOutfit);
+  await ensureMigrated();
+  const data = await readJsonFile<any[]>(FILES.OUTFITS);
+  if (!data) return [];
+  return data.map(migrateOutfit);
 }
 
 export async function saveOutfit(outfit: Outfit): Promise<void> {
@@ -241,21 +289,20 @@ export async function saveOutfit(outfit: Outfit): Promise<void> {
   } else {
     outfits.push(outfit);
   }
-  await AsyncStorage.setItem(KEYS.OUTFITS, JSON.stringify(outfits));
+  await writeJsonFile(FILES.OUTFITS, outfits);
 }
 
 export async function deleteOutfit(id: string): Promise<void> {
   const outfits = await getOutfits();
   const filtered = outfits.filter((o) => o.id !== id);
-  await AsyncStorage.setItem(KEYS.OUTFITS, JSON.stringify(filtered));
+  await writeJsonFile(FILES.OUTFITS, filtered);
 }
 
 // --- Wear Logging ---
 
 export async function logOutfitWorn(outfitId: string): Promise<void> {
-  const today = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
+  const today = new Date().toISOString().split("T")[0];
 
-  // Add today's date to the outfit's wornDates (allows multiple per day)
   const outfits = await getOutfits();
   const outfitIdx = outfits.findIndex((o) => o.id === outfitId);
   if (outfitIdx < 0) return;
@@ -265,9 +312,8 @@ export async function logOutfitWorn(outfitId: string): Promise<void> {
     ...outfit,
     wornDates: [...outfit.wornDates, today],
   };
-  await AsyncStorage.setItem(KEYS.OUTFITS, JSON.stringify(outfits));
+  await writeJsonFile(FILES.OUTFITS, outfits);
 
-  // Increment wearCount on all items in the outfit
   const items = await getClothingItems();
   let itemsChanged = false;
   const updatedItems = items.map((item) => {
@@ -278,7 +324,7 @@ export async function logOutfitWorn(outfitId: string): Promise<void> {
     return item;
   });
   if (itemsChanged) {
-    await AsyncStorage.setItem(KEYS.CLOTHING_ITEMS, JSON.stringify(updatedItems));
+    await writeJsonFile(FILES.CLOTHING_ITEMS, updatedItems);
   }
 }
 
@@ -298,9 +344,8 @@ export async function removeWornDate(
     ...outfit,
     wornDates: newDates,
   };
-  await AsyncStorage.setItem(KEYS.OUTFITS, JSON.stringify(outfits));
+  await writeJsonFile(FILES.OUTFITS, outfits);
 
-  // Decrement wearCount on all items in the outfit
   const items = await getClothingItems();
   let itemsChanged = false;
   const updatedItems = items.map((item) => {
@@ -311,7 +356,7 @@ export async function removeWornDate(
     return item;
   });
   if (itemsChanged) {
-    await AsyncStorage.setItem(KEYS.CLOTHING_ITEMS, JSON.stringify(updatedItems));
+    await writeJsonFile(FILES.CLOTHING_ITEMS, updatedItems);
   }
 }
 
@@ -329,5 +374,38 @@ export async function markOutfitNotified(outfitId: string): Promise<void> {
     ...outfits[idx],
     removedItemNotified: true,
   };
-  await AsyncStorage.setItem(KEYS.OUTFITS, JSON.stringify(outfits));
+  await writeJsonFile(FILES.OUTFITS, outfits);
+}
+
+// --- Export / Import ---
+// These are used by the profile screen for backup/restore.
+
+export async function exportAllData(): Promise<string> {
+  await ensureMigrated();
+  const items = await readJsonFile<any[]>(FILES.CLOTHING_ITEMS) ?? [];
+  const outfits = await readJsonFile<any[]>(FILES.OUTFITS) ?? [];
+  return JSON.stringify(
+    {
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      clothing_items: items,
+      outfits,
+    },
+    null,
+    2
+  );
+}
+
+export async function importAllData(jsonString: string): Promise<void> {
+  const data = JSON.parse(jsonString);
+  if (!data.clothing_items || !data.outfits) {
+    throw new Error("Invalid backup format");
+  }
+  await writeJsonFile(FILES.CLOTHING_ITEMS, data.clothing_items);
+  await writeJsonFile(FILES.OUTFITS, data.outfits);
+}
+
+/** Returns the path to the data directory for use in backup sharing */
+export function getDataDirectory(): string {
+  return DATA_DIR;
 }

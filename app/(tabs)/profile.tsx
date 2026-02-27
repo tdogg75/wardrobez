@@ -10,6 +10,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { useClothingItems } from "@/hooks/useClothingItems";
 import { useOutfits } from "@/hooks/useOutfits";
+import { exportAllData, importAllData } from "@/services/storage";
 import { Theme } from "@/constants/theme";
 import { CATEGORY_LABELS, ARCHIVE_REASON_LABELS } from "@/models/types";
 import type { ClothingCategory, ClothingItem } from "@/models/types";
@@ -164,23 +165,14 @@ export default function ProfileScreen() {
   /* --- Backup / Export --- */
   const handleExport = async () => {
     try {
-      const AsyncStorage = (await import("@react-native-async-storage/async-storage")).default;
-      const clothingData = await AsyncStorage.getItem("wardrobez:clothing_items");
-      const outfitData = await AsyncStorage.getItem("wardrobez:outfits");
-      const backup = JSON.stringify({
-        version: 1,
-        exportedAt: new Date().toISOString(),
-        clothing_items: clothingData ? JSON.parse(clothingData) : [],
-        outfits: outfitData ? JSON.parse(outfitData) : [],
-      }, null, 2);
-
+      const backup = await exportAllData();
       const path = `${FileSystem.documentDirectory}wardrobez-backup.json`;
       await FileSystem.writeAsStringAsync(path, backup);
       Alert.alert(
         "Backup Saved",
         `Your wardrobe backup has been saved to:\n${path}\n\nYou can share this file to keep a copy.`
       );
-    } catch (e) {
+    } catch {
       Alert.alert("Export Failed", "Could not export your wardrobe data.");
     }
   };
@@ -203,14 +195,7 @@ export default function ProfileScreen() {
                 return;
               }
               const raw = await FileSystem.readAsStringAsync(path);
-              const data = JSON.parse(raw);
-              if (!data.clothing_items || !data.outfits) {
-                Alert.alert("Invalid Backup", "The backup file doesn't contain valid wardrobe data.");
-                return;
-              }
-              const AsyncStorage = (await import("@react-native-async-storage/async-storage")).default;
-              await AsyncStorage.setItem("wardrobez:clothing_items", JSON.stringify(data.clothing_items));
-              await AsyncStorage.setItem("wardrobez:outfits", JSON.stringify(data.outfits));
+              await importAllData(raw);
               Alert.alert("Import Complete", "Your wardrobe has been restored from the backup. Restart the app to see changes.");
             } catch {
               Alert.alert("Import Failed", "Could not import the backup file.");
