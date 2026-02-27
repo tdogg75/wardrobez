@@ -37,12 +37,11 @@
     },
     "plugins": [
       "expo-router",
-      "./plugins/suppress-kotlin-compat-check",
       [
         "expo-build-properties",
         {
           "android": {
-            "kotlinVersion": "1.9.24",
+            "kotlinVersion": "1.9.25",
             "compileSdkVersion": 35,
             "targetSdkVersion": 34,
             "minSdkVersion": 24
@@ -55,7 +54,8 @@
           "photosPermission": "Wardrobez needs access to your photos to add clothing item images.",
           "cameraPermission": "Wardrobez needs access to your camera to photograph clothing items."
         }
-      ]
+      ],
+      "./plugins/fix-android-namespace"
     ],
     "extra": {
       "eas": {}
