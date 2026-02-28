@@ -13,6 +13,7 @@ import {
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import * as ImagePicker from "expo-image-picker";
 import { useOutfits } from "@/hooks/useOutfits";
 import { useClothingItems } from "@/hooks/useClothingItems";
 import { ColorDot } from "@/components/ColorDot";
@@ -20,7 +21,7 @@ import { MoodBoard } from "@/components/MoodBoard";
 import { Chip } from "@/components/Chip";
 import { Theme } from "@/constants/theme";
 import { CATEGORY_LABELS, OCCASION_LABELS, SEASON_LABELS } from "@/models/types";
-import type { ClothingItem, Occasion, Season } from "@/models/types";
+import type { ClothingItem, Occasion, Season, WornEntry } from "@/models/types";
 
 const fmt = (n: number) =>
   n.toLocaleString("en-US", { style: "currency", currency: "USD" });
@@ -44,6 +45,10 @@ export default function OutfitDetailScreen() {
   const [showWornLog, setShowWornLog] = useState(false);
   const [showRenameModal, setShowRenameModal] = useState(false);
   const [renameText, setRenameText] = useState("");
+  const [showLogWornModal, setShowLogWornModal] = useState(false);
+  const [logSelfieUri, setLogSelfieUri] = useState<string | null>(null);
+  const [logNote, setLogNote] = useState("");
+  const [showAllWornDates, setShowAllWornDates] = useState(false);
 
   // Show removed-item notification on first open
   useEffect(() => {
@@ -85,10 +90,35 @@ export default function OutfitDetailScreen() {
   };
 
   const handleLogWorn = () => {
-    Alert.alert("Log Worn", `Mark "${outfit.name}" as worn today?`, [
-      { text: "Cancel", style: "cancel" },
-      { text: "Log It", onPress: () => logWorn(outfit.id) },
-    ]);
+    setLogSelfieUri(null);
+    setLogNote("");
+    setShowLogWornModal(true);
+  };
+
+  const handleTakeSelfie = async () => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== "granted") {
+      Alert.alert("Permission needed", "Camera access is required to take a selfie.");
+      return;
+    }
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ["images"],
+      quality: 0.7,
+      allowsEditing: true,
+      aspect: [1, 1],
+    });
+    if (!result.canceled && result.assets.length > 0) {
+      setLogSelfieUri(result.assets[0].uri);
+    }
+  };
+
+  const handleConfirmLogWorn = async () => {
+    await logWorn(
+      outfit.id,
+      logSelfieUri ?? undefined,
+      logNote.trim() || undefined
+    );
+    setShowLogWornModal(false);
   };
 
   const handleRemoveWornDate = (index: number, date: string) => {
@@ -497,31 +527,69 @@ export default function OutfitDetailScreen() {
           {outfit.wornDates.length === 0 ? (
             <Text style={styles.emptyText}>No wear history yet.</Text>
           ) : (
-            [...outfit.wornDates]
-              .sort((a, b) => new Date(b).getTime() - new Date(a).getTime())
-              .map((date, idx) => {
-                // Map back to original index for deletion
-                const origIdx = outfit.wornDates.indexOf(date);
-                return (
-                  <View key={`${date}-${idx}`} style={styles.wornLogRow}>
-                    <Ionicons name="checkmark" size={16} color={Theme.colors.success} />
-                    <Text style={styles.wornLogDate}>
-                      {new Date(date).toLocaleDateString("en-CA", {
-                        weekday: "short",
-                        year: "numeric",
-                        month: "short",
-                        day: "numeric",
-                      })}
-                    </Text>
-                    <Pressable
-                      onPress={() => handleRemoveWornDate(origIdx, date)}
-                      hitSlop={10}
-                    >
-                      <Ionicons name="trash-outline" size={16} color={Theme.colors.error} />
-                    </Pressable>
-                  </View>
-                );
-              })
+            <>
+              {(() => {
+                const sortedDates = [...outfit.wornDates]
+                  .sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
+                const visibleDates = showAllWornDates
+                  ? sortedDates
+                  : sortedDates.slice(0, 10);
+                return visibleDates.map((date, idx) => {
+                  const origIdx = outfit.wornDates.indexOf(date);
+                  const entry = (outfit.wornEntries ?? []).find(
+                    (e) =>
+                      new Date(e.date).toDateString() ===
+                      new Date(date).toDateString()
+                  );
+                  return (
+                    <View key={`${date}-${idx}`} style={styles.wornLogRow}>
+                      <View style={styles.wornLogRowContent}>
+                        <View style={styles.wornLogRowTop}>
+                          <Ionicons name="checkmark" size={16} color={Theme.colors.success} />
+                          <Text style={styles.wornLogDate}>
+                            {new Date(date).toLocaleDateString("en-CA", {
+                              weekday: "short",
+                              year: "numeric",
+                              month: "short",
+                              day: "numeric",
+                            })}
+                          </Text>
+                          <Pressable
+                            onPress={() => handleRemoveWornDate(origIdx, date)}
+                            hitSlop={10}
+                          >
+                            <Ionicons name="trash-outline" size={16} color={Theme.colors.error} />
+                          </Pressable>
+                        </View>
+                        {entry && (entry.selfieUri || entry.note) && (
+                          <View style={styles.wornEntryDetails}>
+                            {entry.selfieUri && (
+                              <Image
+                                source={{ uri: entry.selfieUri }}
+                                style={styles.wornSelfieThumbnail}
+                              />
+                            )}
+                            {entry.note && (
+                              <Text style={styles.wornEntryNote}>{entry.note}</Text>
+                            )}
+                          </View>
+                        )}
+                      </View>
+                    </View>
+                  );
+                });
+              })()}
+              {outfit.wornDates.length > 10 && !showAllWornDates && (
+                <Pressable
+                  style={styles.viewAllBtn}
+                  onPress={() => setShowAllWornDates(true)}
+                >
+                  <Text style={styles.viewAllBtnText}>
+                    View all {outfit.wornDates.length} dates
+                  </Text>
+                </Pressable>
+              )}
+            </>
           )}
         </View>
       )}
@@ -531,6 +599,58 @@ export default function OutfitDetailScreen() {
         <Ionicons name="trash-outline" size={18} color={Theme.colors.error} />
         <Text style={styles.deleteBtnText}>Delete Outfit</Text>
       </Pressable>
+
+      {/* Log Worn Modal */}
+      <Modal
+        visible={showLogWornModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowLogWornModal(false)}
+      >
+        <View style={styles.renameOverlay}>
+          <View style={styles.renameDialog}>
+            <Text style={styles.renameTitle}>Log Worn</Text>
+
+            {logSelfieUri ? (
+              <View style={styles.selfiePreviewWrap}>
+                <Image source={{ uri: logSelfieUri }} style={styles.selfiePreview} />
+                <Pressable
+                  style={styles.selfieRemoveBtn}
+                  onPress={() => setLogSelfieUri(null)}
+                >
+                  <Ionicons name="close-circle" size={24} color={Theme.colors.error} />
+                </Pressable>
+              </View>
+            ) : (
+              <Pressable style={styles.takeSelfieBtn} onPress={handleTakeSelfie}>
+                <Ionicons name="camera-outline" size={22} color={Theme.colors.primary} />
+                <Text style={styles.takeSelfieBtnText}>Take Selfie</Text>
+              </Pressable>
+            )}
+
+            <TextInput
+              style={[styles.renameInput, { marginTop: Theme.spacing.md }]}
+              value={logNote}
+              onChangeText={setLogNote}
+              placeholder="Add a note (optional)"
+              placeholderTextColor={Theme.colors.textLight}
+              multiline
+            />
+
+            <View style={styles.renameActions}>
+              <Pressable
+                style={styles.renameCancelBtn}
+                onPress={() => setShowLogWornModal(false)}
+              >
+                <Text style={styles.renameCancelText}>Cancel</Text>
+              </Pressable>
+              <Pressable style={styles.renameSaveBtn} onPress={handleConfirmLogWorn}>
+                <Text style={styles.renameSaveText}>Log It</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* Rename Modal */}
       <Modal
@@ -755,17 +875,51 @@ const styles = StyleSheet.create({
     marginBottom: Theme.spacing.sm,
   },
   wornLogRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
     paddingVertical: 8,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: Theme.colors.border,
+  },
+  wornLogRowContent: {
+    gap: 6,
+  },
+  wornLogRowTop: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
   },
   wornLogDate: {
     flex: 1,
     fontSize: Theme.fontSize.sm,
     color: Theme.colors.text,
+  },
+  wornEntryDetails: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+    marginTop: 4,
+    paddingLeft: 24,
+  },
+  wornSelfieThumbnail: {
+    width: 48,
+    height: 48,
+    borderRadius: Theme.borderRadius.sm,
+    resizeMode: "cover",
+  },
+  wornEntryNote: {
+    flex: 1,
+    fontSize: Theme.fontSize.sm,
+    color: Theme.colors.textSecondary,
+    fontStyle: "italic",
+  },
+  viewAllBtn: {
+    alignItems: "center",
+    paddingVertical: 10,
+    marginTop: 4,
+  },
+  viewAllBtnText: {
+    fontSize: Theme.fontSize.sm,
+    fontWeight: "600",
+    color: Theme.colors.primary,
   },
   emptyText: {
     fontSize: Theme.fontSize.sm,
@@ -968,5 +1122,38 @@ const styles = StyleSheet.create({
     fontSize: Theme.fontSize.md,
     fontWeight: "600",
     color: "#FFFFFF",
+  },
+  // Log Worn selfie
+  selfiePreviewWrap: {
+    alignItems: "center",
+    position: "relative",
+    marginBottom: 4,
+  },
+  selfiePreview: {
+    width: 120,
+    height: 120,
+    borderRadius: Theme.borderRadius.md,
+    resizeMode: "cover",
+  },
+  selfieRemoveBtn: {
+    position: "absolute",
+    top: -8,
+    right: "30%",
+  },
+  takeSelfieBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 12,
+    borderRadius: Theme.borderRadius.sm,
+    borderWidth: 1,
+    borderColor: Theme.colors.primary + "40",
+    borderStyle: "dashed",
+  },
+  takeSelfieBtnText: {
+    fontSize: Theme.fontSize.md,
+    fontWeight: "600",
+    color: Theme.colors.primary,
   },
 });

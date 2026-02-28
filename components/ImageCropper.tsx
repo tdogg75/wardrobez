@@ -20,6 +20,10 @@ const SCREEN = Dimensions.get("window");
 const HANDLE_SIZE = 28;
 const HANDLE_HIT = 36;
 const MIN_CROP = 60;
+const HEADER_HEIGHT = 64;
+const FOOTER_HEIGHT = 84;
+// Estimate available canvas height = screen minus header, footer, and safe areas
+const ESTIMATED_CANVAS_H = SCREEN.height - HEADER_HEIGHT - FOOTER_HEIGHT - 80;
 
 interface ImageCropperProps {
   imageUri: string;
@@ -35,7 +39,7 @@ export function ImageCropper({
   onCancel,
 }: ImageCropperProps) {
   const [naturalSize, setNaturalSize] = useState({ w: 0, h: 0 });
-  const [canvasSize, setCanvasSize] = useState({ w: 0, h: 0 });
+  const [canvasSize, setCanvasSize] = useState({ w: SCREEN.width, h: ESTIMATED_CANVAS_H });
   const [imgSize, setImgSize] = useState({ w: 0, h: 0 });
   const [crop, setCrop] = useState({ x: 0, y: 0, w: 0, h: 0 });
   const [applying, setApplying] = useState(false);
@@ -50,6 +54,8 @@ export function ImageCropper({
   useEffect(() => {
     if (!imageUri || !visible) {
       setDataUri(null);
+      setNaturalSize({ w: 0, h: 0 });
+      setImgSize({ w: 0, h: 0 });
       return;
     }
     Image.getSize(
@@ -96,7 +102,9 @@ export function ImageCropper({
 
   const handleCanvasLayout = useCallback((e: LayoutChangeEvent) => {
     const { width, height } = e.nativeEvent.layout;
-    setCanvasSize({ w: width, h: height });
+    if (width > 0 && height > 0) {
+      setCanvasSize({ w: width, h: height });
+    }
   }, []);
 
   // Hit-test for drag targets
@@ -332,9 +340,10 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingTop: 54,
+    paddingTop: 50,
     paddingBottom: 10,
     paddingHorizontal: Theme.spacing.md,
+    height: HEADER_HEIGHT + 50,
   },
   headerTitle: {
     fontSize: Theme.fontSize.lg,
@@ -346,6 +355,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     overflow: "hidden",
+    marginHorizontal: 4,
   },
   dim: {
     position: "absolute",
@@ -376,6 +386,7 @@ const styles = StyleSheet.create({
     paddingTop: Theme.spacing.sm,
     paddingBottom: 36,
     gap: Theme.spacing.md,
+    height: FOOTER_HEIGHT + 36,
     alignItems: "flex-start",
   },
   cancelBtn: {

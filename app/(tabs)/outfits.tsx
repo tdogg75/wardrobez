@@ -8,6 +8,7 @@ import {
   StyleSheet,
   ActivityIndicator,
   Alert,
+  Image,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -18,13 +19,26 @@ import { EmptyState } from "@/components/EmptyState";
 import { Chip } from "@/components/Chip";
 import { Theme } from "@/constants/theme";
 import { SEASON_LABELS, OCCASION_LABELS } from "@/models/types";
-import type { ClothingItem, Season, Occasion } from "@/models/types";
+import type { ClothingItem, Season, Occasion, Outfit } from "@/models/types";
 
 const SEASONS: Season[] = ["spring", "summer", "fall", "winter"];
 const OCCASIONS: Occasion[] = ["casual", "work", "fancy", "party", "vacation"];
+const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const MONTH_NAMES = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
 
 const fmt = (n: number) =>
   n.toLocaleString("en-US", { style: "currency", currency: "USD" });
+
+function getDaysInMonth(year: number, month: number): number {
+  return new Date(year, month + 1, 0).getDate();
+}
+
+function getFirstDayOfWeek(year: number, month: number): number {
+  return new Date(year, month, 1).getDay();
+}
 
 export default function OutfitsScreen() {
   const { outfits, loading, remove, logWorn, updateRating } = useOutfits();
@@ -33,6 +47,12 @@ export default function OutfitsScreen() {
 
   const [seasonFilter, setSeasonFilter] = useState<Season | null>(null);
   const [occasionFilter, setOccasionFilter] = useState<Occasion | null>(null);
+  const [viewMode, setViewMode] = useState<"list" | "calendar">("list");
+
+  // Calendar state
+  const now = new Date();
+  const [calYear, setCalYear] = useState(now.getFullYear());
+  const [calMonth, setCalMonth] = useState(now.getMonth());
 
   const filteredOutfits = useMemo(() => {
     return outfits.filter((outfit) => {
@@ -42,17 +62,156 @@ export default function OutfitsScreen() {
     });
   }, [outfits, seasonFilter, occasionFilter]);
 
+  // Build calendar data: map date string -> outfits worn that day
+  const calendarData = useMemo(() => {
+    const map: Record<string, Outfit[]> = {};
+    for (const outfit of outfits) {
+      for (const date of outfit.wornDates) {
+        const key = date.split("T")[0]; // "YYYY-MM-DD"
+        if (!map[key]) map[key] = [];
+        map[key].push(outfit);
+      }
+    }
+    return map;
+  }, [outfits]);
+
   const handleLogWorn = (outfitId: string, outfitName: string) => {
     Alert.alert("Log Worn", `Mark "${outfitName}" as worn today?`, [
       { text: "Cancel", style: "cancel" },
-      {
-        text: "Log It",
-        onPress: () => logWorn(outfitId),
-      },
+      { text: "Log It", onPress: () => logWorn(outfitId) },
     ]);
   };
 
+  const navigateMonth = (dir: -1 | 1) => {
+    let m = calMonth + dir;
+    let y = calYear;
+    if (m < 0) { m = 11; y--; }
+    if (m > 11) { m = 0; y++; }
+    setCalMonth(m);
+    setCalYear(y);
+  };
+
   const hasActiveFilter = seasonFilter !== null || occasionFilter !== null;
+
+  // Calendar rendering
+  const renderCalendar = () => {
+    const daysInMonth = getDaysInMonth(calYear, calMonth);
+    const firstDay = getFirstDayOfWeek(calYear, calMonth);
+    const cells: React.ReactNode[] = [];
+
+    // Empty cells before first day
+    for (let i = 0; i < firstDay; i++) {
+      cells.push(<View key={`empty-${i}`} style={styles.calCell} />);
+    }
+
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dateStr = `${calYear}-${String(calMonth + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+      const dayOutfits = calendarData[dateStr] ?? [];
+      const isToday =
+        d === now.getDate() && calMonth === now.getMonth() && calYear === now.getFullYear();
+
+      cells.push(
+        <View key={d} style={[styles.calCell, isToday && styles.calCellToday]}>
+          <Text style={[styles.calDay, isToday && styles.calDayToday]}>{d}</Text>
+          {dayOutfits.length > 0 && (
+            <View style={styles.calDots}>
+              {dayOutfits.length === 1 ? (
+                <View style={[styles.calDot, { backgroundColor: Theme.colors.primary }]} />
+              ) : (
+                <>
+                  <View style={[styles.calDot, { backgroundColor: Theme.colors.primary }]} />
+                  <Text style={styles.calDotCount}>{dayOutfits.length}</Text>
+                </>
+              )}
+            </View>
+          )}
+          {dayOutfits.length > 0 && (() => {
+            const firstOutfit = dayOutfits[0];
+            const firstItem = firstOutfit.itemIds.length > 0 ? getById(firstOutfit.itemIds[0]) : null;
+            if (firstItem?.imageUris?.length) {
+              return (
+                <Image
+                  source={{ uri: firstItem.imageUris[0] }}
+                  style={styles.calThumb}
+                />
+              );
+            }
+            return null;
+          })()}
+        </View>
+      );
+    }
+
+    return (
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.calContainer}>
+        {/* Month navigation */}
+        <View style={styles.calNav}>
+          <Pressable onPress={() => navigateMonth(-1)} hitSlop={12}>
+            <Ionicons name="chevron-back" size={24} color={Theme.colors.text} />
+          </Pressable>
+          <Text style={styles.calMonthTitle}>
+            {MONTH_NAMES[calMonth]} {calYear}
+          </Text>
+          <Pressable onPress={() => navigateMonth(1)} hitSlop={12}>
+            <Ionicons name="chevron-forward" size={24} color={Theme.colors.text} />
+          </Pressable>
+        </View>
+
+        {/* Weekday headers */}
+        <View style={styles.calWeekRow}>
+          {WEEKDAYS.map((wd) => (
+            <Text key={wd} style={styles.calWeekday}>{wd}</Text>
+          ))}
+        </View>
+
+        {/* Day grid */}
+        <View style={styles.calGrid}>{cells}</View>
+
+        {/* Outfits worn this month */}
+        {(() => {
+          const monthPrefix = `${calYear}-${String(calMonth + 1).padStart(2, "0")}`;
+          const monthOutfitIds = new Set<string>();
+          for (const [key, outfitsList] of Object.entries(calendarData)) {
+            if (key.startsWith(monthPrefix)) {
+              for (const o of outfitsList) monthOutfitIds.add(o.id);
+            }
+          }
+          const monthOutfits = outfits.filter((o) => monthOutfitIds.has(o.id));
+          if (monthOutfits.length === 0) return null;
+
+          return (
+            <View style={styles.calSummary}>
+              <Text style={styles.calSummaryTitle}>
+                {monthOutfits.length} outfit{monthOutfits.length !== 1 ? "s" : ""} worn this month
+              </Text>
+              {monthOutfits.slice(0, 5).map((outfit) => {
+                const items = outfit.itemIds.map((id) => getById(id)).filter(Boolean) as ClothingItem[];
+                const wornThisMonth = outfit.wornDates.filter((d) => d.startsWith(monthPrefix)).length;
+                return (
+                  <Pressable
+                    key={outfit.id}
+                    style={styles.calOutfitRow}
+                    onPress={() => router.push({ pathname: "/outfit-detail", params: { id: outfit.id } })}
+                  >
+                    <View style={styles.calOutfitMood}>
+                      <MoodBoard items={items} size={50} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.calOutfitName} numberOfLines={1}>{outfit.name}</Text>
+                      <Text style={styles.calOutfitMeta}>
+                        Worn {wornThisMonth}x this month
+                      </Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={16} color={Theme.colors.textLight} />
+                  </Pressable>
+                );
+              })}
+            </View>
+          );
+        })()}
+      </ScrollView>
+    );
+  };
 
   return (
     <View style={styles.container}>
@@ -63,6 +222,30 @@ export default function OutfitsScreen() {
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.filterScroll}
         >
+          {/* View mode toggle */}
+          <Pressable
+            style={[styles.viewToggle, viewMode === "list" && styles.viewToggleActive]}
+            onPress={() => setViewMode("list")}
+          >
+            <Ionicons
+              name="list-outline"
+              size={16}
+              color={viewMode === "list" ? Theme.colors.primary : Theme.colors.textLight}
+            />
+          </Pressable>
+          <Pressable
+            style={[styles.viewToggle, viewMode === "calendar" && styles.viewToggleActive]}
+            onPress={() => setViewMode("calendar")}
+          >
+            <Ionicons
+              name="calendar-outline"
+              size={16}
+              color={viewMode === "calendar" ? Theme.colors.primary : Theme.colors.textLight}
+            />
+          </Pressable>
+
+          <View style={styles.filterDivider} />
+
           <Text style={styles.filterLabel}>Season:</Text>
           {SEASONS.map((s) => (
             <Chip
@@ -102,6 +285,8 @@ export default function OutfitsScreen() {
 
       {loading ? (
         <ActivityIndicator size="large" color={Theme.colors.primary} style={styles.loader} />
+      ) : viewMode === "calendar" ? (
+        renderCalendar()
       ) : outfits.length === 0 ? (
         <EmptyState
           icon="layers-outline"
@@ -133,10 +318,7 @@ export default function OutfitsScreen() {
 
             return (
               <Pressable
-                style={[
-                  styles.card,
-                  isFlagged && styles.cardFlagged,
-                ]}
+                style={[styles.card, isFlagged && styles.cardFlagged]}
                 onPress={() =>
                   router.push({
                     pathname: "/outfit-detail",
@@ -196,7 +378,8 @@ export default function OutfitsScreen() {
                       )}
                     </View>
 
-                    {((outfit.seasons ?? []).length > 0 || (outfit.occasions ?? []).length > 0) && (
+                    {((outfit.seasons ?? []).length > 0 ||
+                      (outfit.occasions ?? []).length > 0) && (
                       <Text style={styles.tagText} numberOfLines={1}>
                         {[
                           ...(outfit.seasons ?? []).map((s) => SEASON_LABELS[s]),
@@ -245,6 +428,17 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 6,
   },
+  viewToggle: {
+    width: 32,
+    height: 32,
+    borderRadius: Theme.borderRadius.sm,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: Theme.colors.surfaceAlt,
+  },
+  viewToggleActive: {
+    backgroundColor: Theme.colors.primary + "15",
+  },
   filterLabel: {
     fontSize: Theme.fontSize.xs,
     fontWeight: "600",
@@ -292,19 +486,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#F59E0B40",
   },
-  cardBody: {
-    flexDirection: "row",
-    gap: 12,
-  },
+  cardBody: { flexDirection: "row", gap: 12 },
   moodBoardWrap: {
     borderRadius: Theme.borderRadius.sm,
     overflow: "hidden",
   },
-  cardInfo: {
-    flex: 1,
-    justifyContent: "center",
-    paddingRight: 4,
-  },
+  cardInfo: { flex: 1, justifyContent: "center", paddingRight: 4 },
   cardHeader: {
     flexDirection: "row",
     alignItems: "center",
@@ -326,22 +513,14 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
     borderRadius: Theme.borderRadius.full,
   },
-  aiBadgeText: {
-    fontSize: 10,
-    fontWeight: "700",
-    color: Theme.colors.primary,
-  },
+  aiBadgeText: { fontSize: 10, fontWeight: "700", color: Theme.colors.primary },
   itemList: {
     fontSize: Theme.fontSize.xs,
     color: Theme.colors.textSecondary,
     marginBottom: 6,
     lineHeight: 16,
   },
-  ratingRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 2,
-  },
+  ratingRow: { flexDirection: "row", alignItems: "center", gap: 2 },
   itemCount: {
     fontSize: Theme.fontSize.xs,
     color: Theme.colors.textLight,
@@ -392,7 +571,113 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: Theme.colors.success,
   },
-  deleteBtn: {
-    padding: 4,
+  deleteBtn: { padding: 4 },
+  // Calendar styles
+  calContainer: { paddingBottom: 40 },
+  calNav: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: Theme.spacing.lg,
+    paddingVertical: Theme.spacing.md,
+  },
+  calMonthTitle: {
+    fontSize: Theme.fontSize.lg,
+    fontWeight: "700",
+    color: Theme.colors.text,
+  },
+  calWeekRow: {
+    flexDirection: "row",
+    paddingHorizontal: Theme.spacing.sm,
+  },
+  calWeekday: {
+    flex: 1,
+    textAlign: "center",
+    fontSize: Theme.fontSize.xs,
+    fontWeight: "600",
+    color: Theme.colors.textLight,
+    paddingVertical: 4,
+  },
+  calGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    paddingHorizontal: Theme.spacing.sm,
+  },
+  calCell: {
+    width: `${100 / 7}%`,
+    aspectRatio: 1,
+    padding: 2,
+    alignItems: "center",
+    justifyContent: "flex-start",
+    borderWidth: 0.5,
+    borderColor: Theme.colors.border,
+    overflow: "hidden",
+  },
+  calCellToday: {
+    backgroundColor: Theme.colors.primary + "10",
+    borderColor: Theme.colors.primary + "40",
+    borderWidth: 1,
+  },
+  calDay: {
+    fontSize: Theme.fontSize.xs,
+    fontWeight: "600",
+    color: Theme.colors.text,
+    marginTop: 2,
+  },
+  calDayToday: {
+    color: Theme.colors.primary,
+    fontWeight: "800",
+  },
+  calDots: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 2,
+    marginTop: 2,
+  },
+  calDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  calDotCount: {
+    fontSize: 8,
+    fontWeight: "700",
+    color: Theme.colors.primary,
+  },
+  calThumb: {
+    width: 28,
+    height: 28,
+    borderRadius: 4,
+    marginTop: 2,
+  },
+  calSummary: {
+    padding: Theme.spacing.md,
+  },
+  calSummaryTitle: {
+    fontSize: Theme.fontSize.md,
+    fontWeight: "700",
+    color: Theme.colors.text,
+    marginBottom: Theme.spacing.sm,
+  },
+  calOutfitRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingVertical: Theme.spacing.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Theme.colors.border,
+  },
+  calOutfitMood: {
+    borderRadius: Theme.borderRadius.sm,
+    overflow: "hidden",
+  },
+  calOutfitName: {
+    fontSize: Theme.fontSize.md,
+    fontWeight: "600",
+    color: Theme.colors.text,
+  },
+  calOutfitMeta: {
+    fontSize: Theme.fontSize.xs,
+    color: Theme.colors.textSecondary,
   },
 });

@@ -54,7 +54,7 @@ function generateId(): string {
 
 export default function AddItemScreen() {
   const router = useRouter();
-  const { addOrUpdate } = useClothingItems();
+  const { items, addOrUpdate } = useClothingItems();
 
   const [name, setName] = useState("");
   const [category, setCategory] = useState<ClothingCategory>("tops");
@@ -112,6 +112,19 @@ export default function AddItemScreen() {
 
   const secondaryColor = secondaryColorIdx !== null ? PRESET_COLORS[secondaryColorIdx].hex : undefined;
   const secondaryColorName = secondaryColorIdx !== null ? PRESET_COLORS[secondaryColorIdx].name : undefined;
+
+  const similarItems = useMemo(() => {
+    const finalHSL = hexToHSL(finalColor);
+    return items.filter((item) => {
+      if (item.category !== category) return false;
+      const itemHSL = hexToHSL(item.color);
+      const hueDiff = Math.min(
+        Math.abs(finalHSL.h - itemHSL.h),
+        360 - Math.abs(finalHSL.h - itemHSL.h)
+      );
+      return hueDiff <= 30;
+    });
+  }, [items, category, finalColor]);
 
   const pickImage = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -452,6 +465,16 @@ export default function AddItemScreen() {
             </Pressable>
           ))}
         </View>
+
+        {/* Similar Item Warning */}
+        {similarItems.length > 0 && (
+          <View style={styles.similarWarning}>
+            <Ionicons name="alert-circle-outline" size={18} color={Theme.colors.warning} />
+            <Text style={styles.similarWarningText}>
+              You already have {similarItems.length} similar {CATEGORY_LABELS[category].toLowerCase()} item(s) in this color range.
+            </Text>
+          </View>
+        )}
 
         {/* Secondary Color */}
         <Pressable
@@ -915,6 +938,25 @@ const styles = StyleSheet.create({
   },
   colorBtn: {
     padding: 2,
+  },
+  // Similar item warning
+  similarWarning: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: Theme.spacing.sm,
+    paddingHorizontal: Theme.spacing.md,
+    paddingVertical: Theme.spacing.sm,
+    backgroundColor: Theme.colors.warning + "14",
+    borderRadius: Theme.borderRadius.sm,
+    borderWidth: 1,
+    borderColor: Theme.colors.warning + "30",
+  },
+  similarWarningText: {
+    flex: 1,
+    fontSize: Theme.fontSize.sm,
+    color: Theme.colors.warning,
+    fontWeight: "500",
   },
   // Secondary Colour
   secondaryToggle: {

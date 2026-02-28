@@ -15,7 +15,7 @@ interface OutfitsContextValue {
   reload: () => Promise<void>;
   addOrUpdate: (outfit: Outfit) => Promise<void>;
   remove: (id: string) => Promise<void>;
-  logWorn: (outfitId: string) => Promise<void>;
+  logWorn: (outfitId: string, selfieUri?: string, note?: string) => Promise<void>;
   removeWornDate: (outfitId: string, dateIndex: number) => Promise<void>;
   markNotified: (outfitId: string) => Promise<void>;
   updateRating: (outfitId: string, rating: number) => Promise<void>;
@@ -55,8 +55,8 @@ export function OutfitsProvider({ children }: { children: React.ReactNode }) {
   );
 
   const logWorn = useCallback(
-    async (outfitId: string) => {
-      await logOutfitWorn(outfitId);
+    async (outfitId: string, selfieUri?: string, note?: string) => {
+      await logOutfitWorn(outfitId, selfieUri, note);
       await reload();
     },
     [reload]

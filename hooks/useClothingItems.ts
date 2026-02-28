@@ -6,6 +6,8 @@ import {
   deleteClothingItem as deleteItem,
   archiveItem as archiveStorageItem,
   unarchiveItem as unarchiveStorageItem,
+  logItemWorn as logItemWornStorage,
+  removeItemWornDate as removeItemWornDateStorage,
 } from "@/services/storage";
 
 interface ClothingItemsContextValue {
@@ -18,6 +20,8 @@ interface ClothingItemsContextValue {
   remove: (id: string) => Promise<void>;
   archiveItem: (id: string, reason: ArchiveReason) => Promise<void>;
   unarchiveItem: (id: string) => Promise<void>;
+  logItemWorn: (id: string) => Promise<void>;
+  removeItemWornDate: (id: string, dateIndex: number) => Promise<void>;
   getByCategory: (category: ClothingCategory) => ClothingItem[];
   getById: (id: string) => ClothingItem | null;
   getFavorites: () => ClothingItem[];
@@ -82,6 +86,22 @@ export function ClothingItemsProvider({ children }: { children: React.ReactNode 
     [reload]
   );
 
+  const logItemWorn = useCallback(
+    async (id: string) => {
+      await logItemWornStorage(id);
+      await reload();
+    },
+    [reload]
+  );
+
+  const removeItemWornDate = useCallback(
+    async (id: string, dateIndex: number) => {
+      await removeItemWornDateStorage(id, dateIndex);
+      await reload();
+    },
+    [reload]
+  );
+
   const getByCategory = useCallback(
     (category: ClothingCategory) => activeItems.filter((i) => i.category === category),
     [activeItems]
@@ -107,6 +127,8 @@ export function ClothingItemsProvider({ children }: { children: React.ReactNode 
     remove,
     archiveItem,
     unarchiveItem,
+    logItemWorn,
+    removeItemWornDate,
     getByCategory,
     getById,
     getFavorites,
