@@ -53,7 +53,8 @@ export async function saveClientId(clientId: string): Promise<void> {
 let cachedToken: string | null = null;
 
 export function getRedirectUri(): string {
-  return AuthSession.makeRedirectUri({ useProxy: true });
+  // Desktop app type OAuth clients support custom URI scheme redirects
+  return AuthSession.makeRedirectUri({ scheme: "wardrobez" });
 }
 
 export async function signInWithGoogle(clientId: string): Promise<string | null> {
@@ -69,7 +70,7 @@ export async function signInWithGoogle(clientId: string): Promise<string | null>
     usePKCE: false,
   });
 
-  const result = await request.promptAsync(discovery, { useProxy: true });
+  const result = await request.promptAsync(discovery);
 
   if (result.type === "success" && result.authentication?.accessToken) {
     cachedToken = result.authentication.accessToken;

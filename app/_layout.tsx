@@ -50,6 +50,14 @@ export default function RootLayout() {
             }}
           />
           <Stack.Screen
+            name="item-detail"
+            options={{
+              presentation: "modal",
+              headerShown: true,
+              headerTitle: "Item",
+            }}
+          />
+          <Stack.Screen
             name="gmail-purchases"
             options={{
               presentation: "modal",
