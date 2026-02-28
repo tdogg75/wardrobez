@@ -172,6 +172,16 @@ export default function ItemDetailScreen() {
           </View>
         </View>
 
+        {/* Cost per Wear */}
+        {item.cost != null && (item.wearCount ?? 0) > 0 && (
+          <View style={styles.infoRow}>
+            <Text style={styles.infoLabel}>$/Wear</Text>
+            <Text style={[styles.infoValue, styles.cpwValue]}>
+              {fmt(item.cost / (item.wearCount ?? 1))}
+            </Text>
+          </View>
+        )}
+
         {/* Flags */}
         {item.itemFlags && item.itemFlags.length > 0 && (
           <View style={styles.infoRow}>
@@ -311,6 +321,10 @@ const styles = StyleSheet.create({
   costValue: {
     color: Theme.colors.success,
     fontWeight: "700",
+  },
+  cpwValue: {
+    color: Theme.colors.primary,
+    fontWeight: "600",
   },
   flagValue: {
     color: Theme.colors.warning,

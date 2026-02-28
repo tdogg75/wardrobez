@@ -8,7 +8,7 @@ import {
   StyleSheet,
   Dimensions,
   PanResponder,
-  type GestureResponderEvent,
+  type LayoutChangeEvent,
   type PanResponderGestureState,
 } from "react-native";
 import { WebView } from "react-native-webview";
@@ -20,9 +20,6 @@ const SCREEN = Dimensions.get("window");
 const HANDLE_SIZE = 28;
 const HANDLE_HIT = 36;
 const MIN_CROP = 60;
-const HEADER_H = 90;
-const FOOTER_H = 110;
-const AVAIL_H = SCREEN.height - HEADER_H - FOOTER_H;
 
 interface ImageCropperProps {
   imageUri: string;
@@ -38,7 +35,8 @@ export function ImageCropper({
   onCancel,
 }: ImageCropperProps) {
   const [naturalSize, setNaturalSize] = useState({ w: 0, h: 0 });
-  const [imgRect, setImgRect] = useState({ x: 0, y: 0, w: 0, h: 0 });
+  const [canvasSize, setCanvasSize] = useState({ w: 0, h: 0 });
+  const [imgSize, setImgSize] = useState({ w: 0, h: 0 });
   const [crop, setCrop] = useState({ x: 0, y: 0, w: 0, h: 0 });
   const [applying, setApplying] = useState(false);
   const [dataUri, setDataUri] = useState<string | null>(null);
@@ -48,7 +46,7 @@ export function ImageCropper({
     startCrop: { x: number; y: number; w: number; h: number };
   } | null>(null);
 
-  // Load image data
+  // Load image data on mount
   useEffect(() => {
     if (!imageUri || !visible) {
       setDataUri(null);
@@ -56,30 +54,9 @@ export function ImageCropper({
     }
     Image.getSize(
       imageUri,
-      (w, h) => {
-        setNaturalSize({ w, h });
-        const ar = w / h;
-        let dw = SCREEN.width;
-        let dh = dw / ar;
-        if (dh > AVAIL_H) {
-          dh = AVAIL_H;
-          dw = dh * ar;
-        }
-        const dx = (SCREEN.width - dw) / 2;
-        const dy = (AVAIL_H - dh) / 2;
-        setImgRect({ x: dx, y: dy, w: dw, h: dh });
-
-        const margin = dw * 0.08;
-        setCrop({
-          x: margin,
-          y: margin,
-          w: dw - margin * 2,
-          h: dh - margin * 2,
-        });
-      },
+      (w, h) => setNaturalSize({ w, h }),
       () => {},
     );
-
     (async () => {
       try {
         const base64 = await FileSystem.readAsStringAsync(imageUri, {
@@ -94,7 +71,35 @@ export function ImageCropper({
     })();
   }, [imageUri, visible]);
 
-  // Determine which element was touched
+  // When canvas area size or natural size change, compute image display size and init crop
+  useEffect(() => {
+    if (naturalSize.w === 0 || naturalSize.h === 0) return;
+    if (canvasSize.w === 0 || canvasSize.h === 0) return;
+
+    const ar = naturalSize.w / naturalSize.h;
+    let dw = canvasSize.w;
+    let dh = dw / ar;
+    if (dh > canvasSize.h) {
+      dh = canvasSize.h;
+      dw = dh * ar;
+    }
+    setImgSize({ w: dw, h: dh });
+
+    const margin = Math.min(dw, dh) * 0.08;
+    setCrop({
+      x: margin,
+      y: margin,
+      w: dw - margin * 2,
+      h: dh - margin * 2,
+    });
+  }, [naturalSize, canvasSize]);
+
+  const handleCanvasLayout = useCallback((e: LayoutChangeEvent) => {
+    const { width, height } = e.nativeEvent.layout;
+    setCanvasSize({ w: width, h: height });
+  }, []);
+
+  // Hit-test for drag targets
   const hitTest = useCallback(
     (px: number, py: number) => {
       const inHandle = (hx: number, hy: number) =>
@@ -136,8 +141,8 @@ export function ImageCropper({
       if (mode === "move") {
         let nx = startCrop.x + dx;
         let ny = startCrop.y + dy;
-        nx = Math.max(0, Math.min(nx, imgRect.w - startCrop.w));
-        ny = Math.max(0, Math.min(ny, imgRect.h - startCrop.h));
+        nx = Math.max(0, Math.min(nx, imgSize.w - startCrop.w));
+        ny = Math.max(0, Math.min(ny, imgSize.h - startCrop.h));
         setCrop({ ...startCrop, x: nx, y: ny });
       } else {
         let { x, y, w, h } = startCrop;
@@ -150,14 +155,12 @@ export function ImageCropper({
         } else if (mode === "br") {
           w += dx; h += dy;
         }
-        // Enforce minimums
         if (w < MIN_CROP) { w = MIN_CROP; x = startCrop.x + startCrop.w - MIN_CROP; }
         if (h < MIN_CROP) { h = MIN_CROP; y = startCrop.y + startCrop.h - MIN_CROP; }
-        // Clamp to image bounds
         if (x < 0) { w += x; x = 0; }
         if (y < 0) { h += y; y = 0; }
-        if (x + w > imgRect.w) w = imgRect.w - x;
-        if (y + h > imgRect.h) h = imgRect.h - y;
+        if (x + w > imgSize.w) w = imgSize.w - x;
+        if (y + h > imgSize.h) h = imgSize.h - y;
         setCrop({ x, y, w, h });
       }
     },
@@ -216,21 +219,19 @@ function cropImage(sx,sy,sw,sh) {
   );
 
   const handleApply = useCallback(() => {
-    if (!webViewRef.current || naturalSize.w === 0 || imgRect.w === 0) return;
+    if (!webViewRef.current || naturalSize.w === 0 || imgSize.w === 0) return;
     setApplying(true);
 
-    // Map display crop to natural image coordinates
-    const scaleX = naturalSize.w / imgRect.w;
-    const scaleY = naturalSize.h / imgRect.h;
+    const scaleX = naturalSize.w / imgSize.w;
+    const scaleY = naturalSize.h / imgSize.h;
     const sx = Math.round(crop.x * scaleX);
     const sy = Math.round(crop.y * scaleY);
     const sw = Math.round(crop.w * scaleX);
     const sh = Math.round(crop.h * scaleY);
 
     webViewRef.current.injectJavaScript(`cropImage(${sx},${sy},${sw},${sh}); true;`);
-  }, [crop, imgRect, naturalSize]);
+  }, [crop, imgSize, naturalSize]);
 
-  // Corner handle component
   const Handle = ({ left, top }: { left: number; top: number }) => (
     <View
       pointerEvents="none"
@@ -244,7 +245,6 @@ function cropImage(sx,sy,sw,sh) {
   return (
     <Modal visible={visible} animationType="fade" onRequestClose={onCancel}>
       <View style={styles.root}>
-        {/* Hidden WebView for canvas crop */}
         {dataUri ? (
           <WebView
             ref={webViewRef}
@@ -265,52 +265,43 @@ function cropImage(sx,sy,sw,sh) {
           <View style={{ width: 28 }} />
         </View>
 
-        {/* Image + crop overlay */}
-        <View style={styles.canvas}>
-          <View
-            style={{
-              marginLeft: imgRect.x,
-              marginTop: imgRect.y,
-              width: imgRect.w,
-              height: imgRect.h,
-            }}
-          >
-            <Image
-              source={{ uri: imageUri }}
-              style={{ width: imgRect.w, height: imgRect.h }}
-              resizeMode="cover"
-            />
+        {/* Image + crop overlay — flex:1 container measured via onLayout */}
+        <View style={styles.canvas} onLayout={handleCanvasLayout}>
+          {imgSize.w > 0 && imgSize.h > 0 && (
+            <View style={{ width: imgSize.w, height: imgSize.h }}>
+              <Image
+                source={{ uri: imageUri }}
+                style={{ width: imgSize.w, height: imgSize.h }}
+                resizeMode="cover"
+              />
 
-            {/* Dark overlay with cutout */}
-            <View style={StyleSheet.absoluteFill} pointerEvents="none">
-              {/* Top */}
-              <View style={[styles.dim, { top: 0, left: 0, right: 0, height: crop.y }]} />
-              {/* Bottom */}
-              <View style={[styles.dim, { top: crop.y + crop.h, left: 0, right: 0, bottom: 0 }]} />
-              {/* Left */}
-              <View style={[styles.dim, { top: crop.y, left: 0, width: crop.x, height: crop.h }]} />
-              {/* Right */}
-              <View style={[styles.dim, { top: crop.y, left: crop.x + crop.w, right: 0, height: crop.h }]} />
+              {/* Dark overlay with cutout */}
+              <View style={StyleSheet.absoluteFill} pointerEvents="none">
+                <View style={[styles.dim, { top: 0, left: 0, right: 0, height: crop.y }]} />
+                <View style={[styles.dim, { top: crop.y + crop.h, left: 0, right: 0, bottom: 0 }]} />
+                <View style={[styles.dim, { top: crop.y, left: 0, width: crop.x, height: crop.h }]} />
+                <View style={[styles.dim, { top: crop.y, left: crop.x + crop.w, right: 0, height: crop.h }]} />
+              </View>
+
+              {/* Crop border */}
+              <View
+                pointerEvents="none"
+                style={[
+                  styles.cropBorder,
+                  { left: crop.x, top: crop.y, width: crop.w, height: crop.h },
+                ]}
+              />
+
+              {/* Corner handles */}
+              <Handle left={crop.x} top={crop.y} />
+              <Handle left={crop.x + crop.w} top={crop.y} />
+              <Handle left={crop.x} top={crop.y + crop.h} />
+              <Handle left={crop.x + crop.w} top={crop.y + crop.h} />
+
+              {/* Pan responder overlay */}
+              <View style={StyleSheet.absoluteFill} {...panResponder.current.panHandlers} />
             </View>
-
-            {/* Crop border */}
-            <View
-              pointerEvents="none"
-              style={[
-                styles.cropBorder,
-                { left: crop.x, top: crop.y, width: crop.w, height: crop.h },
-              ]}
-            />
-
-            {/* Corner handles */}
-            <Handle left={crop.x} top={crop.y} />
-            <Handle left={crop.x + crop.w} top={crop.y} />
-            <Handle left={crop.x} top={crop.y + crop.h} />
-            <Handle left={crop.x + crop.w} top={crop.y + crop.h} />
-
-            {/* Pan responder overlay */}
-            <View style={StyleSheet.absoluteFill} {...panResponder.current.panHandlers} />
-          </View>
+          )}
         </View>
 
         {/* Footer */}
@@ -341,8 +332,8 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    height: HEADER_H,
-    paddingTop: 44,
+    paddingTop: 54,
+    paddingBottom: 10,
     paddingHorizontal: Theme.spacing.md,
   },
   headerTitle: {
@@ -352,6 +343,8 @@ const styles = StyleSheet.create({
   },
   canvas: {
     flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
     overflow: "hidden",
   },
   dim: {
@@ -379,7 +372,6 @@ const styles = StyleSheet.create({
   },
   footer: {
     flexDirection: "row",
-    height: FOOTER_H,
     paddingHorizontal: Theme.spacing.lg,
     paddingTop: Theme.spacing.sm,
     paddingBottom: 36,

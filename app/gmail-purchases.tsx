@@ -20,6 +20,7 @@ import {
   scanGmailForPurchases,
   getCachedToken,
   clearToken,
+  setManualToken,
   getSavedClientId,
   saveClientId,
   isOAuthRedirectSupported,
@@ -28,7 +29,7 @@ import type { GmailPurchaseItem } from "@/services/gmailService";
 import { useClothingItems } from "@/hooks/useClothingItems";
 import { PRESET_COLORS } from "@/constants/colors";
 
-type ScanState = "idle" | "signing_in" | "scanning" | "done" | "error" | "need_client_id";
+type ScanState = "idle" | "signing_in" | "scanning" | "done" | "error" | "need_client_id" | "manual_token";
 
 export default function GmailPurchasesScreen() {
   const router = useRouter();
@@ -42,6 +43,7 @@ export default function GmailPurchasesScreen() {
   const [progress, setProgress] = useState({ loaded: 0, total: 0 });
   const [clientId, setClientId] = useState("");
   const [clientIdInput, setClientIdInput] = useState("");
+  const [manualTokenInput, setManualTokenInput] = useState("");
 
   // Load saved client ID on mount
   useEffect(() => {
@@ -64,8 +66,30 @@ export default function GmailPurchasesScreen() {
     setScanState("idle");
   };
 
+  const runScanWithToken = useCallback(async (token: string) => {
+    setScanState("scanning");
+
+    try {
+      const results = await scanGmailForPurchases(token, (loaded, total) => {
+        setProgress({ loaded, total });
+      });
+      setPurchases(results);
+      setCurrentIndex(0);
+      setScanState("done");
+
+      if (results.length === 0) {
+        Alert.alert(
+          "No purchases found",
+          "We couldn't find any clothing, shoes, or accessories purchase emails from the last 2 years."
+        );
+      }
+    } catch (err) {
+      setScanState("error");
+      Alert.alert("Scan failed", "Something went wrong scanning your emails. Please try again.");
+    }
+  }, []);
+
   const startScan = useCallback(async () => {
-    // Check for client ID first
     let id = clientId;
     if (!id) {
       id = (await getSavedClientId()) ?? "";
@@ -88,27 +112,18 @@ export default function GmailPurchasesScreen() {
       return;
     }
 
-    setScanState("scanning");
+    await runScanWithToken(token);
+  }, [clientId, runScanWithToken]);
 
-    try {
-      const results = await scanGmailForPurchases(token, (loaded, total) => {
-        setProgress({ loaded, total });
-      });
-      setPurchases(results);
-      setCurrentIndex(0);
-      setScanState("done");
-
-      if (results.length === 0) {
-        Alert.alert(
-          "No purchases found",
-          "We couldn't find any clothing, shoes, or accessories purchase emails from the last 2 years."
-        );
-      }
-    } catch (err) {
-      setScanState("error");
-      Alert.alert("Scan failed", "Something went wrong scanning your emails. Please try again.");
+  const handleManualToken = useCallback(async () => {
+    const token = manualTokenInput.trim();
+    if (!token) {
+      Alert.alert("Enter a token", "Please paste a valid Gmail API access token.");
+      return;
     }
-  }, [clientId]);
+    setManualToken(token);
+    await runScanWithToken(token);
+  }, [manualTokenInput, runScanWithToken]);
 
   const currentItem = purchases[currentIndex] ?? null;
 
@@ -228,25 +243,31 @@ export default function GmailPurchasesScreen() {
           Connect your Gmail to find clothing, shoes, jewelry, and accessories
           purchases from the last 2 years.
         </Text>
-        {!oauthSupported && (
+        {oauthSupported ? (
+          <Pressable style={styles.primaryBtn} onPress={startScan}>
+            <Ionicons name="logo-google" size={20} color="#FFFFFF" />
+            <Text style={styles.primaryBtnText}>Connect Gmail</Text>
+          </Pressable>
+        ) : (
           <View style={styles.expoGoWarning}>
-            <Ionicons name="warning-outline" size={20} color={Theme.colors.warning} />
+            <Ionicons name="information-circle-outline" size={20} color={Theme.colors.primary} />
             <Text style={styles.expoGoWarningText}>
-              Google sign-in requires a standalone APK build.{"\n"}
-              Run <Text style={{ fontWeight: "700" }}>npm run build:apk</Text> to
-              create one with EAS Build, install it on your device, then try again.{"\n\n"}
-              Expo Go does not support Google OAuth redirects.
+              Google sign-in requires a standalone APK.{"\n"}
+              Use <Text style={{ fontWeight: "700" }}>Manual Token</Text> below to scan from Expo Go, or build an APK with{" "}
+              <Text style={{ fontWeight: "700" }}>npm run build:apk</Text>.
             </Text>
           </View>
         )}
+
+        {/* Manual token entry — works in Expo Go */}
         <Pressable
-          style={[styles.primaryBtn, !oauthSupported && { opacity: 0.5 }]}
-          onPress={startScan}
-          disabled={!oauthSupported}
+          style={[styles.primaryBtn, { backgroundColor: Theme.colors.textSecondary }]}
+          onPress={() => setScanState("manual_token")}
         >
-          <Ionicons name="logo-google" size={20} color="#FFFFFF" />
-          <Text style={styles.primaryBtnText}>Connect Gmail</Text>
+          <Ionicons name="key-outline" size={20} color="#FFFFFF" />
+          <Text style={styles.primaryBtnText}>Enter Token Manually</Text>
         </Pressable>
+
         {clientId ? (
           <Pressable
             style={styles.secondaryBtn}
@@ -262,6 +283,66 @@ export default function GmailPurchasesScreen() {
           <Text style={styles.secondaryBtnText}>Cancel</Text>
         </Pressable>
       </View>
+    );
+  }
+
+  if (scanState === "manual_token") {
+    return (
+      <ScrollView
+        style={{ flex: 1, backgroundColor: Theme.colors.background }}
+        contentContainerStyle={styles.center}
+        keyboardShouldPersistTaps="handled"
+      >
+        <Ionicons name="key-outline" size={64} color={Theme.colors.primary} />
+        <Text style={styles.title}>Manual Gmail Token</Text>
+        <Text style={styles.subtitle}>
+          1. Open{" "}
+          <Text
+            style={{ fontWeight: "700", color: Theme.colors.primary }}
+            onPress={() =>
+              Linking.openURL(
+                "https://developers.google.com/oauthplayground"
+              )
+            }
+          >
+            OAuth Playground
+          </Text>{"\n"}
+          2. In the left panel, scroll to <Text style={{ fontWeight: "700" }}>Gmail API v1</Text>{"\n"}
+          3. Select <Text style={{ fontWeight: "700" }}>gmail.readonly</Text>{"\n"}
+          4. Click <Text style={{ fontWeight: "700" }}>Authorize APIs</Text> and sign in{"\n"}
+          5. Click <Text style={{ fontWeight: "700" }}>Exchange authorization code for tokens</Text>{"\n"}
+          6. Copy the <Text style={{ fontWeight: "700" }}>Access token</Text> and paste below
+        </Text>
+        <Pressable
+          style={[styles.primaryBtn, { backgroundColor: Theme.colors.textSecondary, marginBottom: Theme.spacing.md }]}
+          onPress={() =>
+            Linking.openURL("https://developers.google.com/oauthplayground")
+          }
+        >
+          <Ionicons name="open-outline" size={18} color="#FFFFFF" />
+          <Text style={styles.primaryBtnText}>Open OAuth Playground</Text>
+        </Pressable>
+        <View style={styles.clientIdInputWrap}>
+          <Text style={styles.clientIdLabel}>Gmail Access Token</Text>
+          <TextInput
+            style={[styles.clientIdInput, { minHeight: 80, textAlignVertical: "top" }]}
+            value={manualTokenInput}
+            onChangeText={setManualTokenInput}
+            placeholder="ya29.a0AfH..."
+            placeholderTextColor={Theme.colors.textLight}
+            autoCapitalize="none"
+            autoCorrect={false}
+            multiline
+          />
+          <Pressable style={styles.primaryBtn} onPress={handleManualToken}>
+            <Ionicons name="search" size={18} color="#FFFFFF" />
+            <Text style={styles.primaryBtnText}>Scan Emails</Text>
+          </Pressable>
+        </View>
+        <Pressable style={styles.secondaryBtn} onPress={() => setScanState("idle")}>
+          <Text style={styles.secondaryBtnText}>Back</Text>
+        </Pressable>
+      </ScrollView>
     );
   }
 

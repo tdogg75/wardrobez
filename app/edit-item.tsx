@@ -551,6 +551,27 @@ export default function EditItemScreen() {
           ))}
         </View>
 
+        {/* Wear Count */}
+        <Text style={styles.sectionTitle}>Wear Count</Text>
+        <View style={styles.wearCountRow}>
+          <Pressable
+            style={[styles.wearCountBtn, wearCount <= 0 && { opacity: 0.3 }]}
+            onPress={() => setWearCount(Math.max(0, wearCount - 1))}
+            disabled={wearCount <= 0}
+          >
+            <Ionicons name="remove" size={20} color={Theme.colors.text} />
+          </Pressable>
+          <Text style={styles.wearCountValue}>
+            {wearCount} wear{wearCount !== 1 ? "s" : ""}
+          </Text>
+          <Pressable
+            style={styles.wearCountBtn}
+            onPress={() => setWearCount(wearCount + 1)}
+          >
+            <Ionicons name="add" size={20} color={Theme.colors.text} />
+          </Pressable>
+        </View>
+
         {/* Notes */}
         <Text style={styles.sectionTitle}>Notes (optional)</Text>
         <TextInput
@@ -887,7 +908,58 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Theme.colors.border,
   },
+  notesInput: {
+    height: 90,
+    backgroundColor: Theme.colors.surface,
+    borderRadius: Theme.borderRadius.sm,
+    paddingHorizontal: Theme.spacing.md,
+    paddingTop: Theme.spacing.sm,
+    fontSize: Theme.fontSize.md,
+    color: Theme.colors.text,
+    borderWidth: 1,
+    borderColor: Theme.colors.border,
+    textAlignVertical: "top",
+  },
+  revertBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: Theme.spacing.sm,
+    paddingVertical: 6,
+  },
+  revertBtnText: {
+    fontSize: Theme.fontSize.sm,
+    fontWeight: "600",
+    color: Theme.colors.primary,
+  },
   chipRow: { flexDirection: "row", flexWrap: "wrap" },
+  wearCountRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Theme.spacing.md,
+    backgroundColor: Theme.colors.surface,
+    borderRadius: Theme.borderRadius.sm,
+    padding: Theme.spacing.sm,
+    borderWidth: 1,
+    borderColor: Theme.colors.border,
+  },
+  wearCountBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: Theme.colors.surfaceAlt,
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: Theme.colors.border,
+  },
+  wearCountValue: {
+    flex: 1,
+    textAlign: "center",
+    fontSize: Theme.fontSize.lg,
+    fontWeight: "700",
+    color: Theme.colors.text,
+  },
   colorHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
