@@ -368,21 +368,30 @@ function findPriceInLd(data: any): number | null {
 function extractProductImage(html: string): string | null {
   // og:image is the most reliable
   const ogImage = extractMeta(html, "og:image");
-  if (ogImage && ogImage.startsWith("http")) return ogImage;
+  if (ogImage && (ogImage.startsWith("http") || ogImage.startsWith("//"))) return ogImage;
 
-  // Try JSON-LD image
-  const ldMatch = html.match(
-    /<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/i,
+  // Try twitter:image
+  const twitterImage = extractMeta(html, "twitter:image");
+  if (twitterImage && (twitterImage.startsWith("http") || twitterImage.startsWith("//"))) return twitterImage;
+
+  // Try JSON-LD image (check all script blocks)
+  const ldMatches = html.match(
+    /<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi,
   );
-  if (ldMatch) {
-    try {
-      const data = JSON.parse(
-        ldMatch[1] || ldMatch[0].replace(/<script[^>]*>|<\/script>/gi, ""),
-      );
-      const img = findImageInLd(data);
-      if (img) return img;
-    } catch { /* skip */ }
+  if (ldMatches) {
+    for (const block of ldMatches) {
+      try {
+        const jsonStr = block.replace(/<script[^>]*>|<\/script>/gi, "");
+        const data = JSON.parse(jsonStr);
+        const img = findImageInLd(data);
+        if (img) return img;
+      } catch { /* skip */ }
+    }
   }
+
+  // Try product:image meta
+  const productImage = extractMeta(html, "product:image");
+  if (productImage && (productImage.startsWith("http") || productImage.startsWith("//"))) return productImage;
 
   return null;
 }
@@ -504,10 +513,31 @@ function cleanProductName(raw: string, brand?: string): string {
  */
 async function downloadImage(url: string): Promise<string | undefined> {
   try {
+    // Handle protocol-relative URLs
+    let resolvedUrl = url;
+    if (resolvedUrl.startsWith("//")) {
+      resolvedUrl = "https:" + resolvedUrl;
+    }
+    // Skip non-http URLs
+    if (!resolvedUrl.startsWith("http")) return undefined;
+
     const filename = `product_${Date.now()}.jpg`;
     const localUri = `${FileSystem.documentDirectory}${filename}`;
-    const result = await FileSystem.downloadAsync(url, localUri);
-    if (result.status === 200) return result.uri;
+    const result = await FileSystem.downloadAsync(resolvedUrl, localUri, {
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/120.0.0.0 Mobile Safari/537.36",
+        Accept: "image/*,*/*;q=0.8",
+        Referer: resolvedUrl,
+      },
+    });
+    if (result.status === 200) {
+      // Verify the file has actual content (not an error page)
+      const info = await FileSystem.getInfoAsync(result.uri);
+      if (info.exists && (info as any).size > 500) {
+        return result.uri;
+      }
+    }
     return undefined;
   } catch {
     return undefined;

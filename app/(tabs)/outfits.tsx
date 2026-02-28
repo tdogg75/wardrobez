@@ -1,9 +1,10 @@
-import React from "react";
+import React, { useState, useMemo } from "react";
 import {
   View,
   Text,
   FlatList,
   Pressable,
+  ScrollView,
   StyleSheet,
   ActivityIndicator,
   Alert,
@@ -14,9 +15,13 @@ import { useOutfits } from "@/hooks/useOutfits";
 import { useClothingItems } from "@/hooks/useClothingItems";
 import { MoodBoard } from "@/components/MoodBoard";
 import { EmptyState } from "@/components/EmptyState";
+import { Chip } from "@/components/Chip";
 import { Theme } from "@/constants/theme";
-import { SEASON_LABELS } from "@/models/types";
-import type { ClothingItem } from "@/models/types";
+import { SEASON_LABELS, OCCASION_LABELS } from "@/models/types";
+import type { ClothingItem, Season, Occasion } from "@/models/types";
+
+const SEASONS: Season[] = ["spring", "summer", "fall", "winter"];
+const OCCASIONS: Occasion[] = ["casual", "work", "fancy", "party", "vacation"];
 
 const fmt = (n: number) =>
   n.toLocaleString("en-US", { style: "currency", currency: "USD" });
@@ -25,6 +30,17 @@ export default function OutfitsScreen() {
   const { outfits, loading, remove, logWorn, updateRating } = useOutfits();
   const { getById } = useClothingItems();
   const router = useRouter();
+
+  const [seasonFilter, setSeasonFilter] = useState<Season | null>(null);
+  const [occasionFilter, setOccasionFilter] = useState<Occasion | null>(null);
+
+  const filteredOutfits = useMemo(() => {
+    return outfits.filter((outfit) => {
+      if (seasonFilter && !(outfit.seasons ?? []).includes(seasonFilter)) return false;
+      if (occasionFilter && !(outfit.occasions ?? []).includes(occasionFilter)) return false;
+      return true;
+    });
+  }, [outfits, seasonFilter, occasionFilter]);
 
   const handleLogWorn = (outfitId: string, outfitName: string) => {
     Alert.alert("Log Worn", `Mark "${outfitName}" as worn today?`, [
@@ -36,8 +52,54 @@ export default function OutfitsScreen() {
     ]);
   };
 
+  const hasActiveFilter = seasonFilter !== null || occasionFilter !== null;
+
   return (
     <View style={styles.container}>
+      {/* Filter bar */}
+      <View style={styles.filterBar}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.filterScroll}
+        >
+          <Text style={styles.filterLabel}>Season:</Text>
+          {SEASONS.map((s) => (
+            <Chip
+              key={s}
+              label={SEASON_LABELS[s]}
+              selected={seasonFilter === s}
+              onPress={() => setSeasonFilter(seasonFilter === s ? null : s)}
+            />
+          ))}
+
+          <View style={styles.filterDivider} />
+
+          <Text style={styles.filterLabel}>Occasion:</Text>
+          {OCCASIONS.map((o) => (
+            <Chip
+              key={o}
+              label={OCCASION_LABELS[o]}
+              selected={occasionFilter === o}
+              onPress={() => setOccasionFilter(occasionFilter === o ? null : o)}
+            />
+          ))}
+
+          {hasActiveFilter && (
+            <Pressable
+              style={styles.clearBtn}
+              onPress={() => {
+                setSeasonFilter(null);
+                setOccasionFilter(null);
+              }}
+            >
+              <Ionicons name="close-circle" size={16} color={Theme.colors.error} />
+              <Text style={styles.clearBtnText}>Clear</Text>
+            </Pressable>
+          )}
+        </ScrollView>
+      </View>
+
       {loading ? (
         <ActivityIndicator size="large" color={Theme.colors.primary} style={styles.loader} />
       ) : outfits.length === 0 ? (
@@ -46,9 +108,15 @@ export default function OutfitsScreen() {
           title="No outfits yet"
           subtitle="Head to the Suggest tab to get AI-powered outfit recommendations based on your wardrobe!"
         />
+      ) : filteredOutfits.length === 0 ? (
+        <EmptyState
+          icon="filter-outline"
+          title="No matching outfits"
+          subtitle="No outfits match the selected filters. Try changing or clearing the filters."
+        />
       ) : (
         <FlatList
-          data={outfits}
+          data={filteredOutfits}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.list}
           renderItem={({ item: outfit }) => {
@@ -77,12 +145,10 @@ export default function OutfitsScreen() {
                 }
               >
                 <View style={styles.cardBody}>
-                  {/* Mini Mood Board */}
                   <View style={styles.moodBoardWrap}>
                     <MoodBoard items={outfitItems} size={110} />
                   </View>
 
-                  {/* Outfit Info */}
                   <View style={styles.cardInfo}>
                     <View style={styles.cardHeader}>
                       <Text style={styles.cardTitle} numberOfLines={1}>
@@ -96,12 +162,10 @@ export default function OutfitsScreen() {
                       )}
                     </View>
 
-                    {/* Item names */}
                     <Text style={styles.itemList} numberOfLines={2}>
                       {outfitItems.map((i) => i?.name).join(" + ")}
                     </Text>
 
-                    {/* Rating (tappable) */}
                     <View style={styles.ratingRow}>
                       {[1, 2, 3, 4, 5].map((star) => (
                         <Pressable
@@ -121,7 +185,6 @@ export default function OutfitsScreen() {
                       </Text>
                     </View>
 
-                    {/* Cost + Worn count */}
                     <View style={styles.metaRow}>
                       {totalCost > 0 && (
                         <Text style={styles.costText}>{fmt(totalCost)}</Text>
@@ -133,15 +196,17 @@ export default function OutfitsScreen() {
                       )}
                     </View>
 
-                    {(outfit.seasons ?? []).length > 0 && (
-                      <Text style={styles.seasonText}>
-                        {(outfit.seasons ?? []).map((s) => SEASON_LABELS[s]).join(", ")}
+                    {((outfit.seasons ?? []).length > 0 || (outfit.occasions ?? []).length > 0) && (
+                      <Text style={styles.tagText} numberOfLines={1}>
+                        {[
+                          ...(outfit.seasons ?? []).map((s) => SEASON_LABELS[s]),
+                          ...(outfit.occasions ?? []).map((o) => OCCASION_LABELS[o]),
+                        ].join(", ")}
                       </Text>
                     )}
                   </View>
                 </View>
 
-                {/* Action buttons */}
                 <View style={styles.actionRow}>
                   <Pressable
                     style={styles.logWornBtn}
@@ -169,6 +234,44 @@ export default function OutfitsScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Theme.colors.background },
   loader: { flex: 1, justifyContent: "center" },
+  filterBar: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Theme.colors.border,
+    backgroundColor: Theme.colors.surface,
+  },
+  filterScroll: {
+    paddingHorizontal: Theme.spacing.md,
+    paddingVertical: Theme.spacing.sm,
+    alignItems: "center",
+    gap: 6,
+  },
+  filterLabel: {
+    fontSize: Theme.fontSize.xs,
+    fontWeight: "600",
+    color: Theme.colors.textLight,
+    textTransform: "uppercase",
+    letterSpacing: 0.3,
+    marginRight: 2,
+  },
+  filterDivider: {
+    width: 1,
+    height: 20,
+    backgroundColor: Theme.colors.border,
+    marginHorizontal: 6,
+  },
+  clearBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    marginLeft: 4,
+  },
+  clearBtnText: {
+    fontSize: Theme.fontSize.xs,
+    fontWeight: "600",
+    color: Theme.colors.error,
+  },
   list: { padding: Theme.spacing.md, paddingBottom: 40 },
   card: {
     backgroundColor: Theme.colors.surface,
@@ -260,7 +363,7 @@ const styles = StyleSheet.create({
     color: Theme.colors.success,
     fontWeight: "500",
   },
-  seasonText: {
+  tagText: {
     fontSize: Theme.fontSize.xs,
     color: Theme.colors.primary,
     fontWeight: "500",

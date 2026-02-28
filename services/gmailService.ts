@@ -97,6 +97,10 @@ export function clearToken(): void {
   cachedToken = null;
 }
 
+export function setManualToken(token: string): void {
+  cachedToken = token;
+}
+
 /* ---------- Gmail API helpers ---------- */
 
 interface GmailMessage {

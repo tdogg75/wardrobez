@@ -89,7 +89,8 @@ const styles = StyleSheet.create({
   image: {
     width: "100%",
     height: "100%",
-    resizeMode: "cover",
+    resizeMode: "contain",
+    backgroundColor: "#F5F5F5",
   },
   placeholder: {
     width: "100%",

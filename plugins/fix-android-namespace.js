@@ -7,9 +7,8 @@ const path = require("path");
  *   1. Namespace mismatch in app/build.gradle (AGP 8.x)
  *   2. Missing buildFeatures.buildConfig = true (AGP 8.x default is false)
  *   3. Missing explicit imports for R / BuildConfig in generated Kotlin sources
- *
- * Uses withDangerousMod for direct filesystem access to guarantee the fix
- * is applied regardless of modifier ordering.
+ *   4. Kotlin version conflicts across subprojects
+ *   5. JVM target mismatch between Kotlin and Java
  */
 function fixAndroidBuild(config) {
   const pkg = config.android?.package;
@@ -41,7 +40,6 @@ function fixAndroidBuild(config) {
 
         // Ensure buildFeatures.buildConfig = true
         if (!/buildConfig\s*[=(]\s*true/.test(g)) {
-          // Remove any existing buildConfig = false
           g = g.replace(/^[ \t]*buildConfig\s*[=(]?\s*false\s*[)]?\s*$/gm, "");
 
           if (/buildFeatures\s*\{/.test(g)) {
@@ -50,7 +48,6 @@ function fixAndroidBuild(config) {
               "$1\n        buildConfig = true"
             );
           } else {
-            // Add a new buildFeatures block right after the namespace line
             const nsPattern = isKts
               ? `namespace = "${pkg}"`
               : `namespace "${pkg}"`;
@@ -64,7 +61,71 @@ function fixAndroidBuild(config) {
         fs.writeFileSync(gradlePath, g, "utf8");
       }
 
-      // --- 2. Add explicit R / BuildConfig imports to Kotlin sources ---
+      // --- 2. Force Kotlin version alignment in root build.gradle ---
+      let rootGradlePath = path.join(root, "build.gradle");
+      if (!fs.existsSync(rootGradlePath)) {
+        rootGradlePath = path.join(root, "build.gradle.kts");
+      }
+      if (fs.existsSync(rootGradlePath)) {
+        const isKts = rootGradlePath.endsWith(".kts");
+        let rg = fs.readFileSync(rootGradlePath, "utf8");
+
+        // Add subprojects block to force consistent Kotlin JVM target
+        const subprojectsBlock = isKts
+          ? `
+subprojects {
+    afterEvaluate {
+        tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
+            kotlinOptions {
+                jvmTarget = "17"
+            }
+        }
+    }
+}
+`
+          : `
+subprojects {
+    afterEvaluate {
+        tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
+            kotlinOptions {
+                jvmTarget = "17"
+            }
+        }
+    }
+}
+`;
+        // Only add if not already present
+        if (!rg.includes("KotlinCompile")) {
+          rg += subprojectsBlock;
+          fs.writeFileSync(rootGradlePath, rg, "utf8");
+        }
+      }
+
+      // --- 3. Ensure gradle.properties has required settings ---
+      const gradlePropsPath = path.join(root, "gradle.properties");
+      let props = "";
+      if (fs.existsSync(gradlePropsPath)) {
+        props = fs.readFileSync(gradlePropsPath, "utf8");
+      }
+      const requiredProps = {
+        "android.useAndroidX": "true",
+        "android.enableJetifier": "true",
+        "org.gradle.jvmargs": "-Xmx2048m -XX:MaxMetaspaceSize=512m",
+        "kotlin.jvm.target.validation.mode": "warning",
+      };
+      let propsChanged = false;
+      for (const [key, value] of Object.entries(requiredProps)) {
+        const regex = new RegExp(`^${key.replace(/\./g, "\\.")}\\s*=`, "m");
+        if (!regex.test(props)) {
+          props += `\n${key}=${value}`;
+          propsChanged = true;
+        }
+      }
+      if (propsChanged) {
+        fs.writeFileSync(gradlePropsPath, props, "utf8");
+      }
+
+      // --- 4. Add explicit R / BuildConfig imports to Kotlin sources ---
       const pkgParts = pkg.split(".");
       const srcDir = path.join(
         root, "app", "src", "main", "java", ...pkgParts
@@ -95,7 +156,6 @@ function fixAndroidBuild(config) {
           if (usesBC && !hasBCImport) toAdd.push(`import ${pkg}.BuildConfig`);
 
           if (toAdd.length > 0) {
-            // Insert after the package declaration
             src = src.replace(
               /^(package\s+.+)$/m,
               `$1\n\n${toAdd.join("\n")}`
