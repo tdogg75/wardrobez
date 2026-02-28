@@ -9,7 +9,9 @@ import {
   StyleSheet,
   Alert,
   Modal,
+  ActivityIndicator,
 } from "react-native";
+import { fetchProductFromUrl } from "@/services/productSearch";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import { Ionicons } from "@expo/vector-icons";
@@ -51,7 +53,7 @@ const ARCHIVE_REASONS: ArchiveReason[] = ["donated", "sold", "worn_out", "given_
 export default function EditItemScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { items, addOrUpdate, remove, archiveItem } = useClothingItems();
+  const { items, addOrUpdate, remove, archiveItem, removeItemWornDate } = useClothingItems();
 
   const [name, setName] = useState("");
   const [category, setCategory] = useState<ClothingCategory>("tops");
@@ -92,6 +94,12 @@ export default function EditItemScreen() {
 
   // Original auto colour (from dropper)
   const [originalAutoColor, setOriginalAutoColor] = useState<string | undefined>(undefined);
+
+  // URL refresh
+  const [refreshingUrl, setRefreshingUrl] = useState(false);
+
+  // Wear date history
+  const [showWearDates, setShowWearDates] = useState(false);
 
   // Archive
   const [showArchiveModal, setShowArchiveModal] = useState(false);
@@ -215,6 +223,71 @@ export default function EditItemScreen() {
     setHslAdjust({ h: hsl.h, s: hsl.s, l: hsl.l });
   };
 
+  const wearDates = useMemo(() => {
+    return items.find((i) => i.id === id)?.wearDates ?? [];
+  }, [items, id]);
+
+  const handleRefreshFromUrl = async () => {
+    if (!productUrl.trim()) {
+      Alert.alert("No URL", "Please enter a product URL first.");
+      return;
+    }
+    setRefreshingUrl(true);
+    try {
+      const result = await fetchProductFromUrl(productUrl.trim());
+      if (!result) {
+        Alert.alert("No Results", "Could not fetch product information from this URL.");
+        return;
+      }
+
+      const found: string[] = [];
+      if (result.name) found.push(`Name: ${result.name}`);
+      if (result.category) found.push(`Category: ${result.category}`);
+      if (result.subCategory) found.push(`Subcategory: ${result.subCategory}`);
+      if (result.fabricType) found.push(`Fabric: ${result.fabricType}`);
+      if (result.colorIndex != null) found.push(`Color: ${PRESET_COLORS[result.colorIndex]?.name ?? "Unknown"}`);
+      if (result.cost != null) found.push(`Cost: $${result.cost}`);
+      if (result.imageUri) found.push(`Image: found`);
+      if (result.brand) found.push(`Brand: ${result.brand}`);
+
+      if (found.length === 0) {
+        Alert.alert("No Data", "The URL was fetched but no product fields were found.");
+        return;
+      }
+
+      Alert.alert(
+        "Product Found",
+        `The following fields were detected:\n\n${found.join("\n")}`,
+        [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Apply",
+            onPress: () => {
+              if (result.name) setName(result.name);
+              if (result.category) {
+                setCategory(result.category);
+                setSubCategory(result.subCategory);
+              } else if (result.subCategory) {
+                setSubCategory(result.subCategory);
+              }
+              if (result.fabricType) setFabricType(result.fabricType);
+              if (result.colorIndex != null) {
+                handleSelectPresetColor(result.colorIndex);
+              }
+              if (result.cost != null) setCost(String(result.cost));
+              if (result.imageUri) setImageUris((prev) => [...prev, result.imageUri!]);
+              if (result.brand) setBrand(result.brand);
+            },
+          },
+        ],
+      );
+    } catch (err) {
+      Alert.alert("Error", "Failed to fetch product information. Please check the URL and try again.");
+    } finally {
+      setRefreshingUrl(false);
+    }
+  };
+
   const handleSave = async () => {
     if (!name.trim() || !id) return;
     const parsedCost = cost.trim() ? parseFloat(cost.trim()) : undefined;
@@ -320,15 +393,28 @@ export default function EditItemScreen() {
 
         {/* Product URL */}
         <Text style={styles.sectionTitle}>Product URL (optional)</Text>
-        <TextInput
-          style={styles.input}
-          value={productUrl}
-          onChangeText={setProductUrl}
-          placeholder="https://..."
-          placeholderTextColor={Theme.colors.textLight}
-          autoCapitalize="none"
-          keyboardType="url"
-        />
+        <View style={styles.urlRow}>
+          <TextInput
+            style={[styles.input, styles.urlInput]}
+            value={productUrl}
+            onChangeText={setProductUrl}
+            placeholder="https://..."
+            placeholderTextColor={Theme.colors.textLight}
+            autoCapitalize="none"
+            keyboardType="url"
+          />
+          <Pressable
+            style={[styles.refreshUrlBtn, refreshingUrl && { opacity: 0.6 }]}
+            onPress={handleRefreshFromUrl}
+            disabled={refreshingUrl}
+          >
+            {refreshingUrl ? (
+              <ActivityIndicator size="small" color={Theme.colors.primary} />
+            ) : (
+              <Ionicons name="refresh-outline" size={20} color={Theme.colors.primary} />
+            )}
+          </Pressable>
+        </View>
 
         {/* Cost */}
         <Text style={styles.sectionTitle}>Cost (optional)</Text>
@@ -571,6 +657,71 @@ export default function EditItemScreen() {
             <Ionicons name="add" size={20} color={Theme.colors.text} />
           </Pressable>
         </View>
+
+        {/* Wear Date History */}
+        {wearDates.length > 0 && (
+          <>
+            <Pressable
+              style={styles.wearDatesToggle}
+              onPress={() => setShowWearDates(!showWearDates)}
+            >
+              <Ionicons
+                name={showWearDates ? "chevron-up" : "chevron-down"}
+                size={16}
+                color={Theme.colors.primary}
+              />
+              <Text style={styles.wearDatesToggleText}>
+                {showWearDates ? "Hide wear history" : `Show wear history (${wearDates.length})`}
+              </Text>
+            </Pressable>
+
+            {showWearDates && (
+              <View style={styles.wearDatesContainer}>
+                {[...wearDates]
+                  .map((d, i) => ({ date: d, originalIndex: i }))
+                  .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+                  .slice(0, 10)
+                  .map(({ date, originalIndex }) => (
+                    <View key={`${date}-${originalIndex}`} style={styles.wearDateRow}>
+                      <Text style={styles.wearDateText}>
+                        {new Date(date).toLocaleDateString(undefined, {
+                          year: "numeric",
+                          month: "short",
+                          day: "numeric",
+                        })}
+                      </Text>
+                      <Pressable
+                        hitSlop={8}
+                        onPress={() => {
+                          Alert.alert(
+                            "Remove Wear Date",
+                            `Remove ${new Date(date).toLocaleDateString()}?`,
+                            [
+                              { text: "Cancel", style: "cancel" },
+                              {
+                                text: "Remove",
+                                style: "destructive",
+                                onPress: () => {
+                                  if (id) removeItemWornDate(id, originalIndex);
+                                },
+                              },
+                            ],
+                          );
+                        }}
+                      >
+                        <Ionicons name="trash-outline" size={18} color={Theme.colors.error} />
+                      </Pressable>
+                    </View>
+                  ))}
+                {wearDates.length > 10 && (
+                  <Text style={styles.wearDatesMoreText}>
+                    View all {wearDates.length} dates
+                  </Text>
+                )}
+              </View>
+            )}
+          </>
+        )}
 
         {/* Notes */}
         <Text style={styles.sectionTitle}>Notes (optional)</Text>
@@ -1250,5 +1401,64 @@ const styles = StyleSheet.create({
     fontSize: Theme.fontSize.md,
     fontWeight: "600",
     color: Theme.colors.primary,
+  },
+  // URL refresh
+  urlRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Theme.spacing.sm,
+  },
+  urlInput: {
+    flex: 1,
+  },
+  refreshUrlBtn: {
+    width: 48,
+    height: 48,
+    borderRadius: Theme.borderRadius.sm,
+    backgroundColor: Theme.colors.primary + "12",
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: Theme.colors.primary + "30",
+  },
+  // Wear date history
+  wearDatesToggle: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: Theme.spacing.sm,
+    paddingVertical: 8,
+  },
+  wearDatesToggleText: {
+    fontSize: Theme.fontSize.sm,
+    color: Theme.colors.primary,
+    fontWeight: "600",
+  },
+  wearDatesContainer: {
+    backgroundColor: Theme.colors.surface,
+    borderRadius: Theme.borderRadius.sm,
+    borderWidth: 1,
+    borderColor: Theme.colors.border,
+    overflow: "hidden",
+  },
+  wearDateRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: Theme.spacing.sm,
+    paddingHorizontal: Theme.spacing.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Theme.colors.border,
+  },
+  wearDateText: {
+    fontSize: Theme.fontSize.sm,
+    color: Theme.colors.text,
+  },
+  wearDatesMoreText: {
+    textAlign: "center",
+    paddingVertical: Theme.spacing.sm,
+    fontSize: Theme.fontSize.sm,
+    color: Theme.colors.primary,
+    fontWeight: "600",
   },
 });

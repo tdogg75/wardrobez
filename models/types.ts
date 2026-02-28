@@ -67,6 +67,8 @@ export interface ClothingItem {
   cost?: number;
   favorite: boolean;
   wearCount: number;
+  /** ISO date strings for each time worn (standalone wears, not through outfits) */
+  wearDates?: string[];
   archived: boolean;
   archiveReason?: ArchiveReason;
   archivedAt?: number;
@@ -85,6 +87,13 @@ export interface ClothingItem {
   occasions?: Occasion[];
 }
 
+/** A single wear-log entry for an outfit, optionally with a selfie + note */
+export interface WornEntry {
+  date: string; // ISO date string
+  selfieUri?: string;
+  note?: string;
+}
+
 export interface Outfit {
   id: string;
   name: string;
@@ -95,12 +104,27 @@ export interface Outfit {
   createdAt: number;
   suggested: boolean; // was this AI-suggested?
   wornDates: string[]; // ISO date strings for each time worn
+  /** Rich wear-log entries (selfie + note). Coexists with wornDates for compat. */
+  wornEntries?: WornEntry[];
   hasRemovedItems?: boolean;
   removedItemNotified?: boolean;
   // Optional notes
   notes?: string;
   // Custom tags
   tags?: string[];
+}
+
+/** A wishlist / shopping-list item */
+export interface WishlistItem {
+  id: string;
+  name: string;
+  brand?: string;
+  url?: string;
+  estimatedPrice?: number;
+  category?: ClothingCategory;
+  notes?: string;
+  createdAt: number;
+  purchased?: boolean;
 }
 
 export const CATEGORY_LABELS: Record<ClothingCategory, string> = {

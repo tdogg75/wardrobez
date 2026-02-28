@@ -6,16 +6,24 @@ import {
   Pressable,
   StyleSheet,
   Alert,
+  Modal,
+  TextInput,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useClothingItems } from "@/hooks/useClothingItems";
 import { useOutfits } from "@/hooks/useOutfits";
-import { exportAllData, importAllData } from "@/services/storage";
+import {
+  exportAllData,
+  importAllData,
+  getWishlistItems,
+  saveWishlistItem,
+  deleteWishlistItem,
+} from "@/services/storage";
 import { Theme } from "@/constants/theme";
 import { CATEGORY_LABELS, ARCHIVE_REASON_LABELS } from "@/models/types";
-import type { ClothingCategory, ClothingItem } from "@/models/types";
+import type { ClothingCategory, ClothingItem, WishlistItem } from "@/models/types";
 import * as FileSystem from "expo-file-system";
 import * as Sharing from "expo-sharing";
 import * as DocumentPicker from "expo-document-picker";
@@ -53,6 +61,19 @@ export default function ProfileScreen() {
   const [archivedOpen, setArchivedOpen] = useState(false);
   const [favoritesOpen, setFavoritesOpen] = useState(false);
   const [spendingOpen, setSpendingOpen] = useState(false);
+  const [colorPaletteOpen, setColorPaletteOpen] = useState(false);
+  const [gapAnalysisOpen, setGapAnalysisOpen] = useState(false);
+  const [wishlistOpen, setWishlistOpen] = useState(false);
+
+  /* ---------- wishlist state ---------- */
+  const [wishlistItems, setWishlistItems] = useState<WishlistItem[]>([]);
+  const [wishlistModalVisible, setWishlistModalVisible] = useState(false);
+  const [wlName, setWlName] = useState("");
+  const [wlBrand, setWlBrand] = useState("");
+  const [wlUrl, setWlUrl] = useState("");
+  const [wlPrice, setWlPrice] = useState("");
+  const [wlCategory, setWlCategory] = useState<ClothingCategory | "">("");
+  const [wlNotes, setWlNotes] = useState("");
 
   /* ---------- derived data ---------- */
   const allActive: ClothingItem[] = items;
@@ -175,6 +196,148 @@ export default function ProfileScreen() {
         .sort((a, b) => a.cpw - b.cpw),
     [allActive],
   );
+
+  /* --- Color Palette Analysis --- */
+  const NEUTRAL_NAMES = ["black", "white", "gray", "grey", "beige", "tan", "brown", "navy"];
+
+  const colorPalette = useMemo(() => {
+    const colorMap: Record<string, { hex: string; name: string; count: number }> = {};
+    for (const item of allActive) {
+      const name = (item.colorName ?? "Unknown").toLowerCase().trim();
+      if (colorMap[name]) {
+        colorMap[name].count += 1;
+      } else {
+        colorMap[name] = { hex: item.color, name: item.colorName ?? "Unknown", count: 1 };
+      }
+    }
+    const sorted = Object.values(colorMap).sort((a, b) => b.count - a.count);
+    const total = allActive.length || 1;
+    const neutralCount = sorted
+      .filter((c) => NEUTRAL_NAMES.some((n) => c.name.toLowerCase().includes(n)))
+      .reduce((sum, c) => sum + c.count, 0);
+    const neutralPct = neutralCount / total;
+    const distinctFamilies = sorted.length;
+    return { sorted, total, neutralPct, distinctFamilies };
+  }, [allActive]);
+
+  /* --- Wardrobe Gap Analysis --- */
+  const ALL_CATEGORIES: ClothingCategory[] = [
+    "tops", "bottoms", "dresses", "blazers", "jackets",
+    "shoes", "accessories", "swimwear", "jewelry",
+  ];
+
+  const gapInsights = useMemo(() => {
+    const catCounts: Record<ClothingCategory, number> = {} as any;
+    for (const cat of ALL_CATEGORIES) {
+      catCounts[cat] = 0;
+    }
+    for (const item of allActive) {
+      catCounts[item.category] = (catCounts[item.category] ?? 0) + 1;
+    }
+
+    const insights: { key: string; icon: keyof typeof Ionicons.glyphMap; text: string }[] = [];
+
+    // Categories with 0 items
+    for (const cat of ALL_CATEGORIES) {
+      if (catCounts[cat] === 0) {
+        insights.push({
+          key: `empty-${cat}`,
+          icon: "add-circle-outline",
+          text: `No ${CATEGORY_LABELS[cat].toLowerCase()} in your wardrobe — consider adding some`,
+        });
+      }
+    }
+
+    // Tops outnumber bottoms by 3x+
+    if (catCounts.tops > 0 && catCounts.bottoms > 0 && catCounts.tops >= catCounts.bottoms * 3) {
+      insights.push({
+        key: "tops-bottoms",
+        icon: "swap-vertical-outline",
+        text: `You have ${catCounts.tops} tops but only ${catCounts.bottoms} bottoms — consider adding versatile pants`,
+      });
+    }
+
+    // No outerwear/jackets (both blazers and jackets count)
+    if (catCounts.jackets === 0 && catCounts.blazers === 0) {
+      insights.push({
+        key: "no-outerwear",
+        icon: "cloudy-outline",
+        text: "No jackets for layering — essential for transitional weather",
+      });
+    }
+
+    // No shoes
+    if (catCounts.shoes === 0) {
+      insights.push({
+        key: "no-shoes",
+        icon: "footsteps-outline",
+        text: "Don't forget footwear to complete your outfits",
+      });
+    }
+
+    // No accessories (accessories + jewelry)
+    if (catCounts.accessories === 0 && catCounts.jewelry === 0) {
+      insights.push({
+        key: "no-accessories",
+        icon: "diamond-outline",
+        text: "Accessories can elevate any outfit — consider belts, scarves, or jewelry",
+      });
+    }
+
+    return insights;
+  }, [allActive]);
+
+  /* --- Wishlist load / handlers --- */
+  const loadWishlist = useCallback(async () => {
+    const data = await getWishlistItems();
+    setWishlistItems(data.filter((i) => !i.purchased));
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadWishlist();
+    }, [loadWishlist])
+  );
+
+  const handleAddWishlistItem = async () => {
+    if (!wlName.trim()) {
+      Alert.alert("Name required", "Please enter a name for the wishlist item.");
+      return;
+    }
+    const newItem: WishlistItem = {
+      id: Date.now().toString(36) + Math.random().toString(36).slice(2, 9),
+      name: wlName.trim(),
+      brand: wlBrand.trim() || undefined,
+      url: wlUrl.trim() || undefined,
+      estimatedPrice: wlPrice ? parseFloat(wlPrice) : undefined,
+      category: wlCategory || undefined,
+      notes: wlNotes.trim() || undefined,
+      createdAt: Date.now(),
+    };
+    await saveWishlistItem(newItem);
+    setWlName("");
+    setWlBrand("");
+    setWlUrl("");
+    setWlPrice("");
+    setWlCategory("");
+    setWlNotes("");
+    setWishlistModalVisible(false);
+    loadWishlist();
+  };
+
+  const handleDeleteWishlistItem = (item: WishlistItem) => {
+    Alert.alert("Remove Item", `Remove "${item.name}" from your wishlist?`, [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Remove",
+        style: "destructive",
+        onPress: async () => {
+          await deleteWishlistItem(item.id);
+          loadWishlist();
+        },
+      },
+    ]);
+  };
 
   /* --- Backup / Export --- */
   const handleExport = async () => {
@@ -575,6 +738,266 @@ export default function ProfileScreen() {
           </View>
         )}
       </View>
+
+      {/* ============================================================ */}
+      {/*  COLOUR PALETTE ANALYSIS                                      */}
+      {/* ============================================================ */}
+      <View style={styles.card}>
+        <SectionHeader
+          icon="color-palette-outline"
+          label="Wardrobe Colour Palette"
+          open={colorPaletteOpen}
+          onPress={() => setColorPaletteOpen((v) => !v)}
+        />
+
+        {colorPaletteOpen && (
+          <View style={styles.sectionBody}>
+            {allActive.length === 0 ? (
+              <Text style={styles.emptyText}>No items in your wardrobe yet.</Text>
+            ) : (
+              <>
+                {/* Horizontal colour bar */}
+                <View style={styles.colorBarContainer}>
+                  {colorPalette.sorted.map((c) => (
+                    <View
+                      key={c.name}
+                      style={[
+                        styles.colorStripe,
+                        {
+                          backgroundColor: c.hex,
+                          flex: c.count / colorPalette.total,
+                        },
+                      ]}
+                    />
+                  ))}
+                </View>
+
+                {/* Top 5 colours */}
+                <SubHeading>Top Colours</SubHeading>
+                {colorPalette.sorted.slice(0, 5).map((c) => (
+                  <View key={c.name} style={styles.colorListRow}>
+                    <View style={[styles.colorSwatch, { backgroundColor: c.hex }]} />
+                    <Text style={styles.colorListText}>
+                      {c.name} ({c.count} item{c.count !== 1 ? "s" : ""})
+                    </Text>
+                  </View>
+                ))}
+
+                {/* Tips */}
+                {colorPalette.neutralPct > 0.7 && (
+                  <View style={styles.tipCard}>
+                    <Ionicons name="bulb-outline" size={16} color={Theme.colors.warning} />
+                    <Text style={styles.tipText}>
+                      Your wardrobe is mostly neutrals — great foundation! Consider adding a statement
+                      color.
+                    </Text>
+                  </View>
+                )}
+                {colorPalette.distinctFamilies < 3 && (
+                  <View style={styles.tipCard}>
+                    <Ionicons name="bulb-outline" size={16} color={Theme.colors.warning} />
+                    <Text style={styles.tipText}>
+                      Limited color variety — adding new colors could expand your outfit options.
+                    </Text>
+                  </View>
+                )}
+              </>
+            )}
+          </View>
+        )}
+      </View>
+
+      {/* ============================================================ */}
+      {/*  WARDROBE GAP ANALYSIS                                        */}
+      {/* ============================================================ */}
+      <View style={styles.card}>
+        <SectionHeader
+          icon="analytics-outline"
+          label="Wardrobe Gaps"
+          open={gapAnalysisOpen}
+          onPress={() => setGapAnalysisOpen((v) => !v)}
+        />
+
+        {gapAnalysisOpen && (
+          <View style={styles.sectionBody}>
+            {gapInsights.length === 0 ? (
+              <View style={styles.tipCard}>
+                <Ionicons name="checkmark-circle-outline" size={16} color={Theme.colors.success} />
+                <Text style={styles.tipText}>
+                  Your wardrobe is well-rounded — no major gaps detected!
+                </Text>
+              </View>
+            ) : (
+              gapInsights.map((insight) => (
+                <View key={insight.key} style={styles.gapCard}>
+                  <Ionicons
+                    name={insight.icon}
+                    size={18}
+                    color={Theme.colors.warning}
+                    style={{ marginRight: Theme.spacing.sm }}
+                  />
+                  <Text style={styles.gapText}>{insight.text}</Text>
+                </View>
+              ))
+            )}
+          </View>
+        )}
+      </View>
+
+      {/* ============================================================ */}
+      {/*  WISHLIST                                                      */}
+      {/* ============================================================ */}
+      <View style={styles.card}>
+        <SectionHeader
+          icon="gift-outline"
+          label="Wishlist"
+          open={wishlistOpen}
+          onPress={() => setWishlistOpen((v) => !v)}
+        />
+
+        {wishlistOpen && (
+          <View style={styles.sectionBody}>
+            {wishlistItems.length === 0 ? (
+              <Text style={styles.emptyText}>Your wishlist is empty.</Text>
+            ) : (
+              wishlistItems.map((wItem) => (
+                <View key={wItem.id} style={styles.wishlistRow}>
+                  <View style={styles.listItemLeft}>
+                    <Text style={styles.listItemName} numberOfLines={1}>
+                      {wItem.name}
+                    </Text>
+                    <Text style={styles.listItemSub}>
+                      {[
+                        wItem.brand,
+                        wItem.estimatedPrice != null ? fmt(wItem.estimatedPrice) : null,
+                      ]
+                        .filter(Boolean)
+                        .join(" — ") || "No details"}
+                    </Text>
+                  </View>
+                  <Pressable
+                    style={styles.wishlistDeleteBtn}
+                    onPress={() => handleDeleteWishlistItem(wItem)}
+                    hitSlop={8}
+                  >
+                    <Ionicons name="trash-outline" size={16} color={Theme.colors.error} />
+                  </Pressable>
+                </View>
+              ))
+            )}
+
+            <Pressable
+              style={styles.addWishlistBtn}
+              onPress={() => setWishlistModalVisible(true)}
+            >
+              <Ionicons name="add-circle-outline" size={18} color={Theme.colors.primary} />
+              <Text style={styles.addWishlistBtnText}>Add to Wishlist</Text>
+            </Pressable>
+          </View>
+        )}
+      </View>
+
+      {/* -------- Wishlist Modal -------- */}
+      <Modal
+        visible={wishlistModalVisible}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setWishlistModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Add to Wishlist</Text>
+              <Pressable hitSlop={12} onPress={() => setWishlistModalVisible(false)}>
+                <Ionicons name="close" size={24} color={Theme.colors.text} />
+              </Pressable>
+            </View>
+
+            <ScrollView style={styles.modalScroll} showsVerticalScrollIndicator={false}>
+              <Text style={styles.modalLabel}>Name *</Text>
+              <TextInput
+                style={styles.modalInput}
+                value={wlName}
+                onChangeText={setWlName}
+                placeholder="Item name"
+                placeholderTextColor={Theme.colors.textLight}
+              />
+
+              <Text style={styles.modalLabel}>Brand</Text>
+              <TextInput
+                style={styles.modalInput}
+                value={wlBrand}
+                onChangeText={setWlBrand}
+                placeholder="Brand (optional)"
+                placeholderTextColor={Theme.colors.textLight}
+              />
+
+              <Text style={styles.modalLabel}>URL</Text>
+              <TextInput
+                style={styles.modalInput}
+                value={wlUrl}
+                onChangeText={setWlUrl}
+                placeholder="Product URL (optional)"
+                placeholderTextColor={Theme.colors.textLight}
+                keyboardType="url"
+                autoCapitalize="none"
+              />
+
+              <Text style={styles.modalLabel}>Estimated Price</Text>
+              <TextInput
+                style={styles.modalInput}
+                value={wlPrice}
+                onChangeText={setWlPrice}
+                placeholder="0.00"
+                placeholderTextColor={Theme.colors.textLight}
+                keyboardType="decimal-pad"
+              />
+
+              <Text style={styles.modalLabel}>Category</Text>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={styles.categoryPickerScroll}
+              >
+                {(Object.keys(CATEGORY_LABELS) as ClothingCategory[]).map((cat) => (
+                  <Pressable
+                    key={cat}
+                    style={[
+                      styles.categoryChip,
+                      wlCategory === cat && styles.categoryChipActive,
+                    ]}
+                    onPress={() => setWlCategory(wlCategory === cat ? "" : cat)}
+                  >
+                    <Text
+                      style={[
+                        styles.categoryChipText,
+                        wlCategory === cat && styles.categoryChipTextActive,
+                      ]}
+                    >
+                      {CATEGORY_LABELS[cat]}
+                    </Text>
+                  </Pressable>
+                ))}
+              </ScrollView>
+
+              <Text style={styles.modalLabel}>Notes</Text>
+              <TextInput
+                style={[styles.modalInput, styles.modalInputMultiline]}
+                value={wlNotes}
+                onChangeText={setWlNotes}
+                placeholder="Notes (optional)"
+                placeholderTextColor={Theme.colors.textLight}
+                multiline
+                numberOfLines={3}
+              />
+            </ScrollView>
+
+            <Pressable style={styles.modalSaveBtn} onPress={handleAddWishlistItem}>
+              <Text style={styles.modalSaveBtnText}>Add Item</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
 
       {/* ============================================================ */}
       {/*  ARCHIVED ITEMS                                               */}
@@ -999,5 +1422,175 @@ const styles = StyleSheet.create({
     fontSize: Theme.fontSize.sm,
     fontWeight: "600",
     color: Theme.colors.primary,
+  },
+
+  /* Colour Palette */
+  colorBarContainer: {
+    flexDirection: "row",
+    height: 24,
+    borderRadius: Theme.borderRadius.sm,
+    overflow: "hidden",
+    marginBottom: Theme.spacing.md,
+  },
+  colorStripe: {
+    height: 24,
+  },
+  colorListRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: Theme.spacing.xs,
+  },
+  colorSwatch: {
+    width: 16,
+    height: 16,
+    borderRadius: 4,
+    marginRight: Theme.spacing.sm,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: Theme.colors.border,
+  },
+  colorListText: {
+    fontSize: Theme.fontSize.md,
+    color: Theme.colors.text,
+  },
+
+  /* Tip card */
+  tipCard: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    backgroundColor: Theme.colors.warning + "14",
+    borderRadius: Theme.borderRadius.sm,
+    padding: Theme.spacing.sm,
+    marginTop: Theme.spacing.md,
+    gap: Theme.spacing.sm,
+  },
+  tipText: {
+    flex: 1,
+    fontSize: Theme.fontSize.sm,
+    color: Theme.colors.text,
+    lineHeight: 18,
+  },
+
+  /* Gap Analysis */
+  gapCard: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    backgroundColor: Theme.colors.surfaceAlt,
+    borderRadius: Theme.borderRadius.sm,
+    padding: Theme.spacing.sm,
+    marginBottom: Theme.spacing.sm,
+  },
+  gapText: {
+    flex: 1,
+    fontSize: Theme.fontSize.sm,
+    color: Theme.colors.text,
+    lineHeight: 18,
+  },
+
+  /* Wishlist */
+  wishlistRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: Theme.spacing.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Theme.colors.border,
+  },
+  wishlistDeleteBtn: {
+    padding: Theme.spacing.xs,
+  },
+  addWishlistBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: Theme.spacing.sm,
+    marginTop: Theme.spacing.md,
+    borderRadius: Theme.borderRadius.sm,
+    backgroundColor: Theme.colors.primary + "12",
+  },
+  addWishlistBtnText: {
+    fontSize: Theme.fontSize.md,
+    fontWeight: "600",
+    color: Theme.colors.primary,
+  },
+
+  /* Modal */
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "flex-end",
+  },
+  modalContent: {
+    backgroundColor: Theme.colors.surface,
+    borderTopLeftRadius: Theme.borderRadius.lg,
+    borderTopRightRadius: Theme.borderRadius.lg,
+    paddingHorizontal: Theme.spacing.md,
+    paddingBottom: Theme.spacing.xl,
+    maxHeight: "85%",
+  },
+  modalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: Theme.spacing.md,
+  },
+  modalTitle: {
+    fontSize: Theme.fontSize.lg,
+    fontWeight: "700",
+    color: Theme.colors.text,
+  },
+  modalScroll: {
+    flexGrow: 0,
+  },
+  modalLabel: {
+    fontSize: Theme.fontSize.sm,
+    fontWeight: "600",
+    color: Theme.colors.textSecondary,
+    marginTop: Theme.spacing.sm,
+    marginBottom: Theme.spacing.xs,
+  },
+  modalInput: {
+    backgroundColor: Theme.colors.surfaceAlt,
+    borderRadius: Theme.borderRadius.sm,
+    paddingHorizontal: Theme.spacing.sm,
+    paddingVertical: 10,
+    fontSize: Theme.fontSize.md,
+    color: Theme.colors.text,
+  },
+  modalInputMultiline: {
+    minHeight: 70,
+    textAlignVertical: "top",
+  },
+  categoryPickerScroll: {
+    marginBottom: Theme.spacing.xs,
+  },
+  categoryChip: {
+    paddingHorizontal: Theme.spacing.sm,
+    paddingVertical: 6,
+    borderRadius: Theme.borderRadius.full,
+    backgroundColor: Theme.colors.surfaceAlt,
+    marginRight: Theme.spacing.xs,
+  },
+  categoryChipActive: {
+    backgroundColor: Theme.colors.primary,
+  },
+  categoryChipText: {
+    fontSize: Theme.fontSize.sm,
+    color: Theme.colors.textSecondary,
+  },
+  categoryChipTextActive: {
+    color: "#FFFFFF",
+    fontWeight: "600",
+  },
+  modalSaveBtn: {
+    backgroundColor: Theme.colors.primary,
+    borderRadius: Theme.borderRadius.sm,
+    paddingVertical: 14,
+    alignItems: "center",
+    marginTop: Theme.spacing.md,
+  },
+  modalSaveBtnText: {
+    color: "#FFFFFF",
+    fontSize: Theme.fontSize.md,
+    fontWeight: "700",
   },
 });

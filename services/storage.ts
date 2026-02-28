@@ -1,6 +1,6 @@
 import * as FileSystem from "expo-file-system";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import type { ClothingItem, Outfit, FabricType, ArchiveReason } from "@/models/types";
+import type { ClothingItem, Outfit, FabricType, ArchiveReason, WishlistItem } from "@/models/types";
 
 // --- File-System Storage Layer ---
 // Data is persisted as JSON files in the app's document directory.
@@ -11,6 +11,7 @@ const DATA_DIR = `${FileSystem.documentDirectory}wardrobez-data/`;
 const FILES = {
   CLOTHING_ITEMS: `${DATA_DIR}clothing-items.json`,
   OUTFITS: `${DATA_DIR}outfits.json`,
+  WISHLIST: `${DATA_DIR}wishlist.json`,
 } as const;
 
 // Legacy AsyncStorage keys for one-time migration
@@ -154,6 +155,9 @@ function migrateClothingItem(item: any): ClothingItem {
   }
   if (!Array.isArray(migrated.itemFlags)) {
     migrated.itemFlags = migrated.itemFlags ?? [];
+  }
+  if (!Array.isArray(migrated.wearDates)) {
+    migrated.wearDates = migrated.wearDates ?? [];
   }
 
   return migrated as ClothingItem;
@@ -307,7 +311,11 @@ export async function deleteOutfit(id: string): Promise<void> {
 
 // --- Wear Logging ---
 
-export async function logOutfitWorn(outfitId: string): Promise<void> {
+export async function logOutfitWorn(
+  outfitId: string,
+  selfieUri?: string,
+  note?: string,
+): Promise<void> {
   const today = new Date().toISOString().split("T")[0];
 
   const outfits = await getOutfits();
@@ -315,9 +323,14 @@ export async function logOutfitWorn(outfitId: string): Promise<void> {
   if (outfitIdx < 0) return;
 
   const outfit = outfits[outfitIdx];
+  const wornEntries = [...(outfit.wornEntries ?? [])];
+  if (selfieUri || note) {
+    wornEntries.push({ date: today, selfieUri, note });
+  }
   outfits[outfitIdx] = {
     ...outfit,
     wornDates: [...outfit.wornDates, today],
+    wornEntries,
   };
   await writeJsonFile(FILES.OUTFITS, outfits);
 
@@ -326,13 +339,49 @@ export async function logOutfitWorn(outfitId: string): Promise<void> {
   const updatedItems = items.map((item) => {
     if (outfit.itemIds.includes(item.id)) {
       itemsChanged = true;
-      return { ...item, wearCount: item.wearCount + 1 };
+      return {
+        ...item,
+        wearCount: item.wearCount + 1,
+        wearDates: [...(item.wearDates ?? []), today],
+      };
     }
     return item;
   });
   if (itemsChanged) {
     await writeJsonFile(FILES.CLOTHING_ITEMS, updatedItems);
   }
+}
+
+/** Log a standalone wear for a single item (not part of an outfit) */
+export async function logItemWorn(itemId: string): Promise<void> {
+  const today = new Date().toISOString().split("T")[0];
+  const items = await getClothingItems();
+  const idx = items.findIndex((i) => i.id === itemId);
+  if (idx < 0) return;
+  items[idx] = {
+    ...items[idx],
+    wearCount: items[idx].wearCount + 1,
+    wearDates: [...(items[idx].wearDates ?? []), today],
+  };
+  await writeJsonFile(FILES.CLOTHING_ITEMS, items);
+}
+
+/** Remove a wear date from an item's wearDates array */
+export async function removeItemWornDate(
+  itemId: string,
+  dateIndex: number,
+): Promise<void> {
+  const items = await getClothingItems();
+  const idx = items.findIndex((i) => i.id === itemId);
+  if (idx < 0) return;
+  const newDates = [...(items[idx].wearDates ?? [])];
+  newDates.splice(dateIndex, 1);
+  items[idx] = {
+    ...items[idx],
+    wearCount: Math.max(0, items[idx].wearCount - 1),
+    wearDates: newDates,
+  };
+  await writeJsonFile(FILES.CLOTHING_ITEMS, items);
 }
 
 export async function removeWornDate(
@@ -384,19 +433,100 @@ export async function markOutfitNotified(outfitId: string): Promise<void> {
   await writeJsonFile(FILES.OUTFITS, outfits);
 }
 
+// --- Wishlist ---
+
+export async function getWishlistItems(): Promise<WishlistItem[]> {
+  await ensureMigrated();
+  const data = await readJsonFile<WishlistItem[]>(FILES.WISHLIST);
+  return data ?? [];
+}
+
+export async function saveWishlistItem(item: WishlistItem): Promise<void> {
+  const items = await getWishlistItems();
+  const idx = items.findIndex((i) => i.id === item.id);
+  if (idx >= 0) {
+    items[idx] = item;
+  } else {
+    items.push(item);
+  }
+  await writeJsonFile(FILES.WISHLIST, items);
+}
+
+export async function deleteWishlistItem(id: string): Promise<void> {
+  const items = await getWishlistItems();
+  await writeJsonFile(FILES.WISHLIST, items.filter((i) => i.id !== id));
+}
+
 // --- Export / Import ---
 // These are used by the profile screen for backup/restore.
+// Version 2 includes base64-encoded photos.
+
+async function encodeImageToBase64(uri: string): Promise<string | null> {
+  try {
+    const info = await FileSystem.getInfoAsync(uri);
+    if (!info.exists) return null;
+    return await FileSystem.readAsStringAsync(uri, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+  } catch {
+    return null;
+  }
+}
+
+async function saveBase64Image(base64: string, filename: string): Promise<string> {
+  const path = `${FileSystem.documentDirectory}${filename}`;
+  await FileSystem.writeAsStringAsync(path, base64, {
+    encoding: FileSystem.EncodingType.Base64,
+  });
+  return path;
+}
 
 export async function exportAllData(): Promise<string> {
   await ensureMigrated();
   const items = await readJsonFile<any[]>(FILES.CLOTHING_ITEMS) ?? [];
   const outfits = await readJsonFile<any[]>(FILES.OUTFITS) ?? [];
+  const wishlist = await readJsonFile<any[]>(FILES.WISHLIST) ?? [];
+
+  // Encode item photos as base64
+  const photos: Record<string, string> = {};
+  for (const item of items) {
+    if (Array.isArray(item.imageUris)) {
+      for (let i = 0; i < item.imageUris.length; i++) {
+        const uri = item.imageUris[i];
+        if (uri && !uri.startsWith("http")) {
+          const b64 = await encodeImageToBase64(uri);
+          if (b64) {
+            const key = `${item.id}_${i}`;
+            photos[key] = b64;
+          }
+        }
+      }
+    }
+  }
+
+  // Encode outfit selfies
+  for (const outfit of outfits) {
+    if (Array.isArray(outfit.wornEntries)) {
+      for (let i = 0; i < outfit.wornEntries.length; i++) {
+        const entry = outfit.wornEntries[i];
+        if (entry.selfieUri && !entry.selfieUri.startsWith("http")) {
+          const b64 = await encodeImageToBase64(entry.selfieUri);
+          if (b64) {
+            photos[`selfie_${outfit.id}_${i}`] = b64;
+          }
+        }
+      }
+    }
+  }
+
   return JSON.stringify(
     {
-      version: 1,
+      version: 2,
       exportedAt: new Date().toISOString(),
       clothing_items: items,
       outfits,
+      wishlist,
+      photos,
     },
     null,
     2
@@ -408,8 +538,46 @@ export async function importAllData(jsonString: string): Promise<void> {
   if (!data.clothing_items || !data.outfits) {
     throw new Error("Invalid backup format");
   }
+
+  // Restore photos if present (version 2+)
+  const photos: Record<string, string> = data.photos ?? {};
+  const photoKeyToUri: Record<string, string> = {};
+
+  for (const [key, b64] of Object.entries(photos)) {
+    const ext = "jpg";
+    const filename = `restored_${key}.${ext}`;
+    const uri = await saveBase64Image(b64 as string, filename);
+    photoKeyToUri[key] = uri;
+  }
+
+  // Remap imageUris to restored file paths
+  for (const item of data.clothing_items) {
+    if (Array.isArray(item.imageUris)) {
+      item.imageUris = item.imageUris.map((uri: string, i: number) => {
+        const key = `${item.id}_${i}`;
+        return photoKeyToUri[key] ?? uri;
+      });
+    }
+  }
+
+  // Remap selfie URIs
+  for (const outfit of data.outfits) {
+    if (Array.isArray(outfit.wornEntries)) {
+      outfit.wornEntries = outfit.wornEntries.map((entry: any, i: number) => {
+        const key = `selfie_${outfit.id}_${i}`;
+        if (photoKeyToUri[key]) {
+          return { ...entry, selfieUri: photoKeyToUri[key] };
+        }
+        return entry;
+      });
+    }
+  }
+
   await writeJsonFile(FILES.CLOTHING_ITEMS, data.clothing_items);
   await writeJsonFile(FILES.OUTFITS, data.outfits);
+  if (data.wishlist) {
+    await writeJsonFile(FILES.WISHLIST, data.wishlist);
+  }
 }
 
 /** Returns the path to the data directory for use in backup sharing */

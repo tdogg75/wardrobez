@@ -31,8 +31,10 @@ const fmt = (n: number) =>
 export default function ItemDetailScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { getById, addOrUpdate, remove, archiveItem } = useClothingItems();
+  const { getById, addOrUpdate, remove, archiveItem, logItemWorn, removeItemWornDate } = useClothingItems();
   const [showArchiveModal, setShowArchiveModal] = useState(false);
+  const [showWearLog, setShowWearLog] = useState(false);
+  const [showAllDates, setShowAllDates] = useState(false);
 
   const item = getById(id);
 
@@ -53,7 +55,22 @@ export default function ItemDetailScreen() {
   };
 
   const handleLogWear = async () => {
-    await addOrUpdate({ ...item, wearCount: (item.wearCount ?? 0) + 1 });
+    await logItemWorn(id);
+  };
+
+  const handleRemoveWornDate = (index: number, date: string) => {
+    Alert.alert(
+      "Remove Log",
+      `Remove the wear log for ${new Date(date).toLocaleDateString()}?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Remove",
+          style: "destructive",
+          onPress: () => removeItemWornDate(id, index),
+        },
+      ]
+    );
   };
 
   const handleArchive = async (reason: ArchiveReason) => {
@@ -179,6 +196,68 @@ export default function ItemDetailScreen() {
             <Text style={[styles.infoValue, styles.cpwValue]}>
               {fmt(item.cost / (item.wearCount ?? 1))}
             </Text>
+          </View>
+        )}
+
+        {/* Wear History */}
+        <Pressable
+          style={styles.wornLogToggle}
+          onPress={() => setShowWearLog(!showWearLog)}
+        >
+          <Ionicons name="calendar-outline" size={18} color={Theme.colors.primary} />
+          <Text style={styles.wornLogToggleText}>
+            Wear History ({(item.wearDates ?? []).length})
+          </Text>
+          <Ionicons
+            name={showWearLog ? "chevron-up" : "chevron-down"}
+            size={18}
+            color={Theme.colors.textSecondary}
+          />
+        </Pressable>
+
+        {showWearLog && (
+          <View style={styles.wornLogList}>
+            {(item.wearDates ?? []).length === 0 ? (
+              <Text style={styles.emptyText}>No wear history yet.</Text>
+            ) : (
+              <>
+                {(() => {
+                  const sortedDates = [...(item.wearDates ?? [])]
+                    .map((date, origIdx) => ({ date, origIdx }))
+                    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+                  const visibleDates = showAllDates ? sortedDates : sortedDates.slice(0, 10);
+                  return visibleDates.map(({ date, origIdx }, idx) => (
+                    <View key={`${date}-${idx}`} style={styles.wornLogRow}>
+                      <Ionicons name="checkmark" size={16} color={Theme.colors.success} />
+                      <Text style={styles.wornLogDate}>
+                        {new Date(date).toLocaleDateString("en-CA", {
+                          weekday: "short",
+                          year: "numeric",
+                          month: "short",
+                          day: "numeric",
+                        })}
+                      </Text>
+                      <Pressable
+                        onPress={() => handleRemoveWornDate(origIdx, date)}
+                        hitSlop={10}
+                      >
+                        <Ionicons name="trash-outline" size={16} color={Theme.colors.error} />
+                      </Pressable>
+                    </View>
+                  ));
+                })()}
+                {!showAllDates && (item.wearDates ?? []).length > 10 && (
+                  <Pressable
+                    style={styles.viewAllBtn}
+                    onPress={() => setShowAllDates(true)}
+                  >
+                    <Text style={styles.viewAllText}>
+                      View all {(item.wearDates ?? []).length} dates
+                    </Text>
+                  </Pressable>
+                )}
+              </>
+            )}
           </View>
         )}
 
@@ -420,6 +499,57 @@ const styles = StyleSheet.create({
     color: Theme.colors.error,
     fontSize: Theme.fontSize.md,
     fontWeight: "600",
+  },
+  // Wear history
+  wornLogToggle: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: Theme.spacing.md,
+    paddingVertical: Theme.spacing.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Theme.colors.border,
+  },
+  wornLogToggleText: {
+    flex: 1,
+    fontSize: Theme.fontSize.md,
+    fontWeight: "600",
+    color: Theme.colors.primary,
+  },
+  wornLogList: {
+    backgroundColor: Theme.colors.surface,
+    marginHorizontal: Theme.spacing.md,
+    borderRadius: Theme.borderRadius.sm,
+    padding: Theme.spacing.sm,
+    marginBottom: Theme.spacing.sm,
+  },
+  wornLogRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingVertical: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Theme.colors.border,
+  },
+  wornLogDate: {
+    flex: 1,
+    fontSize: Theme.fontSize.sm,
+    color: Theme.colors.text,
+  },
+  emptyText: {
+    fontSize: Theme.fontSize.sm,
+    color: Theme.colors.textLight,
+    fontStyle: "italic",
+    padding: Theme.spacing.sm,
+  },
+  viewAllBtn: {
+    paddingVertical: Theme.spacing.sm,
+    alignItems: "center",
+  },
+  viewAllText: {
+    fontSize: Theme.fontSize.sm,
+    fontWeight: "600",
+    color: Theme.colors.primary,
   },
   // Archive modal
   archiveOverlay: {

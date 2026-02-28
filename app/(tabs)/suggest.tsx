@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import {
   View,
   Text,
@@ -6,11 +6,18 @@ import {
   Pressable,
   StyleSheet,
   Alert,
+  ActivityIndicator,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useClothingItems } from "@/hooks/useClothingItems";
 import { useOutfits } from "@/hooks/useOutfits";
 import { suggestOutfits, type SuggestionResult } from "@/services/outfitEngine";
+import {
+  getCurrentWeather,
+  weatherToSeason,
+  getWeatherTips,
+  type WeatherData,
+} from "@/services/weatherService";
 import { Chip } from "@/components/Chip";
 import { ColorDot } from "@/components/ColorDot";
 import { MoodBoard } from "@/components/MoodBoard";
@@ -30,6 +37,28 @@ export default function SuggestScreen() {
   const [season, setSeason] = useState<Season | undefined>(undefined);
   const [suggestions, setSuggestions] = useState<SuggestionResult[]>([]);
   const [generated, setGenerated] = useState(false);
+  const [weather, setWeather] = useState<WeatherData | null>(null);
+  const [loadingWeather, setLoadingWeather] = useState(false);
+  const [weatherTips, setWeatherTips] = useState<string[]>([]);
+
+  // Fetch weather on mount
+  useEffect(() => {
+    let mounted = true;
+    setLoadingWeather(true);
+    getCurrentWeather()
+      .then((w) => {
+        if (!mounted) return;
+        setWeather(w);
+        if (w) {
+          setWeatherTips(getWeatherTips(w));
+          if (!season) setSeason(weatherToSeason(w));
+        }
+      })
+      .finally(() => mounted && setLoadingWeather(false));
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const handleGenerate = useCallback(() => {
     if (items.length < 2) {
@@ -39,12 +68,23 @@ export default function SuggestScreen() {
       );
       return;
     }
-
-    const results = suggestOutfits(items, {
-      season,
-      maxResults: 6,
-    });
+    const results = suggestOutfits(items, { season, maxResults: 6 });
     setSuggestions(results);
+    setGenerated(true);
+  }, [items, season]);
+
+  const handleSurpriseMe = useCallback(() => {
+    if (items.length < 2) {
+      Alert.alert("Not enough items", "Add at least 2 items first.");
+      return;
+    }
+    const results = suggestOutfits(items, { season, maxResults: 10 });
+    if (results.length === 0) {
+      Alert.alert("No luck!", "Couldn't assemble an outfit. Try adding more items.");
+      return;
+    }
+    const pick = results[Math.floor(Math.random() * results.length)];
+    setSuggestions([pick]);
     setGenerated(true);
   }, [items, season]);
 
@@ -82,9 +122,55 @@ export default function SuggestScreen() {
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <Text style={styles.heading}>Get Outfit Ideas</Text>
       <Text style={styles.subtitle}>
-        Our engine analyses colour harmony, fabric compatibility, and
-        seasonal fit to suggest your best looks.
+        Our engine analyses colour harmony, fabric compatibility, and seasonal
+        fit to suggest your best looks.
       </Text>
+
+      {/* Weather Card */}
+      {loadingWeather ? (
+        <View style={styles.weatherCard}>
+          <ActivityIndicator size="small" color={Theme.colors.primary} />
+          <Text style={styles.weatherLoadingText}>Checking weather...</Text>
+        </View>
+      ) : weather ? (
+        <View style={styles.weatherCard}>
+          <View style={styles.weatherHeader}>
+            <Ionicons
+              name={weather.icon as any}
+              size={28}
+              color={Theme.colors.primary}
+            />
+            <View style={styles.weatherInfo}>
+              <Text style={styles.weatherTemp}>
+                {weather.temp}°C{" "}
+                <Text style={styles.weatherDesc}>{weather.description}</Text>
+              </Text>
+              {weather.city ? (
+                <Text style={styles.weatherCity}>{weather.city}</Text>
+              ) : null}
+            </View>
+            {weather.feelsLike !== weather.temp && (
+              <Text style={styles.feelsLike}>
+                Feels {weather.feelsLike}°
+              </Text>
+            )}
+          </View>
+          {weatherTips.length > 0 && (
+            <View style={styles.weatherTips}>
+              {weatherTips.map((tip, i) => (
+                <View key={i} style={styles.tipRow}>
+                  <Ionicons
+                    name="information-circle-outline"
+                    size={14}
+                    color={Theme.colors.primary}
+                  />
+                  <Text style={styles.tipText}>{tip}</Text>
+                </View>
+              ))}
+            </View>
+          )}
+        </View>
+      ) : null}
 
       <Text style={styles.sectionTitle}>Season (optional)</Text>
       <View style={styles.chipRow}>
@@ -98,10 +184,17 @@ export default function SuggestScreen() {
         ))}
       </View>
 
-      <Pressable style={styles.generateBtn} onPress={handleGenerate}>
-        <Ionicons name="sparkles" size={20} color="#FFFFFF" />
-        <Text style={styles.generateBtnText}>Generate Suggestions</Text>
-      </Pressable>
+      {/* Action Buttons */}
+      <View style={styles.buttonRow}>
+        <Pressable style={styles.generateBtn} onPress={handleGenerate}>
+          <Ionicons name="sparkles" size={20} color="#FFFFFF" />
+          <Text style={styles.generateBtnText}>Generate</Text>
+        </Pressable>
+        <Pressable style={styles.surpriseBtn} onPress={handleSurpriseMe}>
+          <Ionicons name="shuffle" size={20} color={Theme.colors.primary} />
+          <Text style={styles.surpriseBtnText}>Surprise Me</Text>
+        </Pressable>
+      </View>
 
       {generated && suggestions.length === 0 && (
         <View style={styles.noResults}>
@@ -163,7 +256,11 @@ export default function SuggestScreen() {
             style={styles.saveOutfitBtn}
             onPress={() => handleSave(suggestion)}
           >
-            <Ionicons name="bookmark-outline" size={16} color={Theme.colors.primary} />
+            <Ionicons
+              name="bookmark-outline"
+              size={16}
+              color={Theme.colors.primary}
+            />
             <Text style={styles.saveOutfitText}>Save Outfit</Text>
           </Pressable>
         </View>
@@ -185,7 +282,61 @@ const styles = StyleSheet.create({
     fontSize: Theme.fontSize.md,
     color: Theme.colors.textSecondary,
     lineHeight: 22,
-    marginBottom: Theme.spacing.lg,
+    marginBottom: Theme.spacing.md,
+  },
+  // Weather
+  weatherCard: {
+    backgroundColor: Theme.colors.surface,
+    borderRadius: Theme.borderRadius.md,
+    padding: Theme.spacing.md,
+    marginBottom: Theme.spacing.md,
+    borderWidth: 1,
+    borderColor: Theme.colors.primary + "20",
+  },
+  weatherHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  weatherInfo: { flex: 1 },
+  weatherTemp: {
+    fontSize: Theme.fontSize.lg,
+    fontWeight: "700",
+    color: Theme.colors.text,
+  },
+  weatherDesc: {
+    fontSize: Theme.fontSize.md,
+    fontWeight: "400",
+    color: Theme.colors.textSecondary,
+  },
+  weatherCity: {
+    fontSize: Theme.fontSize.xs,
+    color: Theme.colors.textLight,
+    marginTop: 2,
+  },
+  feelsLike: {
+    fontSize: Theme.fontSize.xs,
+    color: Theme.colors.textSecondary,
+    fontWeight: "500",
+  },
+  weatherLoadingText: {
+    fontSize: Theme.fontSize.sm,
+    color: Theme.colors.textSecondary,
+    marginLeft: 8,
+  },
+  weatherTips: {
+    marginTop: Theme.spacing.sm,
+    gap: 4,
+  },
+  tipRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  tipText: {
+    fontSize: Theme.fontSize.xs,
+    color: Theme.colors.textSecondary,
+    flex: 1,
   },
   sectionTitle: {
     fontSize: Theme.fontSize.md,
@@ -195,7 +346,14 @@ const styles = StyleSheet.create({
     marginTop: Theme.spacing.sm,
   },
   chipRow: { flexDirection: "row", flexWrap: "wrap" },
+  buttonRow: {
+    flexDirection: "row",
+    gap: Theme.spacing.sm,
+    marginTop: Theme.spacing.lg,
+    marginBottom: Theme.spacing.lg,
+  },
   generateBtn: {
+    flex: 2,
     flexDirection: "row",
     height: 52,
     backgroundColor: Theme.colors.primary,
@@ -203,12 +361,27 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     gap: 8,
-    marginTop: Theme.spacing.lg,
-    marginBottom: Theme.spacing.lg,
   },
   generateBtnText: {
     color: "#FFFFFF",
     fontSize: Theme.fontSize.lg,
+    fontWeight: "700",
+  },
+  surpriseBtn: {
+    flex: 1,
+    flexDirection: "row",
+    height: 52,
+    borderRadius: Theme.borderRadius.md,
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 6,
+    borderWidth: 1.5,
+    borderColor: Theme.colors.primary,
+    backgroundColor: Theme.colors.primary + "08",
+  },
+  surpriseBtnText: {
+    color: Theme.colors.primary,
+    fontSize: Theme.fontSize.md,
     fontWeight: "700",
   },
   noResults: {
