@@ -22,6 +22,7 @@ import {
   clearToken,
   getSavedClientId,
   saveClientId,
+  isOAuthRedirectSupported,
 } from "@/services/gmailService";
 import type { GmailPurchaseItem } from "@/services/gmailService";
 import { useClothingItems } from "@/hooks/useClothingItems";
@@ -216,6 +217,8 @@ export default function GmailPurchasesScreen() {
     );
   }
 
+  const oauthSupported = isOAuthRedirectSupported();
+
   if (scanState === "idle") {
     return (
       <View style={styles.center}>
@@ -225,7 +228,22 @@ export default function GmailPurchasesScreen() {
           Connect your Gmail to find clothing, shoes, jewelry, and accessories
           purchases from the last 2 years.
         </Text>
-        <Pressable style={styles.primaryBtn} onPress={startScan}>
+        {!oauthSupported && (
+          <View style={styles.expoGoWarning}>
+            <Ionicons name="warning-outline" size={20} color={Theme.colors.warning} />
+            <Text style={styles.expoGoWarningText}>
+              Google sign-in requires a standalone build. Run{" "}
+              <Text style={{ fontWeight: "700" }}>npx expo run:android</Text>{" "}
+              to build the app, then try again.{"\n"}
+              Expo Go does not support Google OAuth redirects.
+            </Text>
+          </View>
+        )}
+        <Pressable
+          style={[styles.primaryBtn, !oauthSupported && { opacity: 0.5 }]}
+          onPress={startScan}
+          disabled={!oauthSupported}
+        >
           <Ionicons name="logo-google" size={20} color="#FFFFFF" />
           <Text style={styles.primaryBtnText}>Connect Gmail</Text>
         </Pressable>
@@ -760,5 +778,23 @@ const styles = StyleSheet.create({
     color: Theme.colors.text,
     borderWidth: 1,
     borderColor: Theme.colors.border,
+  },
+  expoGoWarning: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+    backgroundColor: Theme.colors.warning + "15",
+    borderWidth: 1,
+    borderColor: Theme.colors.warning + "40",
+    borderRadius: Theme.borderRadius.md,
+    padding: Theme.spacing.md,
+    marginBottom: Theme.spacing.md,
+    width: "100%",
+  },
+  expoGoWarningText: {
+    flex: 1,
+    fontSize: Theme.fontSize.sm,
+    color: Theme.colors.warning,
+    lineHeight: 20,
   },
 });

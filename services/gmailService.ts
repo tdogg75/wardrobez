@@ -53,8 +53,18 @@ export async function saveClientId(clientId: string): Promise<void> {
 let cachedToken: string | null = null;
 
 export function getRedirectUri(): string {
-  // Desktop app type OAuth clients support custom URI scheme redirects
   return AuthSession.makeRedirectUri({ scheme: "wardrobez" });
+}
+
+/**
+ * Returns true when the redirect URI uses `exp://` (Expo Go),
+ * which Google OAuth rejects because it isn't HTTPS.
+ * Google OAuth only works in standalone / development builds
+ * where the `wardrobez://` custom scheme is properly registered.
+ */
+export function isOAuthRedirectSupported(): boolean {
+  const uri = getRedirectUri();
+  return !uri.startsWith("exp://");
 }
 
 export async function signInWithGoogle(clientId: string): Promise<string | null> {
