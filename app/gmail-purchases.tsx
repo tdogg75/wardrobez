@@ -22,6 +22,7 @@ import {
   clearToken,
   getSavedClientId,
   saveClientId,
+  getRedirectUri,
 } from "@/services/gmailService";
 import type { GmailPurchaseItem } from "@/services/gmailService";
 import { useClothingItems } from "@/hooks/useClothingItems";
@@ -181,10 +182,15 @@ export default function GmailPurchasesScreen() {
           1. Go to Google Cloud Console{"\n"}
           2. Create a project (or select existing){"\n"}
           3. Enable the Gmail API{"\n"}
-          4. Go to Credentials and create an OAuth 2.0 Client ID{"\n"}
-          5. Select "Web application" as the type{"\n"}
-          6. Add the redirect URI shown below{"\n"}
-          7. Copy the Client ID and paste it here
+          4. Go to Credentials → Create OAuth 2.0 Client ID{"\n"}
+          5. Select <Text style={{ fontWeight: "700" }}>"Web application"</Text> as the type{"\n"}
+          6. Under <Text style={{ fontWeight: "700" }}>Authorized JavaScript origins</Text>, add:{"\n"}
+          <Text style={styles.codeText}>https://auth.expo.io</Text>
+          {"\n"}
+          7. Under <Text style={{ fontWeight: "700" }}>Authorized redirect URIs</Text>, add:{"\n"}
+          <Text style={styles.codeText}>{getRedirectUri()}</Text>
+          {"\n"}
+          8. Copy the Client ID and paste it below
         </Text>
         <Pressable
           style={[styles.primaryBtn, { backgroundColor: Theme.colors.textSecondary }]}
@@ -731,6 +737,14 @@ const styles = StyleSheet.create({
     fontSize: Theme.fontSize.md,
     fontWeight: "700",
     color: "#FFFFFF",
+  },
+  codeText: {
+    fontFamily: "monospace",
+    fontSize: Theme.fontSize.xs,
+    color: Theme.colors.primary,
+    backgroundColor: Theme.colors.surfaceAlt,
+    paddingHorizontal: 4,
+    borderRadius: 3,
   },
   clientIdInputWrap: {
     width: "100%",
