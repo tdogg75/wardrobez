@@ -740,7 +740,7 @@ export default function AddItemScreen() {
               onPress={() => viewingImageIdx !== null && recropImage(viewingImageIdx)}
             >
               <Ionicons name="crop-outline" size={20} color={Theme.colors.primary} />
-              <Text style={styles.imageViewerBtnText}>Replace / Crop</Text>
+              <Text style={styles.imageViewerBtnText}>Crop</Text>
             </Pressable>
             <Pressable
               style={styles.imageViewerBtn}
@@ -752,7 +752,7 @@ export default function AddItemScreen() {
               }}
             >
               <Ionicons name="trash-outline" size={20} color={Theme.colors.error} />
-              <Text style={[styles.imageViewerBtnText, { color: Theme.colors.error }]}>Remove</Text>
+              <Text style={[styles.imageViewerBtnText, { color: Theme.colors.error }]}>Delete</Text>
             </Pressable>
           </View>
         </View>

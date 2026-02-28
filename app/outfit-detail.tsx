@@ -416,7 +416,13 @@ export default function OutfitDetailScreen() {
       {/* Items */}
       <Text style={styles.sectionTitle}>Items</Text>
       {outfitItems.map((item) => (
-        <View key={item.id} style={styles.itemCard}>
+        <Pressable
+          key={item.id}
+          style={styles.itemCard}
+          onPress={() =>
+            router.push({ pathname: "/item-detail", params: { id: item.id } })
+          }
+        >
           {item.imageUris?.length > 0 ? (
             <Image source={{ uri: item.imageUris[0] }} style={styles.itemThumb} />
           ) : (
@@ -430,7 +436,8 @@ export default function OutfitDetailScreen() {
               {item.cost ? ` · ${fmt(item.cost)}` : ""}
             </Text>
           </View>
-        </View>
+          <Ionicons name="chevron-forward" size={16} color={Theme.colors.textLight} />
+        </Pressable>
       ))}
 
       {/* Occasions */}

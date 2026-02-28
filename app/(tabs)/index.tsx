@@ -101,7 +101,7 @@ export default function WardrobeScreen() {
         compact={compact}
         onPress={() =>
           router.push({
-            pathname: "/edit-item",
+            pathname: "/item-detail",
             params: { id: item.id },
           })
         }

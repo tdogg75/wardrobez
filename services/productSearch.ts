@@ -238,6 +238,66 @@ function extractTitle(html: string): string | null {
   return m ? m[1].trim() : null;
 }
 
+function extractH1(html: string): string | null {
+  const m = html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i);
+  if (!m) return null;
+  return m[1].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function extractBreadcrumbText(html: string): string {
+  // Common breadcrumb containers
+  const patterns = [
+    /<(?:nav|ol|ul)[^>]+(?:class|aria-label)=["'][^"']*breadcrumb[^"']*["'][^>]*>([\s\S]*?)<\/(?:nav|ol|ul)>/i,
+    /<[^>]+itemprop=["']breadcrumb["'][^>]*>([\s\S]*?)<\/[^>]+>/i,
+    /<[^>]+(?:class)=["'][^"']*breadcrumb[^"']*["'][^>]*>([\s\S]*?)<\/(?:nav|div|ol|ul)>/i,
+  ];
+  for (const pattern of patterns) {
+    const m = html.match(pattern);
+    if (m) {
+      return m[0].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+    }
+  }
+  return "";
+}
+
+function extractJsonLdProductType(html: string): string {
+  const ldMatches = html.match(
+    /<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi,
+  );
+  if (!ldMatches) return "";
+  const parts: string[] = [];
+  for (const block of ldMatches) {
+    const jsonStr = block.replace(/<script[^>]*>|<\/script>/gi, "");
+    try {
+      const data = JSON.parse(jsonStr);
+      const cat = findLdCategory(data);
+      if (cat) parts.push(cat);
+    } catch { /* skip */ }
+  }
+  return parts.join(" ");
+}
+
+function findLdCategory(data: any): string | null {
+  if (!data) return null;
+  if (Array.isArray(data)) {
+    for (const item of data) {
+      const c = findLdCategory(item);
+      if (c) return c;
+    }
+    return null;
+  }
+  if (typeof data === "object") {
+    if (typeof data.category === "string") return data.category;
+    if (Array.isArray(data.category)) return data.category.join(" ");
+    if (typeof data.productType === "string") return data.productType;
+    if (Array.isArray(data.productType)) return data.productType.join(" ");
+    if (typeof data.name === "string" && data["@type"] === "Product") return data.name;
+    if (data["@graph"]) return findLdCategory(data["@graph"]);
+    if (data.offers) return findLdCategory(data.offers);
+  }
+  return null;
+}
+
 function extractPrice(html: string): number | null {
   // Try structured data first (JSON-LD)
   const ldMatch = html.match(
@@ -513,13 +573,18 @@ export async function fetchProductFromUrl(
         ""
       ).toLowerCase();
 
+      // Additional signals: h1, breadcrumbs, JSON-LD product type
+      const h1 = (extractH1(html) ?? "").toLowerCase();
+      const breadcrumbs = extractBreadcrumbText(html).toLowerCase();
+      const ldProductType = extractJsonLdProductType(html).toLowerCase();
+
       // Include URL path for better category/type detection
       const pathText = decodeURIComponent(parsed.pathname)
         .replace(/[-_/]/g, " ")
         .toLowerCase();
 
       const fullText =
-        `${hostname} ${pathText} ${result.name ?? ""} ${desc}`.toLowerCase();
+        `${hostname} ${pathText} ${result.name ?? ""} ${desc} ${h1} ${breadcrumbs} ${ldProductType}`.toLowerCase();
       const attrs = inferAttributes(fullText);
       if (attrs.category) result.category = attrs.category;
       if (attrs.subCategory) result.subCategory = attrs.subCategory;

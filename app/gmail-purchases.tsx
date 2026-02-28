@@ -22,7 +22,6 @@ import {
   clearToken,
   getSavedClientId,
   saveClientId,
-  getRedirectUri,
 } from "@/services/gmailService";
 import type { GmailPurchaseItem } from "@/services/gmailService";
 import { useClothingItems } from "@/hooks/useClothingItems";
@@ -183,14 +182,10 @@ export default function GmailPurchasesScreen() {
           2. Create a project (or select existing){"\n"}
           3. Enable the Gmail API{"\n"}
           4. Go to Credentials → Create OAuth 2.0 Client ID{"\n"}
-          5. Select <Text style={{ fontWeight: "700" }}>"Web application"</Text> as the type{"\n"}
-          6. Under <Text style={{ fontWeight: "700" }}>Authorized JavaScript origins</Text>, add:{"\n"}
-          <Text style={styles.codeText}>https://auth.expo.io</Text>
-          {"\n"}
-          7. Under <Text style={{ fontWeight: "700" }}>Authorized redirect URIs</Text>, add:{"\n"}
-          <Text style={styles.codeText}>{getRedirectUri()}</Text>
-          {"\n"}
-          8. Copy the Client ID and paste it below
+          5. Select <Text style={{ fontWeight: "700" }}>"Desktop app"</Text> as the application type{"\n"}
+          6. Give it any name (e.g. "Wardrobez"){"\n"}
+          7. Click Create — no redirect URIs needed for Desktop apps{"\n"}
+          8. Copy the <Text style={{ fontWeight: "700" }}>Client ID</Text> and paste it below
         </Text>
         <Pressable
           style={[styles.primaryBtn, { backgroundColor: Theme.colors.textSecondary }]}
