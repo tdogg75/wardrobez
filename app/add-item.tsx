@@ -183,7 +183,8 @@ export default function AddItemScreen() {
 
   const recropImage = (index: number) => {
     setViewingImageIdx(null);
-    setCroppingIdx(index);
+    // Delay opening cropper to let the viewer modal fully close (avoids Android modal overlap bug)
+    setTimeout(() => setCroppingIdx(index), 350);
   };
 
   const handleCropDone = (croppedUri: string) => {

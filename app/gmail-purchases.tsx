@@ -29,8 +29,8 @@ import {
 } from "@/services/gmailService";
 import type { GmailPurchaseItem, GmailLineItem } from "@/services/gmailService";
 import { fetchProductFromUrl } from "@/services/productSearch";
-import type { ClothingCategory } from "@/models/types";
-import { CATEGORY_LABELS } from "@/models/types";
+import type { ClothingCategory, FabricType } from "@/models/types";
+import { CATEGORY_LABELS, SUBCATEGORIES, FABRIC_TYPE_LABELS } from "@/models/types";
 import { useClothingItems } from "@/hooks/useClothingItems";
 import { PRESET_COLORS } from "@/constants/colors";
 
@@ -51,6 +51,10 @@ interface EditableLineItem extends GmailLineItem {
   cost: string;
   url: string;
   fetchingDetails: boolean;
+  subCategory?: string;
+  colorHex?: string;
+  colorName?: string;
+  fabricType?: string;
 }
 
 export default function GmailPurchasesScreen() {
@@ -60,6 +64,7 @@ export default function GmailPurchasesScreen() {
 
   const [scanState, setScanState] = useState<ScanState>("idle");
   const [purchases, setPurchases] = useState<GmailPurchaseItem[]>([]);
+  const [scanningDone, setScanningDone] = useState(false);
   const [currentEmailIndex, setCurrentEmailIndex] = useState(0);
   const [importedEmailCount, setImportedEmailCount] = useState(0);
   const [skippedEmailCount, setSkippedEmailCount] = useState(0);
@@ -102,27 +107,47 @@ export default function GmailPurchasesScreen() {
 
   const runScanWithToken = useCallback(async (token: string) => {
     setScanState("scanning");
+    setPurchases([]);
+    setScanningDone(false);
+    setCurrentEmailIndex(0);
+    setImportedEmailCount(0);
+    setSkippedEmailCount(0);
+    setTotalItemsAdded(0);
 
     try {
-      const results = await scanGmailForPurchases(token, (loaded, total) => {
-        setProgress({ loaded, total });
-      });
-      setPurchases(results);
-      setCurrentEmailIndex(0);
-      setImportedEmailCount(0);
-      setSkippedEmailCount(0);
-      setTotalItemsAdded(0);
+      // Switch to reviewing_emails immediately so results stream in
+      let hasStartedReview = false;
 
+      const results = await scanGmailForPurchases(
+        token,
+        (loaded, total) => {
+          setProgress({ loaded, total });
+        },
+        (item) => {
+          setPurchases((prev) => [...prev, item]);
+          if (!hasStartedReview) {
+            hasStartedReview = true;
+            setScanState("reviewing_emails");
+          }
+        }
+      );
+
+      setScanningDone(true);
+
+      // If no results came through the callback, handle the empty case
       if (results.length === 0) {
         Alert.alert(
           "No purchases found",
           "We couldn't find any clothing, shoes, or accessories purchase emails from the last 2 years."
         );
         setScanState("idle");
-      } else {
+      } else if (!hasStartedReview) {
+        // Fallback: if onItem was never called but results exist, set them
+        setPurchases(results);
         setScanState("reviewing_emails");
       }
     } catch (err) {
+      setScanningDone(true);
       setScanState("error");
       Alert.alert("Scan failed", "Something went wrong scanning your emails. Please try again.");
     }
@@ -274,13 +299,15 @@ export default function GmailPurchasesScreen() {
         id: Date.now().toString(36) + Math.random().toString(36).slice(2, 9),
         name: item.name,
         category: item.category,
-        color: PRESET_COLORS[0].hex,
-        colorName: PRESET_COLORS[0].name,
-        fabricType: "other",
+        subCategory: item.subCategory,
+        color: item.colorHex || PRESET_COLORS[0].hex,
+        colorName: item.colorName || PRESET_COLORS[0].name,
+        fabricType: (item.fabricType as FabricType) || "other",
         imageUris: item.localImageUri ? [item.localImageUri] : [],
         brand: item.brand || undefined,
         productUrl: item.url || undefined,
         cost,
+        purchaseDate: currentEmail.date,
         favorite: false,
         wearCount: 0,
         archived: false,
@@ -535,6 +562,33 @@ export default function GmailPurchasesScreen() {
           <View style={{ width: 24 }} />
         </View>
 
+        {/* Select All / Uncheck All row */}
+        <View style={styles.selectionRow}>
+          <Text style={styles.selectionCount}>
+            {editableItems.filter((i) => i.selected).length} of {editableItems.length} selected
+          </Text>
+          <View style={styles.selectionButtons}>
+            <Pressable
+              style={styles.selectionBtn}
+              onPress={() =>
+                setEditableItems((prev) => prev.map((item) => ({ ...item, selected: true })))
+              }
+            >
+              <Ionicons name="checkbox-outline" size={16} color={theme.colors.primary} />
+              <Text style={styles.selectionBtnText}>Select All</Text>
+            </Pressable>
+            <Pressable
+              style={styles.selectionBtn}
+              onPress={() =>
+                setEditableItems((prev) => prev.map((item) => ({ ...item, selected: false })))
+              }
+            >
+              <Ionicons name="square-outline" size={16} color={theme.colors.textSecondary} />
+              <Text style={[styles.selectionBtnText, { color: theme.colors.textSecondary }]}>Uncheck All</Text>
+            </Pressable>
+          </View>
+        </View>
+
         {/* Items list */}
         <ScrollView
           style={styles.scrollArea}
@@ -689,6 +743,95 @@ export default function GmailPurchasesScreen() {
                     ))}
                   </View>
 
+                  {/* Subcategory chips */}
+                  {SUBCATEGORIES[editingItem.category]?.length > 0 && (
+                    <>
+                      <Text style={styles.modalLabel}>Subcategory</Text>
+                      <View style={styles.categoryPicker}>
+                        {SUBCATEGORIES[editingItem.category].map((sub) => (
+                          <Pressable
+                            key={sub.value}
+                            style={[
+                              styles.categoryChip,
+                              editingItem.subCategory === sub.value && styles.categoryChipActive,
+                            ]}
+                            onPress={() =>
+                              updateEditableItem(editingIndex, {
+                                subCategory: editingItem.subCategory === sub.value ? undefined : sub.value,
+                              })
+                            }
+                          >
+                            <Text
+                              style={[
+                                styles.categoryChipText,
+                                editingItem.subCategory === sub.value && styles.categoryChipTextActive,
+                              ]}
+                            >
+                              {sub.label}
+                            </Text>
+                          </Pressable>
+                        ))}
+                      </View>
+                    </>
+                  )}
+
+                  {/* Color picker */}
+                  <Text style={styles.modalLabel}>Color</Text>
+                  <View style={styles.colorPickerRow}>
+                    {PRESET_COLORS.map((c) => (
+                      <Pressable
+                        key={c.hex}
+                        style={[
+                          styles.colorDot,
+                          { backgroundColor: c.hex },
+                          editingItem.colorHex === c.hex && styles.colorDotSelected,
+                        ]}
+                        onPress={() =>
+                          updateEditableItem(editingIndex, { colorHex: c.hex, colorName: c.name })
+                        }
+                      >
+                        {editingItem.colorHex === c.hex && (
+                          <Ionicons
+                            name="checkmark"
+                            size={14}
+                            color={c.hex === "#FFFFFF" || c.hex === "#FFFDD0" || c.hex === "#F5F5DC" ? "#000000" : "#FFFFFF"}
+                          />
+                        )}
+                      </Pressable>
+                    ))}
+                  </View>
+                  {editingItem.colorName ? (
+                    <Text style={styles.colorNameLabel}>{editingItem.colorName}</Text>
+                  ) : null}
+
+                  {/* Fabric type chips */}
+                  <Text style={styles.modalLabel}>Fabric</Text>
+                  <View style={styles.categoryPicker}>
+                    {(Object.keys(FABRIC_TYPE_LABELS) as FabricType[]).map((ft) => (
+                      <Pressable
+                        key={ft}
+                        style={[
+                          styles.categoryChip,
+                          editingItem.fabricType === ft && styles.categoryChipActive,
+                        ]}
+                        onPress={() =>
+                          updateEditableItem(editingIndex, {
+                            fabricType: editingItem.fabricType === ft ? undefined : ft,
+                          })
+                        }
+                      >
+                        <Text
+                          style={[
+                            styles.categoryChipText,
+                            editingItem.fabricType === ft && styles.categoryChipTextActive,
+                          ]}
+                        >
+                          {FABRIC_TYPE_LABELS[ft]}
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </View>
+
                   <Text style={styles.modalLabel}>Cost</Text>
                   <TextInput
                     style={styles.modalInput}
@@ -776,6 +919,16 @@ export default function GmailPurchasesScreen() {
             Email {currentEmailIndex + 1} of {purchases.length}
           </Text>
         </View>
+
+        {/* Scanning indicator */}
+        {!scanningDone && (
+          <View style={styles.scanningBanner}>
+            <ActivityIndicator size="small" color={theme.colors.primary} />
+            <Text style={styles.scanningBannerText}>
+              Still scanning emails{progress.total > 0 ? ` (${progress.loaded}/${progress.total})` : ""}...
+            </Text>
+          </View>
+        )}
 
         {/* Summary bar */}
         <View style={styles.summaryBar}>
@@ -1458,5 +1611,88 @@ const createStyles = (theme: ReturnType<typeof import("@/hooks/useTheme").useThe
       fontSize: theme.fontSize.sm,
       color: theme.colors.warning,
       lineHeight: 20,
+    },
+
+    /* ---------- Scanning banner ---------- */
+
+    scanningBanner: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 8,
+      paddingVertical: theme.spacing.sm,
+      paddingHorizontal: theme.spacing.md,
+      backgroundColor: theme.colors.primary + "12",
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: theme.colors.primary + "30",
+    },
+    scanningBannerText: {
+      fontSize: theme.fontSize.sm,
+      fontWeight: "600",
+      color: theme.colors.primary,
+    },
+
+    /* ---------- Selection row ---------- */
+
+    selectionRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      paddingHorizontal: theme.spacing.md,
+      paddingVertical: theme.spacing.sm,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: theme.colors.border,
+      backgroundColor: theme.colors.surfaceAlt,
+    },
+    selectionCount: {
+      fontSize: theme.fontSize.sm,
+      fontWeight: "600",
+      color: theme.colors.text,
+    },
+    selectionButtons: {
+      flexDirection: "row",
+      gap: theme.spacing.sm,
+    },
+    selectionBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+      paddingVertical: 6,
+      paddingHorizontal: 10,
+      borderRadius: theme.borderRadius.sm,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+      backgroundColor: theme.colors.surface,
+    },
+    selectionBtnText: {
+      fontSize: theme.fontSize.xs,
+      fontWeight: "600",
+      color: theme.colors.primary,
+    },
+
+    /* ---------- Color picker ---------- */
+
+    colorPickerRow: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 8,
+    },
+    colorDot: {
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    colorDotSelected: {
+      borderWidth: 2,
+      borderColor: theme.colors.primary,
+    },
+    colorNameLabel: {
+      fontSize: theme.fontSize.xs,
+      color: theme.colors.textSecondary,
+      marginTop: 4,
     },
   });

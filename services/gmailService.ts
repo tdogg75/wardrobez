@@ -405,23 +405,48 @@ const CLOTHING_KEYWORDS = [
   "wool",
 ];
 
-const ORDER_KEYWORDS = [
+/** Strong signals that this is an actual order/purchase confirmation */
+const ORDER_CONFIRMATION_KEYWORDS = [
   "order confirmation",
   "order confirmed",
-  "your order",
   "purchase confirmation",
   "thank you for your order",
+  "thanks for your order",
   "order receipt",
   "your receipt",
-  "shipping confirmation",
-  "has shipped",
-  "delivery confirmation",
   "order #",
   "order number",
   "invoice",
   "payment received",
   "thank you for your purchase",
+  "thanks for your purchase",
+  "your order has been placed",
+  "order placed",
+  "order summary",
   "bought",
+];
+
+/** Weaker signals — shipping/delivery updates that may accompany an order */
+const SHIPPING_KEYWORDS = [
+  "shipping confirmation",
+  "has shipped",
+  "has been shipped",
+  "delivery confirmation",
+  "out for delivery",
+  "is on its way",
+  "tracking number",
+  "track your order",
+  "track your package",
+  "estimated delivery",
+  "your order is on the way",
+  "your package",
+];
+
+/** Combined list used for initial Gmail query filtering (broad match) */
+const ORDER_KEYWORDS = [
+  ...ORDER_CONFIRMATION_KEYWORDS,
+  ...SHIPPING_KEYWORDS,
+  "your order",
 ];
 
 const HOUSEHOLD_EXCLUSION_KEYWORDS = [
@@ -448,10 +473,24 @@ const HOUSEHOLD_EXCLUSION_KEYWORDS = [
 
 function isClothingPurchase(subject: string, body: string, from: string): boolean {
   const text = `${subject} ${body} ${from}`.toLowerCase();
+  const subjectLower = subject.toLowerCase();
 
-  // Must look like an order/purchase email
-  const hasOrderKeyword = ORDER_KEYWORDS.some((kw) => text.includes(kw));
-  if (!hasOrderKeyword) return false;
+  // Check whether this looks like an order confirmation vs. a shipping update
+  const hasOrderConfirmation = ORDER_CONFIRMATION_KEYWORDS.some((kw) => text.includes(kw));
+  const hasShippingKeyword = SHIPPING_KEYWORDS.some((kw) => text.includes(kw));
+
+  // Must look like some kind of order/purchase email
+  if (!hasOrderConfirmation && !hasShippingKeyword) return false;
+
+  // If this is ONLY a shipping/delivery update (no order confirmation signals),
+  // apply stricter filtering — only include if the subject itself strongly
+  // suggests it is the primary order notification (not just a tracking update)
+  if (!hasOrderConfirmation && hasShippingKeyword) {
+    // Shipping-only emails are lower priority. Only include them if the subject
+    // contains a strong purchase signal (e.g., price or "order" in subject).
+    const subjectHasOrder = /order|purchase|receipt|invoice/i.test(subjectLower);
+    if (!subjectHasOrder) return false;
+  }
 
   // Check for fashion vendor or clothing keywords
   const hasFashionVendor = FASHION_VENDORS.some((v) => text.includes(v));
@@ -806,7 +845,8 @@ function generateSnippet(subject: string, vendor: string, lineItems: GmailLineIt
 
 export async function scanGmailForPurchases(
   token: string,
-  onProgress?: (loaded: number, total: number) => void
+  onProgress?: (loaded: number, total: number) => void,
+  onItem?: (item: GmailPurchaseItem) => void
 ): Promise<GmailPurchaseItem[]> {
   const purchases: GmailPurchaseItem[] = [];
 
@@ -837,6 +877,13 @@ export async function scanGmailForPurchases(
   // Load previously imported IDs
   const importedIds = await getImportedEmailIds();
 
+  // Ensure image cache directory exists (needed for inline thumbnail downloads)
+  const imgDir = `${FileSystem.cacheDirectory}gmail-thumbs/`;
+  const dirInfo = await FileSystem.getInfoAsync(imgDir);
+  if (!dirInfo.exists) {
+    await FileSystem.makeDirectoryAsync(imgDir, { intermediates: true });
+  }
+
   // Fetch each message detail
   for (const msg of messageIds) {
     const detail = await gmailFetch<GmailMessageDetail>(
@@ -863,7 +910,7 @@ export async function scanGmailForPurchases(
     const productUrls = extractProductUrls(body);
     const snippet = generateSnippet(subject, vendor, lineItems, detail.snippet ?? "");
 
-    purchases.push({
+    const purchase: GmailPurchaseItem = {
       id: detail.id,
       from,
       vendor,
@@ -875,37 +922,9 @@ export async function scanGmailForPurchases(
       lineItems,
       productUrls,
       previouslyImported: importedIds.has(detail.id),
-    });
-  }
+    };
 
-  // Sort newest to oldest by internalDate
-  // Since we stored messages in fetch order, we need to re-sort by the date
-  // We can use the date string, but it's better to keep internalDate for sorting
-  // Since we already have the purchases, we sort by parsing the ID order from Gmail
-  // Actually, Gmail messages are returned in order, but let's ensure descending by date
-  // We'll re-fetch internalDate isn't stored on the purchase, so we use the message order
-  // Gmail already returns newest first by default in search results, but let's be explicit
-  // We need to store internalDate temporarily for sorting
-  // Actually let's capture it during the loop
-
-  // Since Gmail returns messages in reverse chronological order by default,
-  // the purchases array is already roughly sorted newest first.
-  // But filtered items may shift things, so let's use a stable sort based on
-  // the original message order (which IS newest first from Gmail search).
-  // The purchases array preserves this order, so no re-sort needed if Gmail ordering holds.
-  // However, to be safe, let's store and sort by internalDate.
-
-  // We'll do a second pass approach: store internalDate on a map
-  // Actually, it's simpler to refactor. Let's store it inline and sort after.
-
-  // Download thumbnails locally
-  const imgDir = `${FileSystem.cacheDirectory}gmail-thumbs/`;
-  const dirInfo = await FileSystem.getInfoAsync(imgDir);
-  if (!dirInfo.exists) {
-    await FileSystem.makeDirectoryAsync(imgDir, { intermediates: true });
-  }
-
-  for (const purchase of purchases) {
+    // Download thumbnail and line-item images inline for this item
     if (purchase.thumbnailUrl) {
       try {
         const ext = purchase.thumbnailUrl.match(/\.(jpg|jpeg|png|webp)/i)?.[1] ?? "jpg";
@@ -922,7 +941,6 @@ export async function scanGmailForPurchases(
       }
     }
 
-    // Download line item images
     for (const item of purchase.lineItems) {
       if (item.imageUrl) {
         try {
@@ -940,6 +958,11 @@ export async function scanGmailForPurchases(
         }
       }
     }
+
+    // Stream the fully-populated item to the caller immediately
+    onItem?.(purchase);
+
+    purchases.push(purchase);
   }
 
   return purchases;

@@ -30,7 +30,8 @@ import * as ImagePicker from "expo-image-picker";
 import { useTheme } from "@/hooks/useTheme";
 import { hexToHSL } from "@/constants/colors";
 import { CATEGORY_LABELS, ARCHIVE_REASON_LABELS } from "@/models/types";
-import type { ClothingCategory, ClothingItem, WishlistItem } from "@/models/types";
+import type { ClothingCategory, ClothingItem, WishlistItem, PlannedOutfit, InspirationPin } from "@/models/types";
+import { MoodBoard } from "@/components/MoodBoard";
 import {
   getPlannedOutfits,
   savePlannedOutfit,
@@ -73,6 +74,7 @@ export default function ProfileScreen() {
     useCallback(() => {
       reloadItems();
       reloadOutfits();
+      getInspirationPins().then(setInspirationPins);
     }, [reloadItems, reloadOutfits])
   );
 
@@ -90,6 +92,38 @@ export default function ProfileScreen() {
   const [ageTrackerOpen, setAgeTrackerOpen] = useState(false);
   const [sustainabilityOpen, setSustainabilityOpen] = useState(false);
   const [duplicatesOpen, setDuplicatesOpen] = useState(false);
+
+  const [consistencyOpen, setConsistencyOpen] = useState(false);
+  const [plannerOpen, setPlannerOpen] = useState(false);
+  const [packingOpen, setPackingOpen] = useState(false);
+  const [shoppingOpen, setShoppingOpen] = useState(false);
+  const [saleAlertsOpen, setSaleAlertsOpen] = useState(false);
+  const [splurgeOpen, setSplurgeOpen] = useState(false);
+  const [resaleOpen, setResaleOpen] = useState(false);
+  const [inspirationOpen, setInspirationOpen] = useState(false);
+
+  /* ---------- splurge calculator state ---------- */
+  const [splurgePrice, setSplurgePrice] = useState("");
+  const [splurgeCategory, setSplurgeCategory] = useState<ClothingCategory | "">("");
+  const [splurgeResult, setSplurgeResult] = useState<{ verdict: string; reason: string } | null>(null);
+
+  /* ---------- inspiration board state ---------- */
+  const [inspirationPins, setInspirationPins] = useState<InspirationPin[]>([]);
+
+  /* ---------- weekly planner state ---------- */
+  const [weekPlan, setWeekPlan] = useState<Record<string, string | null>>({
+    Monday: null,
+    Tuesday: null,
+    Wednesday: null,
+    Thursday: null,
+    Friday: null,
+    Saturday: null,
+    Sunday: null,
+  });
+
+  /* ---------- packing list state ---------- */
+  const [tripDays, setTripDays] = useState("5");
+  const [packingResult, setPackingResult] = useState<{ category: string; name: string; checked: boolean }[]>([]);
 
   /* ---------- wishlist state ---------- */
   const [wishlistItems, setWishlistItems] = useState<WishlistItem[]>([]);
@@ -388,6 +422,298 @@ export default function ProfileScreen() {
     }
     return groups;
   }, [allActive]);
+
+  /* --- Style Consistency Score (#3) --- */
+  const consistencyData = useMemo(() => {
+    if (allActive.length === 0) return { categoryFocus: 0, colorHarmony: 0, overall: 0 };
+
+    // Category focus: % of items in top 3 categories
+    const catCounts: Record<string, number> = {};
+    for (const item of allActive) {
+      catCounts[item.category] = (catCounts[item.category] ?? 0) + 1;
+    }
+    const sortedCats = Object.values(catCounts).sort((a, b) => b - a);
+    const top3CatCount = sortedCats.slice(0, 3).reduce((s, c) => s + c, 0);
+    const categoryFocus = Math.round((top3CatCount / allActive.length) * 100);
+
+    // Color harmony: % of items using top 5 colors
+    const colorCounts: Record<string, number> = {};
+    for (const item of allActive) {
+      const name = (item.colorName ?? "Unknown").toLowerCase().trim();
+      colorCounts[name] = (colorCounts[name] ?? 0) + 1;
+    }
+    const sortedColors = Object.values(colorCounts).sort((a, b) => b - a);
+    const top5ColorCount = sortedColors.slice(0, 5).reduce((s, c) => s + c, 0);
+    const colorHarmony = Math.round((top5ColorCount / allActive.length) * 100);
+
+    // Overall: weighted average (50/50)
+    const overall = Math.round((categoryFocus + colorHarmony) / 2);
+
+    return { categoryFocus, colorHarmony, overall };
+  }, [allActive]);
+
+  /* --- Smart Shopping Suggestions (#32) --- */
+  const shoppingSuggestions = useMemo(() => {
+    if (allActive.length === 0) return [];
+
+    const catCounts: Partial<Record<ClothingCategory, number>> = {};
+    for (const cat of ALL_CATEGORIES) {
+      catCounts[cat] = 0;
+    }
+    for (const item of allActive) {
+      catCounts[item.category] = (catCounts[item.category] ?? 0) + 1;
+    }
+
+    const sorted = (Object.entries(catCounts) as [ClothingCategory, number][])
+      .sort((a, b) => a[1] - b[1]);
+
+    const suggestions: { key: string; text: string }[] = [];
+
+    // Find categories with fewest items compared to the highest
+    const maxCount = sorted[sorted.length - 1]?.[1] ?? 0;
+    const maxCatLabel = sorted[sorted.length - 1]
+      ? CATEGORY_LABELS[sorted[sorted.length - 1][0]]
+      : "";
+
+    for (const [cat, count] of sorted) {
+      if (count === 0) {
+        suggestions.push({
+          key: `missing-${cat}`,
+          text: `You have no ${CATEGORY_LABELS[cat].toLowerCase()}. Consider adding some to round out your wardrobe.`,
+        });
+      } else if (maxCount > 0 && count <= maxCount * 0.2 && count < 3) {
+        suggestions.push({
+          key: `low-${cat}`,
+          text: `You have ${maxCount} ${maxCatLabel.toLowerCase()} but only ${count} ${CATEGORY_LABELS[cat].toLowerCase()}. Consider adding a ${CATEGORY_LABELS[cat].toLowerCase().replace(/s$/, "")}.`,
+        });
+      }
+    }
+
+    // Check outerwear specifically
+    const jacketCount = (catCounts.jackets ?? 0) + (catCounts.blazers ?? 0);
+    if (jacketCount < 2 && allActive.length >= 5) {
+      suggestions.push({
+        key: "need-outerwear",
+        text: `You only have ${jacketCount} outerwear piece${jacketCount !== 1 ? "s" : ""}. A versatile jacket can elevate many outfits.`,
+      });
+    }
+
+    return suggestions.slice(0, 6);
+  }, [allActive]);
+
+  /* --- Resale Value Estimator (#38) --- */
+  const resaleEstimates = useMemo(() => {
+    return allActive
+      .filter((i) => i.cost && i.cost > 0)
+      .map((item) => {
+        const ageMonths = Math.max(1, Math.round((Date.now() - item.createdAt) / (30 * 24 * 60 * 60 * 1000)));
+        const wears = item.wearCount || 0;
+        const cost = item.cost!;
+        // Depreciation: ~15% first month, then ~5% per month, floor at 10%
+        let depreciationRate = 0.85 * Math.pow(0.95, Math.min(ageMonths - 1, 24));
+        depreciationRate = Math.max(depreciationRate, 0.10);
+        // Condition bonus: well-maintained items (low wear per month) retain more value
+        const wearPerMonth = wears / ageMonths;
+        const conditionMultiplier = wearPerMonth > 8 ? 0.7 : wearPerMonth > 4 ? 0.85 : 1.0;
+        // Brand premium: known luxury brands retain 10% more
+        const brandLower = (item.brand ?? "").toLowerCase();
+        const luxuryBrands = ["gucci", "prada", "louis vuitton", "chanel", "hermes", "burberry", "dior", "versace", "armani"];
+        const brandBonus = luxuryBrands.some((b) => brandLower.includes(b)) ? 1.15 : 1.0;
+        const estimate = Math.round(cost * depreciationRate * conditionMultiplier * brandBonus);
+        return { item, estimate, pctRetained: Math.round((estimate / cost) * 100) };
+      })
+      .sort((a, b) => b.estimate - a.estimate)
+      .slice(0, 10);
+  }, [allActive]);
+
+  /* --- Sale Alert Wishlist Items (#33) --- */
+  const wishlistWithAlerts = useMemo(() => {
+    return wishlistItems.filter((w) => w.targetPrice && w.estimatedPrice && w.estimatedPrice > 0);
+  }, [wishlistItems]);
+
+  /* --- Splurge Calculator (#35) --- */
+  const calculateSplurge = () => {
+    const price = parseFloat(splurgePrice);
+    if (!price || price <= 0 || !splurgeCategory) {
+      setSplurgeResult({ verdict: "Enter details", reason: "Please enter a price and select a category." });
+      return;
+    }
+    // Average cost in this category
+    const catItems = allActive.filter((i) => i.category === splurgeCategory && i.cost && i.cost > 0);
+    const avgCost = catItems.length > 0 ? catItems.reduce((s, i) => s + (i.cost ?? 0), 0) / catItems.length : 0;
+    // Average wears in this category
+    const avgWears = catItems.length > 0 ? catItems.reduce((s, i) => s + i.wearCount, 0) / catItems.length : 10;
+    // Estimated cost per wear if you wear it as much as average
+    const estimatedCPW = avgWears > 0 ? price / avgWears : price;
+    // Total wardrobe avg CPW
+    const allWithCost = allActive.filter((i) => i.cost && i.cost > 0 && i.wearCount > 0);
+    const globalAvgCPW = allWithCost.length > 0 ? allWithCost.reduce((s, i) => s + (i.cost! / i.wearCount), 0) / allWithCost.length : 5;
+
+    let verdict: string;
+    let reason: string;
+
+    if (avgCost > 0 && price > avgCost * 3) {
+      if (estimatedCPW < globalAvgCPW * 1.5) {
+        verdict = "Worth It";
+        reason = `At ${fmt(price)} it's ${(price / avgCost).toFixed(1)}x your avg ${CATEGORY_LABELS[splurgeCategory].toLowerCase()} cost (${fmt(avgCost)}), but if you wear it ${Math.round(avgWears)} times, the cost-per-wear (${fmt(estimatedCPW)}) is reasonable.`;
+      } else {
+        verdict = "Think Twice";
+        reason = `At ${fmt(price)} it's ${(price / avgCost).toFixed(1)}x your avg for ${CATEGORY_LABELS[splurgeCategory].toLowerCase()} (${fmt(avgCost)}). Estimated cost-per-wear: ${fmt(estimatedCPW)} vs your wardrobe avg of ${fmt(globalAvgCPW)}.`;
+      }
+    } else if (avgCost > 0 && price <= avgCost * 1.5) {
+      verdict = "Go For It";
+      reason = `At ${fmt(price)}, it's in line with what you normally spend on ${CATEGORY_LABELS[splurgeCategory].toLowerCase()} (avg ${fmt(avgCost)}). Not really a splurge!`;
+    } else {
+      verdict = estimatedCPW < 10 ? "Worth It" : "Consider Carefully";
+      reason = catItems.length === 0
+        ? `No existing ${CATEGORY_LABELS[splurgeCategory].toLowerCase()} to compare against. Consider how often you'd wear it.`
+        : `Estimated cost-per-wear: ${fmt(estimatedCPW)}. ${estimatedCPW < 10 ? "That's reasonable!" : "Make sure you'll wear it enough."}`;
+    }
+
+    setSplurgeResult({ verdict, reason });
+  };
+
+  /* --- Weekly Planner helpers --- */
+  const loadWeekPlan = useCallback(async () => {
+    const saved = await getPlannedOutfits();
+    if (saved.length > 0) {
+      const plan: Record<string, string | null> = {
+        Monday: null, Tuesday: null, Wednesday: null, Thursday: null,
+        Friday: null, Saturday: null, Sunday: null,
+      };
+      const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+      for (const entry of saved) {
+        const d = new Date(entry.date);
+        const dayName = dayNames[d.getDay()];
+        if (dayName && entry.outfitId) {
+          plan[dayName] = entry.outfitId;
+        }
+      }
+      setWeekPlan(plan);
+    }
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadWeekPlan();
+    }, [loadWeekPlan])
+  );
+
+  const assignOutfitToDay = (day: string) => {
+    if (outfits.length === 0) {
+      Alert.alert("No Outfits", "Create some outfits first to use the weekly planner.");
+      return;
+    }
+    const options = outfits.map((o) => ({
+      text: o.name,
+      onPress: async () => {
+        const newPlan = { ...weekPlan, [day]: o.id };
+        setWeekPlan(newPlan);
+        // Save: compute ISO date for this day of the current week
+        const now = new Date();
+        const dayIndex = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"].indexOf(day);
+        const currentDayIndex = (now.getDay() + 6) % 7; // Monday = 0
+        const diff = dayIndex - currentDayIndex;
+        const targetDate = new Date(now);
+        targetDate.setDate(now.getDate() + diff);
+        const isoDate = targetDate.toISOString().split("T")[0];
+        await savePlannedOutfit({ date: isoDate, outfitId: o.id });
+      },
+    }));
+    options.push({ text: "Clear", onPress: async () => {
+      const newPlan = { ...weekPlan, [day]: null };
+      setWeekPlan(newPlan);
+    }});
+    options.push({ text: "Cancel", onPress: () => {} });
+    Alert.alert(`Assign Outfit — ${day}`, "Pick an outfit:", options);
+  };
+
+  /* --- Packing List Generator (#12) --- */
+  const generatePackingList = () => {
+    const days = parseInt(tripDays, 10) || 5;
+    const result: { category: string; name: string; checked: boolean }[] = [];
+
+    const itemsByCategory: Partial<Record<ClothingCategory, ClothingItem[]>> = {};
+    for (const item of allActive) {
+      if (!itemsByCategory[item.category]) itemsByCategory[item.category] = [];
+      itemsByCategory[item.category]!.push(item);
+    }
+
+    const pickRandom = (arr: ClothingItem[], count: number): ClothingItem[] => {
+      const shuffled = [...arr].sort(() => Math.random() - 0.5);
+      return shuffled.slice(0, count);
+    };
+
+    // Tops: ~1.5 per day
+    const topsNeeded = Math.ceil(days * 1.5);
+    const availableTops = itemsByCategory.tops ?? [];
+    const pickedTops = pickRandom(availableTops, Math.min(topsNeeded, availableTops.length));
+    for (const t of pickedTops) {
+      result.push({ category: "Tops", name: t.name, checked: false });
+    }
+    if (pickedTops.length < topsNeeded) {
+      const remaining = topsNeeded - pickedTops.length;
+      for (let i = 0; i < remaining; i++) result.push({ category: "Tops", name: `Extra top ${i + 1} (buy/borrow)`, checked: false });
+    }
+
+    // Bottoms: 1 per 2 days
+    const bottomsNeeded = Math.ceil(days / 2);
+    const availableBottoms = [...(itemsByCategory.bottoms ?? []), ...(itemsByCategory.skirts_shorts ?? [])];
+    const pickedBottoms = pickRandom(availableBottoms, Math.min(bottomsNeeded, availableBottoms.length));
+    for (const b of pickedBottoms) {
+      result.push({ category: "Bottoms", name: b.name, checked: false });
+    }
+    if (pickedBottoms.length < bottomsNeeded) {
+      const remaining = bottomsNeeded - pickedBottoms.length;
+      for (let i = 0; i < remaining; i++) result.push({ category: "Bottoms", name: `Extra bottom ${i + 1} (buy/borrow)`, checked: false });
+    }
+
+    // Outerwear: 1
+    const availableOuterwear = [...(itemsByCategory.jackets ?? []), ...(itemsByCategory.blazers ?? [])];
+    if (availableOuterwear.length > 0) {
+      const picked = pickRandom(availableOuterwear, 1);
+      result.push({ category: "Outerwear", name: picked[0].name, checked: false });
+    } else {
+      result.push({ category: "Outerwear", name: "Jacket (buy/borrow)", checked: false });
+    }
+
+    // Shoes: 1-2 based on trip length
+    const shoesNeeded = days > 5 ? 2 : 1;
+    const availableShoes = itemsByCategory.shoes ?? [];
+    const pickedShoes = pickRandom(availableShoes, Math.min(shoesNeeded, availableShoes.length));
+    for (const s of pickedShoes) {
+      result.push({ category: "Shoes", name: s.name, checked: false });
+    }
+    if (pickedShoes.length < shoesNeeded) {
+      result.push({ category: "Shoes", name: "Extra pair (buy/borrow)", checked: false });
+    }
+
+    // Dresses if available and trip > 3 days
+    if (days > 3) {
+      const availableDresses = itemsByCategory.dresses ?? [];
+      if (availableDresses.length > 0) {
+        const picked = pickRandom(availableDresses, 1);
+        result.push({ category: "Dresses", name: picked[0].name, checked: false });
+      }
+    }
+
+    // Accessories: 1-2
+    const availableAccessories = [...(itemsByCategory.accessories ?? []), ...(itemsByCategory.jewelry ?? [])];
+    if (availableAccessories.length > 0) {
+      const picked = pickRandom(availableAccessories, Math.min(2, availableAccessories.length));
+      for (const a of picked) {
+        result.push({ category: "Accessories", name: a.name, checked: false });
+      }
+    }
+
+    setPackingResult(result);
+  };
+
+  const togglePackingItem = (index: number) => {
+    setPackingResult((prev) =>
+      prev.map((item, i) => (i === index ? { ...item, checked: !item.checked } : item))
+    );
+  };
 
   /* --- Wishlist load / handlers --- */
   const loadWishlist = useCallback(async () => {
@@ -1578,6 +1904,478 @@ export default function ProfileScreen() {
         </Pressable>
       </View>
 
+      {/* ============================================================ */}
+      {/*  STYLE CONSISTENCY SCORE (#3)                                  */}
+      {/* ============================================================ */}
+      <View style={styles.card}>
+        <SectionHeader
+          icon="ribbon-outline"
+          label="Style Consistency"
+          open={consistencyOpen}
+          onPress={() => setConsistencyOpen((v) => !v)}
+        />
+        {consistencyOpen && (
+          <View style={styles.sectionBody}>
+            {allActive.length === 0 ? (
+              <Text style={styles.emptyText}>Add items to see your consistency score.</Text>
+            ) : (
+              <>
+                {/* Overall score display */}
+                <View style={styles.consistencyScoreCircle}>
+                  <Text style={styles.consistencyScoreValue}>{consistencyData.overall}</Text>
+                  <Text style={styles.consistencyScoreLabel}>/ 100</Text>
+                </View>
+
+                <Divider />
+
+                {/* Breakdown */}
+                <View style={styles.consistencyRow}>
+                  <Text style={styles.barLabel}>Category Focus</Text>
+                  <Text style={styles.cpwValue}>{consistencyData.categoryFocus}%</Text>
+                </View>
+                <View style={styles.barTrack}>
+                  <View style={[styles.barFill, { width: `${consistencyData.categoryFocus}%` }]} />
+                </View>
+
+                <View style={[styles.consistencyRow, { marginTop: theme.spacing.md }]}>
+                  <Text style={styles.barLabel}>Color Harmony</Text>
+                  <Text style={styles.cpwValue}>{consistencyData.colorHarmony}%</Text>
+                </View>
+                <View style={styles.barTrack}>
+                  <View style={[styles.barFill, { width: `${consistencyData.colorHarmony}%` }]} />
+                </View>
+
+                <View style={[styles.consistencyRow, { marginTop: theme.spacing.md }]}>
+                  <Text style={styles.barLabel}>Overall</Text>
+                  <Text style={styles.cpwValue}>{consistencyData.overall}/100</Text>
+                </View>
+                <View style={styles.barTrack}>
+                  <View style={[styles.barFill, { width: `${consistencyData.overall}%` }]} />
+                </View>
+
+                {/* Tips */}
+                {consistencyData.overall >= 70 && (
+                  <View style={[styles.tipCard, { marginTop: theme.spacing.md }]}>
+                    <Ionicons name="checkmark-circle-outline" size={16} color={theme.colors.success} />
+                    <Text style={styles.tipText}>
+                      Great consistency! Your wardrobe has a cohesive style.
+                    </Text>
+                  </View>
+                )}
+                {consistencyData.overall < 50 && (
+                  <View style={[styles.tipCard, { marginTop: theme.spacing.md }]}>
+                    <Ionicons name="bulb-outline" size={16} color={theme.colors.warning} />
+                    <Text style={styles.tipText}>
+                      Your wardrobe is eclectic. Consider focusing on a core color palette and fewer categories for a more cohesive look.
+                    </Text>
+                  </View>
+                )}
+              </>
+            )}
+          </View>
+        )}
+      </View>
+
+      {/* ============================================================ */}
+      {/*  WEEKLY OUTFIT PLANNER (#11)                                   */}
+      {/* ============================================================ */}
+      <View style={styles.card}>
+        <SectionHeader
+          icon="calendar-outline"
+          label="Weekly Outfit Planner"
+          open={plannerOpen}
+          onPress={() => setPlannerOpen((v) => !v)}
+        />
+        {plannerOpen && (
+          <View style={styles.sectionBody}>
+            {["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"].map((day) => {
+              const outfitId = weekPlan[day];
+              const outfit = outfitId ? outfits.find((o) => o.id === outfitId) : null;
+              const outfitItems = outfit
+                ? allActive.filter((item) => outfit.itemIds.includes(item.id))
+                : [];
+              return (
+                <Pressable
+                  key={day}
+                  style={styles.plannerDayRow}
+                  onPress={() => assignOutfitToDay(day)}
+                >
+                  <View style={styles.plannerDayLabel}>
+                    <Text style={styles.plannerDayText}>{day.slice(0, 3)}</Text>
+                  </View>
+                  {outfit ? (
+                    <View style={styles.plannerOutfitInfo}>
+                      <View style={styles.plannerMoodBoardWrap}>
+                        <MoodBoard items={outfitItems} size={56} />
+                      </View>
+                      <Text style={styles.plannerOutfitName} numberOfLines={1}>
+                        {outfit.name}
+                      </Text>
+                    </View>
+                  ) : (
+                    <View style={styles.plannerEmptySlot}>
+                      <Ionicons name="add-outline" size={18} color={theme.colors.textLight} />
+                      <Text style={styles.plannerEmptyText}>Tap to assign</Text>
+                    </View>
+                  )}
+                </Pressable>
+              );
+            })}
+          </View>
+        )}
+      </View>
+
+      {/* ============================================================ */}
+      {/*  PACKING LIST GENERATOR (#12)                                  */}
+      {/* ============================================================ */}
+      <View style={styles.card}>
+        <SectionHeader
+          icon="briefcase-outline"
+          label="Packing List Generator"
+          open={packingOpen}
+          onPress={() => setPackingOpen((v) => !v)}
+        />
+        {packingOpen && (
+          <View style={styles.sectionBody}>
+            <Text style={styles.barLabel}>Trip Duration (days)</Text>
+            <View style={styles.packingInputRow}>
+              <TextInput
+                style={styles.packingInput}
+                value={tripDays}
+                onChangeText={setTripDays}
+                keyboardType="number-pad"
+                placeholder="5"
+                placeholderTextColor={theme.colors.textLight}
+              />
+              <Pressable style={styles.packingGenerateBtn} onPress={generatePackingList}>
+                <Ionicons name="shuffle-outline" size={18} color="#FFFFFF" />
+                <Text style={styles.packingGenerateBtnText}>Generate</Text>
+              </Pressable>
+            </View>
+
+            {packingResult.length > 0 && (
+              <>
+                <Divider />
+                <SubHeading>Your Packing List</SubHeading>
+                {packingResult.map((item, idx) => (
+                  <Pressable
+                    key={`${item.category}-${item.name}-${idx}`}
+                    style={styles.packingItemRow}
+                    onPress={() => togglePackingItem(idx)}
+                  >
+                    <Ionicons
+                      name={item.checked ? "checkbox" : "square-outline"}
+                      size={20}
+                      color={item.checked ? theme.colors.success : theme.colors.textSecondary}
+                    />
+                    <View style={styles.packingItemInfo}>
+                      <Text
+                        style={[
+                          styles.packingItemName,
+                          item.checked && styles.packingItemChecked,
+                        ]}
+                        numberOfLines={1}
+                      >
+                        {item.name}
+                      </Text>
+                      <Text style={styles.packingItemCategory}>{item.category}</Text>
+                    </View>
+                  </Pressable>
+                ))}
+                <Text style={[styles.emptyText, { textAlign: "center", marginTop: theme.spacing.sm }]}>
+                  {packingResult.filter((i) => i.checked).length} / {packingResult.length} packed
+                </Text>
+              </>
+            )}
+          </View>
+        )}
+      </View>
+
+      {/* ============================================================ */}
+      {/*  SMART SHOPPING SUGGESTIONS (#32)                              */}
+      {/* ============================================================ */}
+      <View style={styles.card}>
+        <SectionHeader
+          icon="cart-outline"
+          label="Smart Shopping Suggestions"
+          open={shoppingOpen}
+          onPress={() => setShoppingOpen((v) => !v)}
+        />
+        {shoppingOpen && (
+          <View style={styles.sectionBody}>
+            {allActive.length === 0 ? (
+              <Text style={styles.emptyText}>Add items to get shopping suggestions.</Text>
+            ) : shoppingSuggestions.length === 0 ? (
+              <View style={styles.tipCard}>
+                <Ionicons name="checkmark-circle-outline" size={16} color={theme.colors.success} />
+                <Text style={styles.tipText}>
+                  Your wardrobe is well-balanced! No major gaps to fill.
+                </Text>
+              </View>
+            ) : (
+              shoppingSuggestions.map((suggestion) => (
+                <View key={suggestion.key} style={styles.gapCard}>
+                  <Ionicons
+                    name="bag-outline"
+                    size={16}
+                    color={theme.colors.primary}
+                    style={{ marginRight: theme.spacing.sm, marginTop: 2 }}
+                  />
+                  <Text style={styles.gapText}>{suggestion.text}</Text>
+                </View>
+              ))
+            )}
+          </View>
+        )}
+      </View>
+
+      {/* ============================================================ */}
+      {/*  SALE PRICE ALERTS (#33)                                        */}
+      {/* ============================================================ */}
+      <View style={styles.card}>
+        <SectionHeader
+          icon="notifications-outline"
+          label="Sale Alerts"
+          open={saleAlertsOpen}
+          onPress={() => setSaleAlertsOpen((v) => !v)}
+        />
+        {saleAlertsOpen && (
+          <View style={styles.sectionBody}>
+            {wishlistWithAlerts.length === 0 ? (
+              <Text style={styles.emptyText}>
+                Add wishlist items with a target price to get sale alerts. Set a target price on any wishlist item to track it here.
+              </Text>
+            ) : (
+              wishlistWithAlerts.map((item) => {
+                const currentPrice = item.estimatedPrice ?? 0;
+                const target = item.targetPrice ?? 0;
+                const isOnSale = currentPrice <= target;
+                return (
+                  <View key={item.id} style={styles.gapCard}>
+                    <Ionicons
+                      name={isOnSale ? "checkmark-circle" : "time-outline"}
+                      size={18}
+                      color={isOnSale ? theme.colors.success : theme.colors.warning}
+                      style={{ marginRight: theme.spacing.sm, marginTop: 2 }}
+                    />
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.barLabel}>{item.name}</Text>
+                      <Text style={styles.listItemSub}>
+                        {isOnSale
+                          ? `On sale! ${fmt(currentPrice)} (target: ${fmt(target)})`
+                          : `Current: ${fmt(currentPrice)} | Target: ${fmt(target)}`}
+                      </Text>
+                    </View>
+                  </View>
+                );
+              })
+            )}
+          </View>
+        )}
+      </View>
+
+      {/* ============================================================ */}
+      {/*  WORTH THE SPLURGE CALCULATOR (#35)                             */}
+      {/* ============================================================ */}
+      <View style={styles.card}>
+        <SectionHeader
+          icon="calculator-outline"
+          label="Worth the Splurge?"
+          open={splurgeOpen}
+          onPress={() => setSplurgeOpen((v) => !v)}
+        />
+        {splurgeOpen && (
+          <View style={styles.sectionBody}>
+            <Text style={styles.barLabel}>Item Price</Text>
+            <TextInput
+              style={[styles.packingInput, { width: "100%", marginBottom: theme.spacing.sm }]}
+              value={splurgePrice}
+              onChangeText={setSplurgePrice}
+              keyboardType="decimal-pad"
+              placeholder="e.g. 250"
+              placeholderTextColor={theme.colors.textLight}
+            />
+
+            <Text style={[styles.barLabel, { marginTop: theme.spacing.sm }]}>Category</Text>
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: theme.spacing.xs, marginTop: theme.spacing.xs }}>
+              {ALL_CATEGORIES.map((cat) => (
+                <Pressable
+                  key={cat}
+                  style={[
+                    styles.splurgeChip,
+                    splurgeCategory === cat && styles.splurgeChipActive,
+                  ]}
+                  onPress={() => setSplurgeCategory(cat)}
+                >
+                  <Text
+                    style={[
+                      styles.splurgeChipText,
+                      splurgeCategory === cat && styles.splurgeChipTextActive,
+                    ]}
+                  >
+                    {CATEGORY_LABELS[cat]}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+
+            <Pressable style={[styles.packingGenerateBtn, { marginTop: theme.spacing.md }]} onPress={calculateSplurge}>
+              <Ionicons name="calculator-outline" size={18} color="#FFFFFF" />
+              <Text style={styles.packingGenerateBtnText}>Calculate</Text>
+            </Pressable>
+
+            {splurgeResult && (
+              <View style={[styles.tipCard, { marginTop: theme.spacing.md }]}>
+                <Ionicons
+                  name={
+                    splurgeResult.verdict === "Go For It" || splurgeResult.verdict === "Worth It"
+                      ? "checkmark-circle-outline"
+                      : "alert-circle-outline"
+                  }
+                  size={18}
+                  color={
+                    splurgeResult.verdict === "Go For It" || splurgeResult.verdict === "Worth It"
+                      ? theme.colors.success
+                      : theme.colors.warning
+                  }
+                />
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.barLabel, { marginBottom: 4 }]}>{splurgeResult.verdict}</Text>
+                  <Text style={styles.tipText}>{splurgeResult.reason}</Text>
+                </View>
+              </View>
+            )}
+          </View>
+        )}
+      </View>
+
+      {/* ============================================================ */}
+      {/*  RESALE VALUE ESTIMATOR (#38)                                   */}
+      {/* ============================================================ */}
+      <View style={styles.card}>
+        <SectionHeader
+          icon="cash-outline"
+          label="Resale Value Estimator"
+          open={resaleOpen}
+          onPress={() => setResaleOpen((v) => !v)}
+        />
+        {resaleOpen && (
+          <View style={styles.sectionBody}>
+            {resaleEstimates.length === 0 ? (
+              <Text style={styles.emptyText}>Add items with cost data to see resale estimates.</Text>
+            ) : (
+              <>
+                <Text style={[styles.emptyText, { marginBottom: theme.spacing.sm }]}>
+                  Estimated based on age, wear frequency, and brand.
+                </Text>
+                {resaleEstimates.map(({ item, estimate, pctRetained }) => (
+                  <Pressable
+                    key={item.id}
+                    style={styles.listItem}
+                    onPress={() => router.push({ pathname: "/edit-item", params: { id: item.id } })}
+                  >
+                    <View style={styles.listItemLeft}>
+                      <Text style={styles.listItemName} numberOfLines={1}>{item.name}</Text>
+                      <Text style={styles.listItemSub}>
+                        Paid {fmt(item.cost!)} · {pctRetained}% retained
+                      </Text>
+                    </View>
+                    <Text style={[styles.cpwValue, { color: theme.colors.success }]}>
+                      ~{fmt(estimate)}
+                    </Text>
+                  </Pressable>
+                ))}
+                <Divider />
+                <View style={styles.spendTotalRow}>
+                  <Text style={styles.barLabel}>Total Estimated Resale</Text>
+                  <Text style={[styles.cpwValue, { color: theme.colors.success }]}>
+                    ~{fmt(resaleEstimates.reduce((s, r) => s + r.estimate, 0))}
+                  </Text>
+                </View>
+              </>
+            )}
+          </View>
+        )}
+      </View>
+
+      {/* ============================================================ */}
+      {/*  STYLE INSPIRATION BOARD (#28)                                  */}
+      {/* ============================================================ */}
+      <View style={styles.card}>
+        <SectionHeader
+          icon="images-outline"
+          label="Style Inspiration"
+          open={inspirationOpen}
+          onPress={() => setInspirationOpen((v) => !v)}
+        />
+        {inspirationOpen && (
+          <View style={styles.sectionBody}>
+            <Text style={styles.emptyText}>
+              Save outfit inspiration photos from your gallery. Use them as reference when building outfits.
+            </Text>
+            <Pressable
+              style={[styles.packingGenerateBtn, { marginTop: theme.spacing.md }]}
+              onPress={async () => {
+                const result = await ImagePicker.launchImageLibraryAsync({
+                  mediaTypes: ["images"],
+                  allowsEditing: false,
+                  quality: 0.8,
+                });
+                if (!result.canceled && result.assets[0]) {
+                  const pin = {
+                    id: Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
+                    imageUri: result.assets[0].uri,
+                    createdAt: Date.now(),
+                  };
+                  await saveInspirationPin(pin);
+                  // Reload pins
+                  const pins = await getInspirationPins();
+                  setInspirationPins(pins);
+                }
+              }}
+            >
+              <Ionicons name="add-outline" size={18} color="#FFFFFF" />
+              <Text style={styles.packingGenerateBtnText}>Add Inspiration</Text>
+            </Pressable>
+            {inspirationPins.length > 0 && (
+              <>
+                <Divider />
+                <View style={styles.inspirationGrid}>
+                  {inspirationPins.map((pin) => (
+                    <View key={pin.id} style={styles.inspirationPinCard}>
+                      <Image
+                        source={{ uri: pin.imageUri }}
+                        style={styles.inspirationPinImage}
+                        resizeMode="cover"
+                      />
+                      <Pressable
+                        style={styles.inspirationPinDelete}
+                        onPress={() => {
+                          Alert.alert("Remove Pin?", "Delete this inspiration?", [
+                            { text: "Cancel", style: "cancel" },
+                            {
+                              text: "Delete",
+                              style: "destructive",
+                              onPress: async () => {
+                                await deleteInspirationPin(pin.id);
+                                const pins = await getInspirationPins();
+                                setInspirationPins(pins);
+                              },
+                            },
+                          ]);
+                        }}
+                      >
+                        <Ionicons name="close-circle" size={20} color={theme.colors.error} />
+                      </Pressable>
+                    </View>
+                  ))}
+                </View>
+              </>
+            )}
+          </View>
+        )}
+      </View>
+
     </ScrollView>
   );
 }
@@ -2104,5 +2902,179 @@ function createStyles(t: any) { return StyleSheet.create({
     color: "#FFFFFF",
     fontSize: t.fontSize.md,
     fontWeight: "700",
+  },
+
+  /* Style Consistency */
+  consistencyScoreCircle: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: t.spacing.md,
+  },
+  consistencyScoreValue: {
+    fontSize: 48,
+    fontWeight: "700",
+    color: t.colors.primary,
+  },
+  consistencyScoreLabel: {
+    fontSize: t.fontSize.md,
+    color: t.colors.textSecondary,
+    marginTop: 2,
+  },
+  consistencyRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: t.spacing.xs,
+  },
+
+  /* Weekly Planner */
+  plannerDayRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: t.spacing.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: t.colors.border,
+  },
+  plannerDayLabel: {
+    width: 44,
+    marginRight: t.spacing.sm,
+  },
+  plannerDayText: {
+    fontSize: t.fontSize.md,
+    fontWeight: "700",
+    color: t.colors.text,
+  },
+  plannerOutfitInfo: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: t.spacing.sm,
+  },
+  plannerMoodBoardWrap: {
+    borderRadius: t.borderRadius.sm,
+    overflow: "hidden",
+  },
+  plannerOutfitName: {
+    flex: 1,
+    fontSize: t.fontSize.md,
+    fontWeight: "500",
+    color: t.colors.text,
+  },
+  plannerEmptySlot: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: t.spacing.xs,
+    paddingVertical: t.spacing.sm,
+    paddingHorizontal: t.spacing.sm,
+    borderRadius: t.borderRadius.sm,
+    backgroundColor: t.colors.surfaceAlt,
+    borderWidth: 1,
+    borderColor: t.colors.border,
+    borderStyle: "dashed",
+  },
+  plannerEmptyText: {
+    fontSize: t.fontSize.sm,
+    color: t.colors.textLight,
+  },
+
+  /* Packing List */
+  packingInputRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: t.spacing.sm,
+    marginTop: t.spacing.sm,
+  },
+  packingInput: {
+    flex: 1,
+    backgroundColor: t.colors.surfaceAlt,
+    borderRadius: t.borderRadius.sm,
+    paddingHorizontal: t.spacing.sm,
+    paddingVertical: 10,
+    fontSize: t.fontSize.md,
+    color: t.colors.text,
+  },
+  packingGenerateBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: t.colors.primary,
+    borderRadius: t.borderRadius.sm,
+    paddingHorizontal: t.spacing.md,
+    paddingVertical: 10,
+  },
+  packingGenerateBtnText: {
+    color: "#FFFFFF",
+    fontSize: t.fontSize.md,
+    fontWeight: "600",
+  },
+  packingItemRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: t.spacing.sm,
+    paddingVertical: t.spacing.xs,
+  },
+  packingItemInfo: {
+    flex: 1,
+  },
+  packingItemName: {
+    fontSize: t.fontSize.md,
+    fontWeight: "500",
+    color: t.colors.text,
+  },
+  packingItemChecked: {
+    textDecorationLine: "line-through",
+    color: t.colors.textLight,
+  },
+  packingItemCategory: {
+    fontSize: t.fontSize.xs,
+    color: t.colors.textSecondary,
+    marginTop: 1,
+  },
+
+  /* Splurge Calculator */
+  splurgeChip: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: t.borderRadius.full,
+    borderWidth: 1,
+    borderColor: t.colors.border,
+    backgroundColor: t.colors.surface,
+  },
+  splurgeChipActive: {
+    borderColor: t.colors.primary,
+    backgroundColor: t.colors.primary + "15",
+  },
+  splurgeChipText: {
+    fontSize: t.fontSize.xs,
+    fontWeight: "600",
+    color: t.colors.textSecondary,
+  },
+  splurgeChipTextActive: {
+    color: t.colors.primary,
+  },
+
+  /* Inspiration Board */
+  inspirationGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: t.spacing.sm,
+    marginTop: t.spacing.sm,
+  },
+  inspirationPinCard: {
+    width: 100,
+    height: 133,
+    borderRadius: t.borderRadius.sm,
+    overflow: "hidden",
+    position: "relative" as const,
+  },
+  inspirationPinImage: {
+    width: "100%",
+    height: "100%",
+  },
+  inspirationPinDelete: {
+    position: "absolute",
+    top: 4,
+    right: 4,
   },
 }); }
