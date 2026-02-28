@@ -49,6 +49,14 @@ export default function RootLayout() {
               headerTitle: "Outfit",
             }}
           />
+          <Stack.Screen
+            name="gmail-purchases"
+            options={{
+              presentation: "modal",
+              headerShown: true,
+              headerTitle: "Gmail Purchases",
+            }}
+          />
         </Stack>
       </OutfitsProvider>
     </ClothingItemsProvider>
