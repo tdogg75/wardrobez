@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useCallback } from "react";
 import {
   View,
   Text,
@@ -9,16 +9,22 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  Modal,
+  Dimensions,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useOutfits } from "@/hooks/useOutfits";
 import { useClothingItems } from "@/hooks/useClothingItems";
+import { useTheme } from "@/hooks/useTheme";
 import { MoodBoard } from "@/components/MoodBoard";
 import { EmptyState } from "@/components/EmptyState";
 import { Chip } from "@/components/Chip";
-import { Theme } from "@/constants/theme";
-import { SEASON_LABELS, OCCASION_LABELS } from "@/models/types";
+import {
+  SEASON_LABELS,
+  OCCASION_LABELS,
+  CATEGORY_LABELS,
+} from "@/models/types";
 import type { ClothingItem, Season, Occasion, Outfit } from "@/models/types";
 
 const SEASONS: Season[] = ["spring", "summer", "fall", "winter"];
@@ -28,6 +34,9 @@ const MONTH_NAMES = [
   "January", "February", "March", "April", "May", "June",
   "July", "August", "September", "October", "November", "December",
 ];
+
+const MAX_COMPARE = 3;
+const MIN_COMPARE = 2;
 
 const fmt = (n: number) =>
   n.toLocaleString("en-US", { style: "currency", currency: "USD" });
@@ -40,14 +49,25 @@ function getFirstDayOfWeek(year: number, month: number): number {
   return new Date(year, month, 1).getDay();
 }
 
+/** Format a category key for display, using CATEGORY_LABELS when available */
+function categoryLabel(key: string): string {
+  return (CATEGORY_LABELS as Record<string, string>)[key] ?? key;
+}
+
 export default function OutfitsScreen() {
   const { outfits, loading, remove, logWorn, updateRating } = useOutfits();
   const { getById } = useClothingItems();
   const router = useRouter();
+  const { theme } = useTheme();
 
   const [seasonFilter, setSeasonFilter] = useState<Season | null>(null);
   const [occasionFilter, setOccasionFilter] = useState<Occasion | null>(null);
   const [viewMode, setViewMode] = useState<"list" | "calendar">("list");
+
+  // Compare mode state
+  const [compareMode, setCompareMode] = useState(false);
+  const [compareIds, setCompareIds] = useState<string[]>([]);
+  const [compareModalVisible, setCompareModalVisible] = useState(false);
 
   // Calendar state
   const now = new Date();
@@ -93,6 +113,219 @@ export default function OutfitsScreen() {
 
   const hasActiveFilter = seasonFilter !== null || occasionFilter !== null;
 
+  // --- Compare mode helpers ---
+  const toggleCompareSelect = useCallback((outfitId: string) => {
+    setCompareIds((prev) => {
+      if (prev.includes(outfitId)) {
+        return prev.filter((id) => id !== outfitId);
+      }
+      if (prev.length >= MAX_COMPARE) return prev;
+      return [...prev, outfitId];
+    });
+  }, []);
+
+  const exitCompareMode = useCallback(() => {
+    setCompareMode(false);
+    setCompareIds([]);
+    setCompareModalVisible(false);
+  }, []);
+
+  const openCompareModal = useCallback(() => {
+    if (compareIds.length >= MIN_COMPARE) {
+      setCompareModalVisible(true);
+    }
+  }, [compareIds]);
+
+  const comparedOutfits = useMemo(
+    () => compareIds.map((id) => outfits.find((o) => o.id === id)).filter(Boolean) as Outfit[],
+    [compareIds, outfits]
+  );
+
+  // Resolve items for a given outfit, respecting the new categories
+  const resolveItems = useCallback(
+    (outfit: Outfit): ClothingItem[] =>
+      outfit.itemIds.map((id) => getById(id)).filter(Boolean) as ClothingItem[],
+    [getById]
+  );
+
+  /** Summarise the category breakdown for an outfit (supports skirts_shorts, jumpsuits, etc.) */
+  const categorySummary = useCallback(
+    (items: ClothingItem[]): string => {
+      const counts: Record<string, number> = {};
+      for (const item of items) {
+        const label = categoryLabel(item.category);
+        counts[label] = (counts[label] ?? 0) + 1;
+      }
+      return Object.entries(counts)
+        .map(([label, n]) => (n > 1 ? `${n} ${label}` : label))
+        .join(", ");
+    },
+    []
+  );
+
+  // --- Comparison Modal ---
+  const renderCompareModal = () => {
+    const screenWidth = Dimensions.get("window").width;
+    const colWidth = (screenWidth - 48) / comparedOutfits.length;
+
+    return (
+      <Modal
+        visible={compareModalVisible}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setCompareModalVisible(false)}
+      >
+        <View style={[styles.compareModal, { backgroundColor: theme.colors.background }]}>
+          {/* Header */}
+          <View style={[styles.compareHeader, { borderBottomColor: theme.colors.border }]}>
+            <Text style={[styles.compareTitle, { color: theme.colors.text }]}>
+              Compare Outfits
+            </Text>
+            <Pressable onPress={() => setCompareModalVisible(false)} hitSlop={12}>
+              <Ionicons name="close" size={24} color={theme.colors.text} />
+            </Pressable>
+          </View>
+
+          <ScrollView contentContainerStyle={styles.compareBody}>
+            {/* Mood boards row */}
+            <View style={styles.compareRow}>
+              {comparedOutfits.map((outfit) => {
+                const items = resolveItems(outfit);
+                return (
+                  <View key={outfit.id} style={[styles.compareCol, { width: colWidth }]}>
+                    <MoodBoard items={items} size={colWidth - 12} />
+                  </View>
+                );
+              })}
+            </View>
+
+            {/* Names row */}
+            <View style={[styles.compareSectionRow, { borderTopColor: theme.colors.border }]}>
+              {comparedOutfits.map((outfit) => (
+                <View key={outfit.id} style={[styles.compareCol, { width: colWidth }]}>
+                  <Text style={[styles.compareName, { color: theme.colors.text }]} numberOfLines={2}>
+                    {outfit.name}
+                    {outfit.nameLocked && (
+                      <Text style={{ color: theme.colors.textLight }}> </Text>
+                    )}
+                  </Text>
+                </View>
+              ))}
+            </View>
+
+            {/* Rating row */}
+            <View style={[styles.compareSectionRow, { borderTopColor: theme.colors.border }]}>
+              {comparedOutfits.map((outfit) => (
+                <View key={outfit.id} style={[styles.compareCol, { width: colWidth }]}>
+                  <Text style={[styles.compareSectionLabel, { color: theme.colors.textLight }]}>
+                    Rating
+                  </Text>
+                  <View style={styles.compareStars}>
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <Ionicons
+                        key={star}
+                        name={star <= outfit.rating ? "star" : "star-outline"}
+                        size={14}
+                        color={star <= outfit.rating ? "#FFD700" : theme.colors.textLight}
+                      />
+                    ))}
+                  </View>
+                </View>
+              ))}
+            </View>
+
+            {/* Total cost row */}
+            <View style={[styles.compareSectionRow, { borderTopColor: theme.colors.border }]}>
+              {comparedOutfits.map((outfit) => {
+                const items = resolveItems(outfit);
+                const totalCost = items.reduce((sum, i) => sum + (i.cost ?? 0), 0);
+                return (
+                  <View key={outfit.id} style={[styles.compareCol, { width: colWidth }]}>
+                    <Text style={[styles.compareSectionLabel, { color: theme.colors.textLight }]}>
+                      Total Cost
+                    </Text>
+                    <Text style={[styles.compareCost, { color: theme.colors.text }]}>
+                      {totalCost > 0 ? fmt(totalCost) : "--"}
+                    </Text>
+                  </View>
+                );
+              })}
+            </View>
+
+            {/* Items / categories row */}
+            <View style={[styles.compareSectionRow, { borderTopColor: theme.colors.border }]}>
+              {comparedOutfits.map((outfit) => {
+                const items = resolveItems(outfit);
+                return (
+                  <View key={outfit.id} style={[styles.compareCol, { width: colWidth }]}>
+                    <Text style={[styles.compareSectionLabel, { color: theme.colors.textLight }]}>
+                      Items ({items.length})
+                    </Text>
+                    <Text style={[styles.compareDetail, { color: theme.colors.textSecondary }]} numberOfLines={3}>
+                      {categorySummary(items)}
+                    </Text>
+                  </View>
+                );
+              })}
+            </View>
+
+            {/* Occasions row */}
+            <View style={[styles.compareSectionRow, { borderTopColor: theme.colors.border }]}>
+              {comparedOutfits.map((outfit) => (
+                <View key={outfit.id} style={[styles.compareCol, { width: colWidth }]}>
+                  <Text style={[styles.compareSectionLabel, { color: theme.colors.textLight }]}>
+                    Occasions
+                  </Text>
+                  <Text style={[styles.compareDetail, { color: theme.colors.primary }]} numberOfLines={2}>
+                    {(outfit.occasions ?? []).map((o) => OCCASION_LABELS[o]).join(", ") || "--"}
+                  </Text>
+                </View>
+              ))}
+            </View>
+
+            {/* Seasons row */}
+            <View style={[styles.compareSectionRow, { borderTopColor: theme.colors.border }]}>
+              {comparedOutfits.map((outfit) => (
+                <View key={outfit.id} style={[styles.compareCol, { width: colWidth }]}>
+                  <Text style={[styles.compareSectionLabel, { color: theme.colors.textLight }]}>
+                    Seasons
+                  </Text>
+                  <Text style={[styles.compareDetail, { color: theme.colors.primary }]} numberOfLines={2}>
+                    {(outfit.seasons ?? []).map((s) => SEASON_LABELS[s]).join(", ") || "--"}
+                  </Text>
+                </View>
+              ))}
+            </View>
+
+            {/* Worn count row */}
+            <View style={[styles.compareSectionRow, { borderTopColor: theme.colors.border }]}>
+              {comparedOutfits.map((outfit) => (
+                <View key={outfit.id} style={[styles.compareCol, { width: colWidth }]}>
+                  <Text style={[styles.compareSectionLabel, { color: theme.colors.textLight }]}>
+                    Times Worn
+                  </Text>
+                  <Text style={[styles.compareDetail, { color: theme.colors.success }]}>
+                    {outfit.wornDates.length}x
+                  </Text>
+                </View>
+              ))}
+            </View>
+          </ScrollView>
+
+          {/* Done button */}
+          <View style={[styles.compareFooter, { borderTopColor: theme.colors.border }]}>
+            <Pressable
+              style={[styles.compareDoneBtn, { backgroundColor: theme.colors.primary }]}
+              onPress={() => setCompareModalVisible(false)}
+            >
+              <Text style={styles.compareDoneBtnText}>Done</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
+    );
+  };
+
   // Calendar rendering
   const renderCalendar = () => {
     const daysInMonth = getDaysInMonth(calYear, calMonth);
@@ -111,16 +344,16 @@ export default function OutfitsScreen() {
         d === now.getDate() && calMonth === now.getMonth() && calYear === now.getFullYear();
 
       cells.push(
-        <View key={d} style={[styles.calCell, isToday && styles.calCellToday]}>
-          <Text style={[styles.calDay, isToday && styles.calDayToday]}>{d}</Text>
+        <View key={d} style={[styles.calCell, isToday && { backgroundColor: theme.colors.primary + "10", borderColor: theme.colors.primary + "40", borderWidth: 1 }]}>
+          <Text style={[styles.calDay, isToday && { color: theme.colors.primary, fontWeight: "800" as const }]}>{d}</Text>
           {dayOutfits.length > 0 && (
             <View style={styles.calDots}>
               {dayOutfits.length === 1 ? (
-                <View style={[styles.calDot, { backgroundColor: Theme.colors.primary }]} />
+                <View style={[styles.calDot, { backgroundColor: theme.colors.primary }]} />
               ) : (
                 <>
-                  <View style={[styles.calDot, { backgroundColor: Theme.colors.primary }]} />
-                  <Text style={styles.calDotCount}>{dayOutfits.length}</Text>
+                  <View style={[styles.calDot, { backgroundColor: theme.colors.primary }]} />
+                  <Text style={[styles.calDotCount, { color: theme.colors.primary }]}>{dayOutfits.length}</Text>
                 </>
               )}
             </View>
@@ -147,20 +380,20 @@ export default function OutfitsScreen() {
         {/* Month navigation */}
         <View style={styles.calNav}>
           <Pressable onPress={() => navigateMonth(-1)} hitSlop={12}>
-            <Ionicons name="chevron-back" size={24} color={Theme.colors.text} />
+            <Ionicons name="chevron-back" size={24} color={theme.colors.text} />
           </Pressable>
-          <Text style={styles.calMonthTitle}>
+          <Text style={[styles.calMonthTitle, { color: theme.colors.text }]}>
             {MONTH_NAMES[calMonth]} {calYear}
           </Text>
           <Pressable onPress={() => navigateMonth(1)} hitSlop={12}>
-            <Ionicons name="chevron-forward" size={24} color={Theme.colors.text} />
+            <Ionicons name="chevron-forward" size={24} color={theme.colors.text} />
           </Pressable>
         </View>
 
         {/* Weekday headers */}
         <View style={styles.calWeekRow}>
           {WEEKDAYS.map((wd) => (
-            <Text key={wd} style={styles.calWeekday}>{wd}</Text>
+            <Text key={wd} style={[styles.calWeekday, { color: theme.colors.textLight }]}>{wd}</Text>
           ))}
         </View>
 
@@ -181,7 +414,7 @@ export default function OutfitsScreen() {
 
           return (
             <View style={styles.calSummary}>
-              <Text style={styles.calSummaryTitle}>
+              <Text style={[styles.calSummaryTitle, { color: theme.colors.text }]}>
                 {monthOutfits.length} outfit{monthOutfits.length !== 1 ? "s" : ""} worn this month
               </Text>
               {monthOutfits.slice(0, 5).map((outfit) => {
@@ -190,19 +423,19 @@ export default function OutfitsScreen() {
                 return (
                   <Pressable
                     key={outfit.id}
-                    style={styles.calOutfitRow}
+                    style={[styles.calOutfitRow, { borderBottomColor: theme.colors.border }]}
                     onPress={() => router.push({ pathname: "/outfit-detail", params: { id: outfit.id } })}
                   >
                     <View style={styles.calOutfitMood}>
                       <MoodBoard items={items} size={50} />
                     </View>
                     <View style={{ flex: 1 }}>
-                      <Text style={styles.calOutfitName} numberOfLines={1}>{outfit.name}</Text>
-                      <Text style={styles.calOutfitMeta}>
+                      <Text style={[styles.calOutfitName, { color: theme.colors.text }]} numberOfLines={1}>{outfit.name}</Text>
+                      <Text style={[styles.calOutfitMeta, { color: theme.colors.textSecondary }]}>
                         Worn {wornThisMonth}x this month
                       </Text>
                     </View>
-                    <Ionicons name="chevron-forward" size={16} color={Theme.colors.textLight} />
+                    <Ionicons name="chevron-forward" size={16} color={theme.colors.textLight} />
                   </Pressable>
                 );
               })}
@@ -214,9 +447,9 @@ export default function OutfitsScreen() {
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
       {/* Filter bar */}
-      <View style={styles.filterBar}>
+      <View style={[styles.filterBar, { borderBottomColor: theme.colors.border, backgroundColor: theme.colors.surface }]}>
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -224,29 +457,55 @@ export default function OutfitsScreen() {
         >
           {/* View mode toggle */}
           <Pressable
-            style={[styles.viewToggle, viewMode === "list" && styles.viewToggleActive]}
+            style={[styles.viewToggle, { backgroundColor: theme.colors.surfaceAlt }, viewMode === "list" && { backgroundColor: theme.colors.primary + "15" }]}
             onPress={() => setViewMode("list")}
           >
             <Ionicons
               name="list-outline"
               size={16}
-              color={viewMode === "list" ? Theme.colors.primary : Theme.colors.textLight}
+              color={viewMode === "list" ? theme.colors.primary : theme.colors.textLight}
             />
           </Pressable>
           <Pressable
-            style={[styles.viewToggle, viewMode === "calendar" && styles.viewToggleActive]}
+            style={[styles.viewToggle, { backgroundColor: theme.colors.surfaceAlt }, viewMode === "calendar" && { backgroundColor: theme.colors.primary + "15" }]}
             onPress={() => setViewMode("calendar")}
           >
             <Ionicons
               name="calendar-outline"
               size={16}
-              color={viewMode === "calendar" ? Theme.colors.primary : Theme.colors.textLight}
+              color={viewMode === "calendar" ? theme.colors.primary : theme.colors.textLight}
             />
           </Pressable>
 
-          <View style={styles.filterDivider} />
+          <View style={[styles.filterDivider, { backgroundColor: theme.colors.border }]} />
 
-          <Text style={styles.filterLabel}>Season:</Text>
+          {/* Compare mode toggle */}
+          <Pressable
+            style={[
+              styles.viewToggle,
+              { backgroundColor: theme.colors.surfaceAlt },
+              compareMode && { backgroundColor: theme.colors.secondary + "20" },
+            ]}
+            onPress={() => {
+              if (compareMode) {
+                exitCompareMode();
+              } else {
+                setCompareMode(true);
+                setCompareIds([]);
+                setViewMode("list");
+              }
+            }}
+          >
+            <Ionicons
+              name="git-compare-outline"
+              size={16}
+              color={compareMode ? theme.colors.secondary : theme.colors.textLight}
+            />
+          </Pressable>
+
+          <View style={[styles.filterDivider, { backgroundColor: theme.colors.border }]} />
+
+          <Text style={[styles.filterLabel, { color: theme.colors.textLight }]}>Season:</Text>
           {SEASONS.map((s) => (
             <Chip
               key={s}
@@ -256,9 +515,9 @@ export default function OutfitsScreen() {
             />
           ))}
 
-          <View style={styles.filterDivider} />
+          <View style={[styles.filterDivider, { backgroundColor: theme.colors.border }]} />
 
-          <Text style={styles.filterLabel}>Occasion:</Text>
+          <Text style={[styles.filterLabel, { color: theme.colors.textLight }]}>Occasion:</Text>
           {OCCASIONS.map((o) => (
             <Chip
               key={o}
@@ -276,15 +535,38 @@ export default function OutfitsScreen() {
                 setOccasionFilter(null);
               }}
             >
-              <Ionicons name="close-circle" size={16} color={Theme.colors.error} />
-              <Text style={styles.clearBtnText}>Clear</Text>
+              <Ionicons name="close-circle" size={16} color={theme.colors.error} />
+              <Text style={[styles.clearBtnText, { color: theme.colors.error }]}>Clear</Text>
             </Pressable>
           )}
         </ScrollView>
       </View>
 
+      {/* Compare mode banner */}
+      {compareMode && (
+        <View style={[styles.compareBanner, { backgroundColor: theme.colors.secondary + "15", borderBottomColor: theme.colors.secondary + "30" }]}>
+          <Ionicons name="git-compare-outline" size={16} color={theme.colors.secondary} />
+          <Text style={[styles.compareBannerText, { color: theme.colors.secondary }]}>
+            Select {MIN_COMPARE}-{MAX_COMPARE} outfits to compare ({compareIds.length} selected)
+          </Text>
+          <View style={{ flexDirection: "row", gap: 8 }}>
+            {compareIds.length >= MIN_COMPARE && (
+              <Pressable
+                style={[styles.compareGoBtn, { backgroundColor: theme.colors.secondary }]}
+                onPress={openCompareModal}
+              >
+                <Text style={styles.compareGoBtnText}>Compare</Text>
+              </Pressable>
+            )}
+            <Pressable onPress={exitCompareMode} hitSlop={8}>
+              <Ionicons name="close-circle" size={22} color={theme.colors.secondary} />
+            </Pressable>
+          </View>
+        </View>
+      )}
+
       {loading ? (
-        <ActivityIndicator size="large" color={Theme.colors.primary} style={styles.loader} />
+        <ActivityIndicator size="large" color={theme.colors.primary} style={styles.loader} />
       ) : viewMode === "calendar" ? (
         renderCalendar()
       ) : outfits.length === 0 ? (
@@ -315,17 +597,42 @@ export default function OutfitsScreen() {
             );
 
             const isFlagged = outfit.hasRemovedItems === true;
+            const isSelectedForCompare = compareMode && compareIds.includes(outfit.id);
 
             return (
               <Pressable
-                style={[styles.card, isFlagged && styles.cardFlagged]}
-                onPress={() =>
-                  router.push({
-                    pathname: "/outfit-detail",
-                    params: { id: outfit.id },
-                  })
-                }
+                style={[
+                  styles.card,
+                  { backgroundColor: theme.colors.surface },
+                  isFlagged && styles.cardFlagged,
+                  isSelectedForCompare && { borderColor: theme.colors.secondary, borderWidth: 2 },
+                ]}
+                onPress={() => {
+                  if (compareMode) {
+                    toggleCompareSelect(outfit.id);
+                  } else {
+                    router.push({
+                      pathname: "/outfit-detail",
+                      params: { id: outfit.id },
+                    });
+                  }
+                }}
               >
+                {/* Compare selection indicator */}
+                {compareMode && (
+                  <View style={[
+                    styles.compareCheckbox,
+                    {
+                      backgroundColor: isSelectedForCompare ? theme.colors.secondary : theme.colors.surfaceAlt,
+                      borderColor: isSelectedForCompare ? theme.colors.secondary : theme.colors.border,
+                    },
+                  ]}>
+                    {isSelectedForCompare && (
+                      <Ionicons name="checkmark" size={14} color="#FFF" />
+                    )}
+                  </View>
+                )}
+
                 <View style={styles.cardBody}>
                   <View style={styles.moodBoardWrap}>
                     <MoodBoard items={outfitItems} size={110} />
@@ -333,18 +640,21 @@ export default function OutfitsScreen() {
 
                   <View style={styles.cardInfo}>
                     <View style={styles.cardHeader}>
-                      <Text style={styles.cardTitle} numberOfLines={1}>
+                      <Text style={[styles.cardTitle, { color: theme.colors.text }]} numberOfLines={1}>
                         {outfit.name}
                       </Text>
+                      {outfit.nameLocked && (
+                        <Ionicons name="lock-closed" size={10} color={theme.colors.textLight} />
+                      )}
                       {outfit.suggested && (
-                        <View style={styles.aiBadge}>
-                          <Ionicons name="sparkles" size={10} color={Theme.colors.primary} />
-                          <Text style={styles.aiBadgeText}>AI</Text>
+                        <View style={[styles.aiBadge, { backgroundColor: theme.colors.primary + "15" }]}>
+                          <Ionicons name="sparkles" size={10} color={theme.colors.primary} />
+                          <Text style={[styles.aiBadgeText, { color: theme.colors.primary }]}>AI</Text>
                         </View>
                       )}
                     </View>
 
-                    <Text style={styles.itemList} numberOfLines={2}>
+                    <Text style={[styles.itemList, { color: theme.colors.textSecondary }]} numberOfLines={2}>
                       {outfitItems.map((i) => i?.name).join(" + ")}
                     </Text>
 
@@ -352,27 +662,29 @@ export default function OutfitsScreen() {
                       {[1, 2, 3, 4, 5].map((star) => (
                         <Pressable
                           key={star}
-                          onPress={() => updateRating(outfit.id, star)}
+                          onPress={() => {
+                            if (!compareMode) updateRating(outfit.id, star);
+                          }}
                           hitSlop={4}
                         >
                           <Ionicons
                             name={star <= outfit.rating ? "star" : "star-outline"}
                             size={14}
-                            color={star <= outfit.rating ? "#FFD700" : Theme.colors.textLight}
+                            color={star <= outfit.rating ? "#FFD700" : theme.colors.textLight}
                           />
                         </Pressable>
                       ))}
-                      <Text style={styles.itemCount}>
+                      <Text style={[styles.itemCount, { color: theme.colors.textLight }]}>
                         {outfitItems.length} items
                       </Text>
                     </View>
 
                     <View style={styles.metaRow}>
                       {totalCost > 0 && (
-                        <Text style={styles.costText}>{fmt(totalCost)}</Text>
+                        <Text style={[styles.costText, { color: theme.colors.textSecondary }]}>{fmt(totalCost)}</Text>
                       )}
                       {outfit.wornDates.length > 0 && (
-                        <Text style={styles.wornText}>
+                        <Text style={[styles.wornText, { color: theme.colors.success }]}>
                           Worn {outfit.wornDates.length}x
                         </Text>
                       )}
@@ -380,7 +692,7 @@ export default function OutfitsScreen() {
 
                     {((outfit.seasons ?? []).length > 0 ||
                       (outfit.occasions ?? []).length > 0) && (
-                      <Text style={styles.tagText} numberOfLines={1}>
+                      <Text style={[styles.tagText, { color: theme.colors.primary }]} numberOfLines={1}>
                         {[
                           ...(outfit.seasons ?? []).map((s) => SEASON_LABELS[s]),
                           ...(outfit.occasions ?? []).map((o) => OCCASION_LABELS[o]),
@@ -390,59 +702,57 @@ export default function OutfitsScreen() {
                   </View>
                 </View>
 
-                <View style={styles.actionRow}>
-                  <Pressable
-                    style={styles.logWornBtn}
-                    onPress={() => handleLogWorn(outfit.id, outfit.name)}
-                  >
-                    <Ionicons name="checkmark-circle-outline" size={14} color={Theme.colors.success} />
-                    <Text style={styles.logWornText}>Log Worn</Text>
-                  </Pressable>
-                  <Pressable
-                    style={styles.deleteBtn}
-                    onPress={() => remove(outfit.id)}
-                  >
-                    <Ionicons name="trash-outline" size={14} color={Theme.colors.error} />
-                  </Pressable>
-                </View>
+                {!compareMode && (
+                  <View style={[styles.actionRow, { borderTopColor: theme.colors.border }]}>
+                    <Pressable
+                      style={[styles.logWornBtn, { backgroundColor: theme.colors.success + "12" }]}
+                      onPress={() => handleLogWorn(outfit.id, outfit.name)}
+                    >
+                      <Ionicons name="checkmark-circle-outline" size={14} color={theme.colors.success} />
+                      <Text style={[styles.logWornText, { color: theme.colors.success }]}>Log Worn</Text>
+                    </Pressable>
+                    <Pressable
+                      style={styles.deleteBtn}
+                      onPress={() => remove(outfit.id)}
+                    >
+                      <Ionicons name="trash-outline" size={14} color={theme.colors.error} />
+                    </Pressable>
+                  </View>
+                )}
               </Pressable>
             );
           }}
         />
       )}
+
+      {/* Comparison modal */}
+      {renderCompareModal()}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Theme.colors.background },
+  container: { flex: 1 },
   loader: { flex: 1, justifyContent: "center" },
   filterBar: {
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Theme.colors.border,
-    backgroundColor: Theme.colors.surface,
   },
   filterScroll: {
-    paddingHorizontal: Theme.spacing.md,
-    paddingVertical: Theme.spacing.sm,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
     alignItems: "center",
     gap: 6,
   },
   viewToggle: {
     width: 32,
     height: 32,
-    borderRadius: Theme.borderRadius.sm,
+    borderRadius: 8,
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: Theme.colors.surfaceAlt,
-  },
-  viewToggleActive: {
-    backgroundColor: Theme.colors.primary + "15",
   },
   filterLabel: {
-    fontSize: Theme.fontSize.xs,
+    fontSize: 11,
     fontWeight: "600",
-    color: Theme.colors.textLight,
     textTransform: "uppercase",
     letterSpacing: 0.3,
     marginRight: 2,
@@ -450,7 +760,6 @@ const styles = StyleSheet.create({
   filterDivider: {
     width: 1,
     height: 20,
-    backgroundColor: Theme.colors.border,
     marginHorizontal: 6,
   },
   clearBtn: {
@@ -462,16 +771,14 @@ const styles = StyleSheet.create({
     marginLeft: 4,
   },
   clearBtnText: {
-    fontSize: Theme.fontSize.xs,
+    fontSize: 11,
     fontWeight: "600",
-    color: Theme.colors.error,
   },
-  list: { padding: Theme.spacing.md, paddingBottom: 40 },
+  list: { padding: 16, paddingBottom: 40 },
   card: {
-    backgroundColor: Theme.colors.surface,
-    borderRadius: Theme.borderRadius.md,
-    padding: Theme.spacing.sm,
-    marginBottom: Theme.spacing.md,
+    borderRadius: 12,
+    padding: 8,
+    marginBottom: 16,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.06,
@@ -488,7 +795,7 @@ const styles = StyleSheet.create({
   },
   cardBody: { flexDirection: "row", gap: 12 },
   moodBoardWrap: {
-    borderRadius: Theme.borderRadius.sm,
+    borderRadius: 8,
     overflow: "hidden",
   },
   cardInfo: { flex: 1, justifyContent: "center", paddingRight: 4 },
@@ -499,31 +806,27 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   cardTitle: {
-    fontSize: Theme.fontSize.md,
+    fontSize: 15,
     fontWeight: "700",
-    color: Theme.colors.text,
     flex: 1,
   },
   aiBadge: {
     flexDirection: "row",
     alignItems: "center",
     gap: 3,
-    backgroundColor: Theme.colors.primary + "15",
     paddingHorizontal: 6,
     paddingVertical: 2,
-    borderRadius: Theme.borderRadius.full,
+    borderRadius: 9999,
   },
-  aiBadgeText: { fontSize: 10, fontWeight: "700", color: Theme.colors.primary },
+  aiBadgeText: { fontSize: 10, fontWeight: "700" },
   itemList: {
-    fontSize: Theme.fontSize.xs,
-    color: Theme.colors.textSecondary,
+    fontSize: 11,
     marginBottom: 6,
     lineHeight: 16,
   },
   ratingRow: { flexDirection: "row", alignItems: "center", gap: 2 },
   itemCount: {
-    fontSize: Theme.fontSize.xs,
-    color: Theme.colors.textLight,
+    fontSize: 11,
     marginLeft: 8,
   },
   metaRow: {
@@ -533,18 +836,15 @@ const styles = StyleSheet.create({
     marginTop: 3,
   },
   costText: {
-    fontSize: Theme.fontSize.xs,
-    color: Theme.colors.textSecondary,
+    fontSize: 11,
     fontWeight: "500",
   },
   wornText: {
-    fontSize: Theme.fontSize.xs,
-    color: Theme.colors.success,
+    fontSize: 11,
     fontWeight: "500",
   },
   tagText: {
-    fontSize: Theme.fontSize.xs,
-    color: Theme.colors.primary,
+    fontSize: 11,
     fontWeight: "500",
     marginTop: 2,
   },
@@ -555,7 +855,6 @@ const styles = StyleSheet.create({
     marginTop: 8,
     paddingTop: 8,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: Theme.colors.border,
   },
   logWornBtn: {
     flexDirection: "row",
@@ -563,45 +862,163 @@ const styles = StyleSheet.create({
     gap: 4,
     paddingVertical: 4,
     paddingHorizontal: 8,
-    borderRadius: Theme.borderRadius.sm,
-    backgroundColor: Theme.colors.success + "12",
+    borderRadius: 8,
   },
   logWornText: {
-    fontSize: Theme.fontSize.xs,
+    fontSize: 11,
     fontWeight: "600",
-    color: Theme.colors.success,
   },
   deleteBtn: { padding: 4 },
+
+  // Compare mode
+  compareBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  compareBannerText: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  compareGoBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  compareGoBtnText: {
+    color: "#FFF",
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  compareCheckbox: {
+    position: "absolute",
+    top: 8,
+    right: 8,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 2,
+    justifyContent: "center",
+    alignItems: "center",
+    zIndex: 10,
+  },
+
+  // Compare modal
+  compareModal: {
+    flex: 1,
+  },
+  compareHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  compareTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+  },
+  compareBody: {
+    paddingBottom: 32,
+  },
+  compareRow: {
+    flexDirection: "row",
+    justifyContent: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    gap: 8,
+  },
+  compareCol: {
+    alignItems: "center",
+    paddingHorizontal: 4,
+  },
+  compareSectionRow: {
+    flexDirection: "row",
+    justifyContent: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    gap: 8,
+  },
+  compareName: {
+    fontSize: 14,
+    fontWeight: "700",
+    textAlign: "center",
+    marginTop: 4,
+  },
+  compareSectionLabel: {
+    fontSize: 10,
+    fontWeight: "600",
+    textTransform: "uppercase",
+    letterSpacing: 0.3,
+    marginBottom: 4,
+    textAlign: "center",
+  },
+  compareStars: {
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: 2,
+  },
+  compareCost: {
+    fontSize: 15,
+    fontWeight: "700",
+    textAlign: "center",
+  },
+  compareDetail: {
+    fontSize: 12,
+    fontWeight: "500",
+    textAlign: "center",
+    lineHeight: 16,
+  },
+  compareFooter: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  compareDoneBtn: {
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: "center",
+  },
+  compareDoneBtnText: {
+    color: "#FFF",
+    fontSize: 16,
+    fontWeight: "700",
+  },
+
   // Calendar styles
   calContainer: { paddingBottom: 40 },
   calNav: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: Theme.spacing.lg,
-    paddingVertical: Theme.spacing.md,
+    paddingHorizontal: 24,
+    paddingVertical: 16,
   },
   calMonthTitle: {
-    fontSize: Theme.fontSize.lg,
+    fontSize: 18,
     fontWeight: "700",
-    color: Theme.colors.text,
   },
   calWeekRow: {
     flexDirection: "row",
-    paddingHorizontal: Theme.spacing.sm,
+    paddingHorizontal: 8,
   },
   calWeekday: {
     flex: 1,
     textAlign: "center",
-    fontSize: Theme.fontSize.xs,
+    fontSize: 11,
     fontWeight: "600",
-    color: Theme.colors.textLight,
     paddingVertical: 4,
   },
   calGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    paddingHorizontal: Theme.spacing.sm,
+    paddingHorizontal: 8,
   },
   calCell: {
     width: `${100 / 7}%`,
@@ -610,23 +1027,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "flex-start",
     borderWidth: 0.5,
-    borderColor: Theme.colors.border,
+    borderColor: "transparent",
     overflow: "hidden",
   },
-  calCellToday: {
-    backgroundColor: Theme.colors.primary + "10",
-    borderColor: Theme.colors.primary + "40",
-    borderWidth: 1,
-  },
   calDay: {
-    fontSize: Theme.fontSize.xs,
+    fontSize: 11,
     fontWeight: "600",
-    color: Theme.colors.text,
     marginTop: 2,
-  },
-  calDayToday: {
-    color: Theme.colors.primary,
-    fontWeight: "800",
   },
   calDots: {
     flexDirection: "row",
@@ -642,7 +1049,6 @@ const styles = StyleSheet.create({
   calDotCount: {
     fontSize: 8,
     fontWeight: "700",
-    color: Theme.colors.primary,
   },
   calThumb: {
     width: 28,
@@ -651,33 +1057,29 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   calSummary: {
-    padding: Theme.spacing.md,
+    padding: 16,
   },
   calSummaryTitle: {
-    fontSize: Theme.fontSize.md,
+    fontSize: 15,
     fontWeight: "700",
-    color: Theme.colors.text,
-    marginBottom: Theme.spacing.sm,
+    marginBottom: 8,
   },
   calOutfitRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
-    paddingVertical: Theme.spacing.sm,
+    paddingVertical: 8,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Theme.colors.border,
   },
   calOutfitMood: {
-    borderRadius: Theme.borderRadius.sm,
+    borderRadius: 8,
     overflow: "hidden",
   },
   calOutfitName: {
-    fontSize: Theme.fontSize.md,
+    fontSize: 15,
     fontWeight: "600",
-    color: Theme.colors.text,
   },
   calOutfitMeta: {
-    fontSize: Theme.fontSize.xs,
-    color: Theme.colors.textSecondary,
+    fontSize: 11,
   },
 });

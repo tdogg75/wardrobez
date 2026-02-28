@@ -1,7 +1,9 @@
 export type ClothingCategory =
   | "tops"
   | "bottoms"
+  | "skirts_shorts"
   | "dresses"
+  | "jumpsuits"
   | "blazers"
   | "jackets"
   | "shoes"
@@ -36,6 +38,22 @@ export type FabricType =
   | "fleece"
   | "other";
 
+export type CareInstruction =
+  | "machine_wash"
+  | "hand_wash"
+  | "dry_clean_only"
+  | "spot_clean"
+  | "delicate_cycle"
+  | "tumble_dry"
+  | "hang_dry"
+  | "line_dry"
+  | "do_not_bleach"
+  | "iron_low"
+  | "iron_medium"
+  | "iron_high"
+  | "do_not_iron"
+  | "steam_only";
+
 export type ArchiveReason = "donated" | "sold" | "worn_out" | "given_away";
 
 export type HardwareColour = "gold" | "silver" | "rose_gold" | "black" | "bronze" | "gunmetal";
@@ -65,6 +83,7 @@ export interface ClothingItem {
   brand?: string;
   productUrl?: string; // link to the product page
   cost?: number;
+  purchaseDate?: string; // ISO date string (YYYY-MM-DD)
   favorite: boolean;
   wearCount: number;
   /** ISO date strings for each time worn (includes both standalone and outfit wears) */
@@ -83,8 +102,14 @@ export interface ClothingItem {
   originalAutoColor?: string;
   // Item condition flags
   itemFlags?: ItemFlag[];
+  // Care instructions
+  careInstructions?: CareInstruction[];
+  // Sustainability - is this from a sustainable/ethical brand?
+  sustainable?: boolean;
   // Legacy field - kept for migration but no longer used in UI
   occasions?: Occasion[];
+  // Custom tags
+  tags?: string[];
 }
 
 /** A single wear-log entry for an outfit, optionally with a selfie + note */
@@ -97,6 +122,8 @@ export interface WornEntry {
 export interface Outfit {
   id: string;
   name: string;
+  /** Once set, the name is locked unless user explicitly regenerates */
+  nameLocked?: boolean;
   itemIds: string[];
   occasions: Occasion[];
   seasons: Season[];
@@ -130,12 +157,59 @@ export interface WishlistItem {
   fabricType?: FabricType;
   createdAt: number;
   purchased?: boolean;
+  /** Track price history for sale alerts */
+  priceHistory?: { date: string; price: number }[];
+  /** Target price for sale alerts */
+  targetPrice?: number;
+}
+
+/** Outfit template - reusable formula for generating outfits */
+export interface OutfitTemplate {
+  id: string;
+  name: string;
+  categorySlots: { category: ClothingCategory; subCategory?: string }[];
+  occasions: Occasion[];
+  seasons: Season[];
+  createdAt: number;
+}
+
+/** Weekly outfit plan entry */
+export interface PlannedOutfit {
+  date: string; // ISO date YYYY-MM-DD
+  outfitId?: string; // reference to saved outfit
+  itemIds?: string[]; // or ad-hoc item selection
+  notes?: string;
+}
+
+/** Style inspiration pin */
+export interface InspirationPin {
+  id: string;
+  imageUri: string;
+  title?: string;
+  notes?: string;
+  tags?: string[];
+  createdAt: number;
+}
+
+/** Packing list */
+export interface PackingList {
+  id: string;
+  name: string;
+  destination?: string;
+  startDate: string;
+  endDate: string;
+  itemIds: string[];
+  outfitIds?: string[];
+  notes?: string;
+  createdAt: number;
 }
 
 export const CATEGORY_LABELS: Record<ClothingCategory, string> = {
   tops: "Tops",
   bottoms: "Bottoms",
+  skirts_shorts: "Skirts & Shorts",
   dresses: "Dresses",
+  jumpsuits: "Jumpsuits",
   blazers: "Blazers",
   jackets: "Jackets",
   shoes: "Shoes",
@@ -146,71 +220,86 @@ export const CATEGORY_LABELS: Record<ClothingCategory, string> = {
 
 export const SUBCATEGORIES: Record<ClothingCategory, { value: string; label: string }[]> = {
   tops: [
-    { value: "tank_top", label: "Tank Top" },
-    { value: "tshirt", label: "T-Shirt" },
-    { value: "long_sleeve", label: "Long Sleeve" },
     { value: "blouse", label: "Blouse" },
+    { value: "long_sleeve", label: "Long Sleeve" },
+    { value: "tshirt", label: "T-Shirt" },
+    { value: "tank_top", label: "Tank Top" },
+    { value: "polo", label: "Polo" },
     { value: "sweater", label: "Sweater" },
     { value: "cardigan", label: "Cardigan" },
-    { value: "zip_up", label: "Zip-Up" },
     { value: "sweatshirt", label: "Sweatshirt" },
     { value: "hoodie", label: "Hoodie" },
-    { value: "polo", label: "Polo" },
+    { value: "zip_up", label: "Zip-Up" },
     { value: "workout_shirt", label: "Workout Shirt" },
   ],
   bottoms: [
-    { value: "dress_pants", label: "Dress Pants" },
+    { value: "trousers", label: "Trousers" },
     { value: "jeans", label: "Jeans" },
-    { value: "leggings", label: "Leggings" },
     { value: "casual_pants", label: "Casual Pants" },
-    { value: "skirt", label: "Skirt" },
-    { value: "shorts", label: "Shorts" },
-    { value: "stockings", label: "Stockings/Tights" },
+    { value: "leggings", label: "Leggings" },
+    { value: "joggers", label: "Joggers" },
     { value: "other", label: "Other" },
   ],
+  skirts_shorts: [
+    { value: "mini_skirt", label: "Mini Skirt" },
+    { value: "midi_skirt", label: "Midi Skirt" },
+    { value: "maxi_skirt", label: "Maxi Skirt" },
+    { value: "skort", label: "Skort" },
+    { value: "casual_shorts", label: "Casual Shorts" },
+    { value: "athletic_shorts", label: "Athletic Shorts" },
+    { value: "dressy_shorts", label: "Dressy Shorts" },
+  ],
   dresses: [
-    { value: "formal_dress", label: "Formal" },
     { value: "work_dress", label: "Work" },
     { value: "casual_dress", label: "Casual" },
+    { value: "formal_dress", label: "Formal" },
+    { value: "party_dress", label: "Party" },
     { value: "sundress", label: "Sundress" },
     { value: "cover_up", label: "Cover-Up" },
+  ],
+  jumpsuits: [
+    { value: "casual_jumpsuit", label: "Casual" },
+    { value: "dressy_jumpsuit", label: "Dressy" },
   ],
   blazers: [
     { value: "casual_blazer", label: "Casual" },
     { value: "formal_blazer", label: "Formal" },
-    { value: "sport_coat", label: "Sport Coat" },
   ],
   jackets: [
-    { value: "parka", label: "Parka" },
     { value: "spring_jacket", label: "Spring Jacket" },
-    { value: "raincoat", label: "Raincoat" },
-    { value: "work_jacket", label: "Work Jacket" },
-    { value: "ski_jacket", label: "Ski Jacket" },
     { value: "jean_jacket", label: "Jean Jacket" },
+    { value: "work_jacket", label: "Work Jacket" },
+    { value: "raincoat", label: "Raincoat" },
+    { value: "parka", label: "Parka" },
+    { value: "ski_jacket", label: "Ski Jacket" },
   ],
   shoes: [
-    { value: "dress_boots", label: "Dress Boots" },
+    { value: "flats", label: "Flats" },
+    { value: "loafers", label: "Loafers" },
+    { value: "heels", label: "Heels" },
+    { value: "sandals", label: "Sandals" },
     { value: "ankle_boots", label: "Ankle Boots" },
+    { value: "dress_boots", label: "Dress Boots" },
     { value: "knee_boots", label: "Knee-High Boots" },
     { value: "winter_boots", label: "Winter Boots" },
     { value: "running_shoes", label: "Running Shoes" },
-    { value: "sandals", label: "Sandals" },
     { value: "soccer_shoes", label: "Soccer Shoes" },
-    { value: "flats", label: "Flats" },
-    { value: "heels", label: "Heels" },
-    { value: "loafers", label: "Loafers" },
   ],
   accessories: [
     { value: "belts", label: "Belts" },
     { value: "hats", label: "Hats" },
     { value: "sunglasses", label: "Sunglasses" },
+    { value: "scarves", label: "Scarves" },
+    { value: "hair_pieces", label: "Hair Pieces" },
+    { value: "stockings", label: "Stockings/Tights" },
+    { value: "bags", label: "Bags" },
   ],
   jewelry: [
-    { value: "watches", label: "Watches" },
     { value: "earrings", label: "Earrings" },
     { value: "necklaces", label: "Necklaces" },
     { value: "bracelets", label: "Bracelets" },
     { value: "rings", label: "Rings" },
+    { value: "watches", label: "Watches" },
   ],
   swimwear: [
     { value: "one_piece", label: "One Piece" },
@@ -250,6 +339,23 @@ export const FABRIC_TYPE_LABELS: Record<FabricType, string> = {
   other: "Other",
 };
 
+export const CARE_INSTRUCTION_LABELS: Record<CareInstruction, string> = {
+  machine_wash: "Machine Wash",
+  hand_wash: "Hand Wash",
+  dry_clean_only: "Dry Clean Only",
+  spot_clean: "Spot Clean",
+  delicate_cycle: "Delicate Cycle",
+  tumble_dry: "Tumble Dry",
+  hang_dry: "Hang Dry",
+  line_dry: "Line Dry",
+  do_not_bleach: "Do Not Bleach",
+  iron_low: "Iron Low",
+  iron_medium: "Iron Medium",
+  iron_high: "Iron High",
+  do_not_iron: "Do Not Iron",
+  steam_only: "Steam Only",
+};
+
 export const ARCHIVE_REASON_LABELS: Record<ArchiveReason, string> = {
   donated: "Donated",
   sold: "Sold",
@@ -281,13 +387,13 @@ export const ITEM_FLAG_LABELS: Record<ItemFlag, string> = {
 // Items that can have hardware (buttons, buckles, clasps)
 export const HARDWARE_CATEGORIES: ClothingCategory[] = ["blazers", "accessories", "jewelry"];
 export const HARDWARE_SUBCATEGORIES: string[] = [
-  "casual_blazer", "formal_blazer", "sport_coat",
+  "casual_blazer", "formal_blazer",
   "belts", "watches", "bracelets", "necklaces",
   "cardigan", "zip_up",
 ];
 
 // Subcategories that are always considered "open" (require a shirt under)
 export const ALWAYS_OPEN_SUBCATEGORIES: string[] = [
-  "casual_blazer", "formal_blazer", "sport_coat",
+  "casual_blazer", "formal_blazer",
   "cardigan", "zip_up",
 ];

@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useMemo } from "react";
 import {
   View,
   Text,
@@ -15,7 +15,7 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { Theme } from "@/constants/theme";
+import { useTheme } from "@/hooks/useTheme";
 import {
   signInWithGoogle,
   scanGmailForPurchases,
@@ -55,6 +55,7 @@ interface EditableLineItem extends GmailLineItem {
 
 export default function GmailPurchasesScreen() {
   const router = useRouter();
+  const { theme } = useTheme();
   const { addOrUpdate } = useClothingItems();
 
   const [scanState, setScanState] = useState<ScanState>("idle");
@@ -72,6 +73,8 @@ export default function GmailPurchasesScreen() {
   const [editableItems, setEditableItems] = useState<EditableLineItem[]>([]);
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [editingIndex, setEditingIndex] = useState(-1);
+
+  const styles = useMemo(() => createStyles(theme), [theme]);
 
   // Load saved client ID on mount
   useEffect(() => {
@@ -306,11 +309,11 @@ export default function GmailPurchasesScreen() {
   if (scanState === "need_client_id") {
     return (
       <ScrollView
-        style={{ flex: 1, backgroundColor: Theme.colors.background }}
+        style={{ flex: 1, backgroundColor: theme.colors.background }}
         contentContainerStyle={styles.center}
         keyboardShouldPersistTaps="handled"
       >
-        <Ionicons name="key-outline" size={64} color={Theme.colors.primary} />
+        <Ionicons name="key-outline" size={64} color={theme.colors.primary} />
         <Text style={styles.title}>Google OAuth Setup</Text>
         <Text style={styles.subtitle}>
           To scan your Gmail, you need a Google OAuth Client ID. Follow these steps:{"\n\n"}
@@ -324,7 +327,7 @@ export default function GmailPurchasesScreen() {
           8. Copy the <Text style={{ fontWeight: "700" }}>Client ID</Text> and paste it below
         </Text>
         <Pressable
-          style={[styles.primaryBtn, { backgroundColor: Theme.colors.textSecondary }]}
+          style={[styles.primaryBtn, { backgroundColor: theme.colors.textSecondary }]}
           onPress={() => Linking.openURL("https://console.cloud.google.com/apis/credentials")}
         >
           <Ionicons name="open-outline" size={18} color="#FFFFFF" />
@@ -337,7 +340,7 @@ export default function GmailPurchasesScreen() {
             value={clientIdInput}
             onChangeText={setClientIdInput}
             placeholder="xxxx.apps.googleusercontent.com"
-            placeholderTextColor={Theme.colors.textLight}
+            placeholderTextColor={theme.colors.textLight}
             autoCapitalize="none"
             autoCorrect={false}
           />
@@ -357,16 +360,16 @@ export default function GmailPurchasesScreen() {
   if (scanState === "manual_token") {
     return (
       <ScrollView
-        style={{ flex: 1, backgroundColor: Theme.colors.background }}
+        style={{ flex: 1, backgroundColor: theme.colors.background }}
         contentContainerStyle={styles.center}
         keyboardShouldPersistTaps="handled"
       >
-        <Ionicons name="key-outline" size={64} color={Theme.colors.primary} />
+        <Ionicons name="key-outline" size={64} color={theme.colors.primary} />
         <Text style={styles.title}>Manual Gmail Token</Text>
         <Text style={styles.subtitle}>
           1. Open{" "}
           <Text
-            style={{ fontWeight: "700", color: Theme.colors.primary }}
+            style={{ fontWeight: "700", color: theme.colors.primary }}
             onPress={() =>
               Linking.openURL(
                 "https://developers.google.com/oauthplayground"
@@ -382,7 +385,7 @@ export default function GmailPurchasesScreen() {
           6. Copy the <Text style={{ fontWeight: "700" }}>Access token</Text> and paste below
         </Text>
         <Pressable
-          style={[styles.primaryBtn, { backgroundColor: Theme.colors.textSecondary, marginBottom: Theme.spacing.md }]}
+          style={[styles.primaryBtn, { backgroundColor: theme.colors.textSecondary, marginBottom: theme.spacing.md }]}
           onPress={() =>
             Linking.openURL("https://developers.google.com/oauthplayground")
           }
@@ -397,7 +400,7 @@ export default function GmailPurchasesScreen() {
             value={manualTokenInput}
             onChangeText={setManualTokenInput}
             placeholder="ya29.a0AfH..."
-            placeholderTextColor={Theme.colors.textLight}
+            placeholderTextColor={theme.colors.textLight}
             autoCapitalize="none"
             autoCorrect={false}
             multiline
@@ -421,7 +424,7 @@ export default function GmailPurchasesScreen() {
   if (scanState === "idle") {
     return (
       <View style={styles.center}>
-        <Ionicons name="mail-outline" size={64} color={Theme.colors.primary} />
+        <Ionicons name="mail-outline" size={64} color={theme.colors.primary} />
         <Text style={styles.title}>Scan Gmail for Purchases</Text>
         <Text style={styles.subtitle}>
           Connect your Gmail to find clothing, shoes, jewelry, and accessories
@@ -434,7 +437,7 @@ export default function GmailPurchasesScreen() {
           </Pressable>
         ) : (
           <View style={styles.expoGoWarning}>
-            <Ionicons name="information-circle-outline" size={20} color={Theme.colors.primary} />
+            <Ionicons name="information-circle-outline" size={20} color={theme.colors.primary} />
             <Text style={styles.expoGoWarningText}>
               Google sign-in requires a standalone APK.{"\n"}
               Use <Text style={{ fontWeight: "700" }}>Manual Token</Text> below to scan from Expo Go, or build an APK with{" "}
@@ -445,7 +448,7 @@ export default function GmailPurchasesScreen() {
 
         {/* Manual token entry — works in Expo Go */}
         <Pressable
-          style={[styles.primaryBtn, { backgroundColor: Theme.colors.textSecondary }]}
+          style={[styles.primaryBtn, { backgroundColor: theme.colors.textSecondary }]}
           onPress={() => setScanState("manual_token")}
         >
           <Ionicons name="key-outline" size={20} color="#FFFFFF" />
@@ -475,7 +478,7 @@ export default function GmailPurchasesScreen() {
   if (scanState === "signing_in") {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" color={Theme.colors.primary} />
+        <ActivityIndicator size="large" color={theme.colors.primary} />
         <Text style={styles.loadingText}>Signing in to Google...</Text>
       </View>
     );
@@ -486,7 +489,7 @@ export default function GmailPurchasesScreen() {
   if (scanState === "scanning") {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" color={Theme.colors.primary} />
+        <ActivityIndicator size="large" color={theme.colors.primary} />
         <Text style={styles.loadingText}>Scanning your emails...</Text>
         {progress.total > 0 && (
           <Text style={styles.progressText}>
@@ -502,7 +505,7 @@ export default function GmailPurchasesScreen() {
   if (scanState === "error") {
     return (
       <View style={styles.center}>
-        <Ionicons name="warning-outline" size={64} color={Theme.colors.error} />
+        <Ionicons name="warning-outline" size={64} color={theme.colors.error} />
         <Text style={styles.title}>Something went wrong</Text>
         <Pressable style={styles.primaryBtn} onPress={startScan}>
           <Text style={styles.primaryBtnText}>Try Again</Text>
@@ -524,7 +527,7 @@ export default function GmailPurchasesScreen() {
         {/* Header */}
         <View style={styles.header}>
           <Pressable onPress={handleBackToEmails} hitSlop={12}>
-            <Ionicons name="arrow-back" size={24} color={Theme.colors.text} />
+            <Ionicons name="arrow-back" size={24} color={theme.colors.text} />
           </Pressable>
           <Text style={styles.headerTitle} numberOfLines={1}>
             {currentEmail.vendor} Items
@@ -549,7 +552,7 @@ export default function GmailPurchasesScreen() {
                   <Ionicons
                     name={item.selected ? "checkbox" : "square-outline"}
                     size={24}
-                    color={item.selected ? Theme.colors.primary : Theme.colors.textLight}
+                    color={item.selected ? theme.colors.primary : theme.colors.textLight}
                   />
                 </Pressable>
                 <View style={styles.lineItemInfo}>
@@ -561,7 +564,7 @@ export default function GmailPurchasesScreen() {
                     />
                   ) : (
                     <View style={styles.lineItemImagePlaceholder}>
-                      <Ionicons name="image-outline" size={24} color={Theme.colors.textLight} />
+                      <Ionicons name="image-outline" size={24} color={theme.colors.textLight} />
                     </View>
                   )}
                   <View style={styles.lineItemText}>
@@ -593,10 +596,10 @@ export default function GmailPurchasesScreen() {
                     disabled={item.fetchingDetails}
                   >
                     {item.fetchingDetails ? (
-                      <ActivityIndicator size="small" color={Theme.colors.primary} />
+                      <ActivityIndicator size="small" color={theme.colors.primary} />
                     ) : (
                       <>
-                        <Ionicons name="download-outline" size={16} color={Theme.colors.primary} />
+                        <Ionicons name="download-outline" size={16} color={theme.colors.primary} />
                         <Text style={styles.fetchBtnText}>Fetch Details</Text>
                       </>
                     )}
@@ -606,7 +609,7 @@ export default function GmailPurchasesScreen() {
                   style={styles.editBtn}
                   onPress={() => openEditModal(index)}
                 >
-                  <Ionicons name="create-outline" size={16} color={Theme.colors.textSecondary} />
+                  <Ionicons name="create-outline" size={16} color={theme.colors.textSecondary} />
                   <Text style={styles.editBtnText}>Edit</Text>
                 </Pressable>
               </View>
@@ -639,7 +642,7 @@ export default function GmailPurchasesScreen() {
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>Edit Item</Text>
                 <Pressable onPress={() => setEditModalVisible(false)} hitSlop={12}>
-                  <Ionicons name="close" size={24} color={Theme.colors.text} />
+                  <Ionicons name="close" size={24} color={theme.colors.text} />
                 </Pressable>
               </View>
 
@@ -651,7 +654,7 @@ export default function GmailPurchasesScreen() {
                     value={editingItem.name}
                     onChangeText={(v) => updateEditableItem(editingIndex, { name: v })}
                     placeholder="Item name"
-                    placeholderTextColor={Theme.colors.textLight}
+                    placeholderTextColor={theme.colors.textLight}
                   />
 
                   <Text style={styles.modalLabel}>Brand</Text>
@@ -660,7 +663,7 @@ export default function GmailPurchasesScreen() {
                     value={editingItem.brand}
                     onChangeText={(v) => updateEditableItem(editingIndex, { brand: v })}
                     placeholder="Brand"
-                    placeholderTextColor={Theme.colors.textLight}
+                    placeholderTextColor={theme.colors.textLight}
                   />
 
                   <Text style={styles.modalLabel}>Category</Text>
@@ -692,7 +695,7 @@ export default function GmailPurchasesScreen() {
                     value={editingItem.cost}
                     onChangeText={(v) => updateEditableItem(editingIndex, { cost: v })}
                     placeholder="0.00"
-                    placeholderTextColor={Theme.colors.textLight}
+                    placeholderTextColor={theme.colors.textLight}
                     keyboardType="decimal-pad"
                   />
 
@@ -702,7 +705,7 @@ export default function GmailPurchasesScreen() {
                     value={editingItem.url}
                     onChangeText={(v) => updateEditableItem(editingIndex, { url: v })}
                     placeholder="https://..."
-                    placeholderTextColor={Theme.colors.textLight}
+                    placeholderTextColor={theme.colors.textLight}
                     autoCapitalize="none"
                     autoCorrect={false}
                     keyboardType="url"
@@ -729,7 +732,7 @@ export default function GmailPurchasesScreen() {
     if (purchases.length === 0) {
       return (
         <View style={styles.center}>
-          <Ionicons name="search-outline" size={64} color={Theme.colors.textLight} />
+          <Ionicons name="search-outline" size={64} color={theme.colors.textLight} />
           <Text style={styles.title}>No Purchases Found</Text>
           <Text style={styles.subtitle}>
             We couldn't find any fashion-related purchase emails in the last 2 years.
@@ -745,7 +748,7 @@ export default function GmailPurchasesScreen() {
       // Reached end of emails
       return (
         <View style={styles.center}>
-          <Ionicons name="checkmark-circle-outline" size={64} color={Theme.colors.success} />
+          <Ionicons name="checkmark-circle-outline" size={64} color={theme.colors.success} />
           <Text style={styles.title}>All Done!</Text>
           <Text style={styles.subtitle}>
             Added {totalItemsAdded} items from {importedEmailCount} emails.{"\n"}
@@ -766,7 +769,7 @@ export default function GmailPurchasesScreen() {
         {/* Header */}
         <View style={styles.header}>
           <Pressable onPress={handleStopScanning} hitSlop={12}>
-            <Ionicons name="close" size={24} color={Theme.colors.text} />
+            <Ionicons name="close" size={24} color={theme.colors.text} />
           </Pressable>
           <Text style={styles.headerTitle}>Gmail Purchases</Text>
           <Text style={styles.counter}>
@@ -791,7 +794,7 @@ export default function GmailPurchasesScreen() {
             {/* Previously imported badge */}
             {currentEmail.previouslyImported && (
               <View style={styles.importedBadge}>
-                <Ionicons name="alert-circle" size={16} color={Theme.colors.warning} />
+                <Ionicons name="alert-circle" size={16} color={theme.colors.warning} />
                 <Text style={styles.importedBadgeText}>Already Imported</Text>
               </View>
             )}
@@ -872,7 +875,7 @@ export default function GmailPurchasesScreen() {
               <Ionicons
                 name="chevron-back"
                 size={20}
-                color={currentEmailIndex === 0 ? Theme.colors.textLight : Theme.colors.text}
+                color={currentEmailIndex === 0 ? theme.colors.textLight : theme.colors.text}
               />
               <Text
                 style={[
@@ -909,8 +912,8 @@ export default function GmailPurchasesScreen() {
                 size={20}
                 color={
                   currentEmailIndex >= purchases.length - 1
-                    ? Theme.colors.textLight
-                    : Theme.colors.text
+                    ? theme.colors.textLight
+                    : theme.colors.text
                 }
               />
             </Pressable>
@@ -919,7 +922,7 @@ export default function GmailPurchasesScreen() {
           {/* Action buttons */}
           <View style={styles.actionRow}>
             <Pressable style={styles.skipBtn} onPress={handleSkipEmail}>
-              <Ionicons name="close" size={20} color={Theme.colors.textSecondary} />
+              <Ionicons name="close" size={20} color={theme.colors.textSecondary} />
               <Text style={styles.skipBtnText}>No - Skip</Text>
             </Pressable>
             <Pressable style={styles.showItemsBtn} onPress={handleShowItems}>
@@ -939,520 +942,521 @@ export default function GmailPurchasesScreen() {
   // Fallback
   return (
     <View style={styles.center}>
-      <ActivityIndicator size="large" color={Theme.colors.primary} />
+      <ActivityIndicator size="large" color={theme.colors.primary} />
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Theme.colors.background,
-  },
-  center: {
-    flex: 1,
-    backgroundColor: Theme.colors.background,
-    justifyContent: "center",
-    alignItems: "center",
-    padding: Theme.spacing.xl,
-  },
-  title: {
-    fontSize: Theme.fontSize.xl,
-    fontWeight: "700",
-    color: Theme.colors.text,
-    marginTop: Theme.spacing.lg,
-    textAlign: "center",
-  },
-  subtitle: {
-    fontSize: Theme.fontSize.md,
-    color: Theme.colors.textSecondary,
-    textAlign: "center",
-    marginTop: Theme.spacing.sm,
-    marginBottom: Theme.spacing.xl,
-    lineHeight: 22,
-  },
-  loadingText: {
-    fontSize: Theme.fontSize.lg,
-    color: Theme.colors.text,
-    marginTop: Theme.spacing.lg,
-  },
-  progressText: {
-    fontSize: Theme.fontSize.sm,
-    color: Theme.colors.textSecondary,
-    marginTop: Theme.spacing.sm,
-  },
-  primaryBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    backgroundColor: Theme.colors.primary,
-    paddingVertical: 14,
-    paddingHorizontal: 28,
-    borderRadius: Theme.borderRadius.md,
-    marginTop: Theme.spacing.md,
-  },
-  primaryBtnText: {
-    color: "#FFFFFF",
-    fontSize: Theme.fontSize.lg,
-    fontWeight: "700",
-  },
-  secondaryBtn: {
-    marginTop: Theme.spacing.md,
-    paddingVertical: 10,
-  },
-  secondaryBtnText: {
-    color: Theme.colors.textSecondary,
-    fontSize: Theme.fontSize.md,
-    fontWeight: "600",
-  },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: Theme.spacing.md,
-    paddingVertical: Theme.spacing.md,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Theme.colors.border,
-  },
-  headerTitle: {
-    fontSize: Theme.fontSize.lg,
-    fontWeight: "700",
-    color: Theme.colors.text,
-    flex: 1,
-    textAlign: "center",
-    marginHorizontal: Theme.spacing.sm,
-  },
-  counter: {
-    fontSize: Theme.fontSize.sm,
-    fontWeight: "600",
-    color: Theme.colors.textSecondary,
-  },
-  summaryBar: {
-    paddingHorizontal: Theme.spacing.md,
-    paddingVertical: Theme.spacing.sm,
-    backgroundColor: Theme.colors.surfaceAlt,
-  },
-  summaryText: {
-    fontSize: Theme.fontSize.sm,
-    color: Theme.colors.textSecondary,
-    textAlign: "center",
-  },
-  scrollArea: {
-    flex: 1,
-  },
-  scrollContent: {
-    padding: Theme.spacing.md,
-    paddingBottom: Theme.spacing.lg,
-  },
-  card: {
-    backgroundColor: Theme.colors.surface,
-    borderRadius: Theme.borderRadius.md,
-    overflow: "hidden",
-    shadowColor: Theme.colors.shadow,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 1,
-    shadowRadius: 6,
-    elevation: 2,
-  },
-  importedBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    backgroundColor: Theme.colors.warning + "20",
-    paddingHorizontal: Theme.spacing.md,
-    paddingVertical: Theme.spacing.sm,
-  },
-  importedBadgeText: {
-    fontSize: Theme.fontSize.sm,
-    fontWeight: "600",
-    color: Theme.colors.warning,
-  },
-  thumbnail: {
-    width: "100%",
-    height: 200,
-    backgroundColor: Theme.colors.surfaceAlt,
-  },
-  detailSection: {
-    paddingHorizontal: Theme.spacing.md,
-    paddingVertical: Theme.spacing.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Theme.colors.border,
-  },
-  vendorLabel: {
-    fontSize: Theme.fontSize.xs,
-    color: Theme.colors.textLight,
-    fontWeight: "600",
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-  },
-  vendorValue: {
-    fontSize: Theme.fontSize.lg,
-    fontWeight: "700",
-    color: Theme.colors.primary,
-    marginTop: 2,
-  },
-  detailLabel: {
-    fontSize: Theme.fontSize.xs,
-    color: Theme.colors.textLight,
-    fontWeight: "600",
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-  },
-  detailValue: {
-    fontSize: Theme.fontSize.md,
-    color: Theme.colors.text,
-    marginTop: 2,
-  },
-  priceValue: {
-    fontSize: Theme.fontSize.lg,
-    fontWeight: "700",
-    color: Theme.colors.success,
-    marginTop: 2,
-  },
-  snippetText: {
-    fontSize: Theme.fontSize.sm,
-    color: Theme.colors.textSecondary,
-    marginTop: 4,
-    lineHeight: 18,
-  },
-  lineItemPreview: {
-    fontSize: Theme.fontSize.sm,
-    color: Theme.colors.text,
-    marginTop: 4,
-    paddingLeft: Theme.spacing.sm,
-  },
-  bottomBar: {
-    paddingHorizontal: Theme.spacing.md,
-    paddingVertical: Theme.spacing.sm,
-    paddingBottom: Theme.spacing.lg,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: Theme.colors.border,
-    backgroundColor: Theme.colors.surface,
-  },
-  navRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: Theme.spacing.sm,
-  },
-  navBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-  },
-  navBtnDisabled: {
-    opacity: 0.4,
-  },
-  navBtnText: {
-    fontSize: Theme.fontSize.sm,
-    fontWeight: "600",
-    color: Theme.colors.text,
-  },
-  navBtnTextDisabled: {
-    color: Theme.colors.textLight,
-  },
-  actionRow: {
-    flexDirection: "row",
-    gap: Theme.spacing.sm,
-    marginBottom: Theme.spacing.sm,
-  },
-  skipBtn: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    paddingVertical: 14,
-    borderRadius: Theme.borderRadius.md,
-    backgroundColor: Theme.colors.surfaceAlt,
-    borderWidth: 1,
-    borderColor: Theme.colors.border,
-  },
-  skipBtnText: {
-    fontSize: Theme.fontSize.md,
-    fontWeight: "600",
-    color: Theme.colors.textSecondary,
-  },
-  showItemsBtn: {
-    flex: 2,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    paddingVertical: 14,
-    borderRadius: Theme.borderRadius.md,
-    backgroundColor: Theme.colors.success,
-  },
-  showItemsBtnText: {
-    fontSize: Theme.fontSize.md,
-    fontWeight: "700",
-    color: "#FFFFFF",
-  },
-  stopBtn: {
-    alignItems: "center",
-    paddingVertical: 10,
-  },
-  stopBtnText: {
-    fontSize: Theme.fontSize.sm,
-    fontWeight: "600",
-    color: Theme.colors.textSecondary,
-  },
+const createStyles = (theme: ReturnType<typeof import("@/hooks/useTheme").useTheme>["theme"]) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: theme.colors.background,
+    },
+    center: {
+      flex: 1,
+      backgroundColor: theme.colors.background,
+      justifyContent: "center",
+      alignItems: "center",
+      padding: theme.spacing.xl,
+    },
+    title: {
+      fontSize: theme.fontSize.xl,
+      fontWeight: "700",
+      color: theme.colors.text,
+      marginTop: theme.spacing.lg,
+      textAlign: "center",
+    },
+    subtitle: {
+      fontSize: theme.fontSize.md,
+      color: theme.colors.textSecondary,
+      textAlign: "center",
+      marginTop: theme.spacing.sm,
+      marginBottom: theme.spacing.xl,
+      lineHeight: 22,
+    },
+    loadingText: {
+      fontSize: theme.fontSize.lg,
+      color: theme.colors.text,
+      marginTop: theme.spacing.lg,
+    },
+    progressText: {
+      fontSize: theme.fontSize.sm,
+      color: theme.colors.textSecondary,
+      marginTop: theme.spacing.sm,
+    },
+    primaryBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+      backgroundColor: theme.colors.primary,
+      paddingVertical: 14,
+      paddingHorizontal: 28,
+      borderRadius: theme.borderRadius.md,
+      marginTop: theme.spacing.md,
+    },
+    primaryBtnText: {
+      color: "#FFFFFF",
+      fontSize: theme.fontSize.lg,
+      fontWeight: "700",
+    },
+    secondaryBtn: {
+      marginTop: theme.spacing.md,
+      paddingVertical: 10,
+    },
+    secondaryBtnText: {
+      color: theme.colors.textSecondary,
+      fontSize: theme.fontSize.md,
+      fontWeight: "600",
+    },
+    header: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      paddingHorizontal: theme.spacing.md,
+      paddingVertical: theme.spacing.md,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: theme.colors.border,
+    },
+    headerTitle: {
+      fontSize: theme.fontSize.lg,
+      fontWeight: "700",
+      color: theme.colors.text,
+      flex: 1,
+      textAlign: "center",
+      marginHorizontal: theme.spacing.sm,
+    },
+    counter: {
+      fontSize: theme.fontSize.sm,
+      fontWeight: "600",
+      color: theme.colors.textSecondary,
+    },
+    summaryBar: {
+      paddingHorizontal: theme.spacing.md,
+      paddingVertical: theme.spacing.sm,
+      backgroundColor: theme.colors.surfaceAlt,
+    },
+    summaryText: {
+      fontSize: theme.fontSize.sm,
+      color: theme.colors.textSecondary,
+      textAlign: "center",
+    },
+    scrollArea: {
+      flex: 1,
+    },
+    scrollContent: {
+      padding: theme.spacing.md,
+      paddingBottom: theme.spacing.lg,
+    },
+    card: {
+      backgroundColor: theme.colors.surface,
+      borderRadius: theme.borderRadius.md,
+      overflow: "hidden",
+      shadowColor: theme.colors.shadow,
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 1,
+      shadowRadius: 6,
+      elevation: 2,
+    },
+    importedBadge: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+      backgroundColor: theme.colors.warning + "20",
+      paddingHorizontal: theme.spacing.md,
+      paddingVertical: theme.spacing.sm,
+    },
+    importedBadgeText: {
+      fontSize: theme.fontSize.sm,
+      fontWeight: "600",
+      color: theme.colors.warning,
+    },
+    thumbnail: {
+      width: "100%",
+      height: 200,
+      backgroundColor: theme.colors.surfaceAlt,
+    },
+    detailSection: {
+      paddingHorizontal: theme.spacing.md,
+      paddingVertical: theme.spacing.sm,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: theme.colors.border,
+    },
+    vendorLabel: {
+      fontSize: theme.fontSize.xs,
+      color: theme.colors.textLight,
+      fontWeight: "600",
+      textTransform: "uppercase",
+      letterSpacing: 0.5,
+    },
+    vendorValue: {
+      fontSize: theme.fontSize.lg,
+      fontWeight: "700",
+      color: theme.colors.primary,
+      marginTop: 2,
+    },
+    detailLabel: {
+      fontSize: theme.fontSize.xs,
+      color: theme.colors.textLight,
+      fontWeight: "600",
+      textTransform: "uppercase",
+      letterSpacing: 0.5,
+    },
+    detailValue: {
+      fontSize: theme.fontSize.md,
+      color: theme.colors.text,
+      marginTop: 2,
+    },
+    priceValue: {
+      fontSize: theme.fontSize.lg,
+      fontWeight: "700",
+      color: theme.colors.success,
+      marginTop: 2,
+    },
+    snippetText: {
+      fontSize: theme.fontSize.sm,
+      color: theme.colors.textSecondary,
+      marginTop: 4,
+      lineHeight: 18,
+    },
+    lineItemPreview: {
+      fontSize: theme.fontSize.sm,
+      color: theme.colors.text,
+      marginTop: 4,
+      paddingLeft: theme.spacing.sm,
+    },
+    bottomBar: {
+      paddingHorizontal: theme.spacing.md,
+      paddingVertical: theme.spacing.sm,
+      paddingBottom: theme.spacing.lg,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: theme.colors.border,
+      backgroundColor: theme.colors.surface,
+    },
+    navRow: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      marginBottom: theme.spacing.sm,
+    },
+    navBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+      paddingVertical: 8,
+      paddingHorizontal: 12,
+    },
+    navBtnDisabled: {
+      opacity: 0.4,
+    },
+    navBtnText: {
+      fontSize: theme.fontSize.sm,
+      fontWeight: "600",
+      color: theme.colors.text,
+    },
+    navBtnTextDisabled: {
+      color: theme.colors.textLight,
+    },
+    actionRow: {
+      flexDirection: "row",
+      gap: theme.spacing.sm,
+      marginBottom: theme.spacing.sm,
+    },
+    skipBtn: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 6,
+      paddingVertical: 14,
+      borderRadius: theme.borderRadius.md,
+      backgroundColor: theme.colors.surfaceAlt,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+    },
+    skipBtnText: {
+      fontSize: theme.fontSize.md,
+      fontWeight: "600",
+      color: theme.colors.textSecondary,
+    },
+    showItemsBtn: {
+      flex: 2,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 6,
+      paddingVertical: 14,
+      borderRadius: theme.borderRadius.md,
+      backgroundColor: theme.colors.success,
+    },
+    showItemsBtnText: {
+      fontSize: theme.fontSize.md,
+      fontWeight: "700",
+      color: "#FFFFFF",
+    },
+    stopBtn: {
+      alignItems: "center",
+      paddingVertical: 10,
+    },
+    stopBtnText: {
+      fontSize: theme.fontSize.sm,
+      fontWeight: "600",
+      color: theme.colors.textSecondary,
+    },
 
-  /* ---------- Line item card styles ---------- */
+    /* ---------- Line item card styles ---------- */
 
-  lineItemCard: {
-    backgroundColor: Theme.colors.surface,
-    borderRadius: Theme.borderRadius.md,
-    marginBottom: Theme.spacing.sm,
-    padding: Theme.spacing.md,
-    shadowColor: Theme.colors.shadow,
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 1,
-    shadowRadius: 3,
-    elevation: 1,
-  },
-  lineItemHeader: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: Theme.spacing.sm,
-  },
-  checkbox: {
-    paddingTop: 2,
-  },
-  lineItemInfo: {
-    flex: 1,
-    flexDirection: "row",
-    gap: Theme.spacing.sm,
-  },
-  lineItemImage: {
-    width: 60,
-    height: 60,
-    borderRadius: Theme.borderRadius.sm,
-    backgroundColor: Theme.colors.surfaceAlt,
-  },
-  lineItemImagePlaceholder: {
-    width: 60,
-    height: 60,
-    borderRadius: Theme.borderRadius.sm,
-    backgroundColor: Theme.colors.surfaceAlt,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  lineItemText: {
-    flex: 1,
-  },
-  lineItemName: {
-    fontSize: Theme.fontSize.md,
-    fontWeight: "600",
-    color: Theme.colors.text,
-  },
-  lineItemPrice: {
-    fontSize: Theme.fontSize.sm,
-    fontWeight: "700",
-    color: Theme.colors.success,
-    marginTop: 2,
-  },
-  lineItemCategory: {
-    fontSize: Theme.fontSize.xs,
-    color: Theme.colors.textSecondary,
-    marginTop: 2,
-  },
-  lineItemUrl: {
-    fontSize: Theme.fontSize.xs,
-    color: Theme.colors.primary,
-    marginTop: 2,
-  },
-  lineItemActions: {
-    flexDirection: "row",
-    justifyContent: "flex-end",
-    gap: Theme.spacing.sm,
-    marginTop: Theme.spacing.sm,
-    paddingTop: Theme.spacing.sm,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: Theme.colors.border,
-  },
-  fetchBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: Theme.borderRadius.sm,
-    borderWidth: 1,
-    borderColor: Theme.colors.primary,
-  },
-  fetchBtnText: {
-    fontSize: Theme.fontSize.xs,
-    fontWeight: "600",
-    color: Theme.colors.primary,
-  },
-  editBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: Theme.borderRadius.sm,
-    borderWidth: 1,
-    borderColor: Theme.colors.border,
-  },
-  editBtnText: {
-    fontSize: Theme.fontSize.xs,
-    fontWeight: "600",
-    color: Theme.colors.textSecondary,
-  },
-  addSelectedBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    paddingVertical: 14,
-    borderRadius: Theme.borderRadius.md,
-    backgroundColor: Theme.colors.primary,
-  },
-  addSelectedBtnText: {
-    fontSize: Theme.fontSize.md,
-    fontWeight: "700",
-    color: "#FFFFFF",
-  },
-  backToEmailsBtn: {
-    alignItems: "center",
-    paddingVertical: 10,
-    marginTop: Theme.spacing.xs,
-  },
-  backToEmailsBtnText: {
-    fontSize: Theme.fontSize.sm,
-    fontWeight: "600",
-    color: Theme.colors.textSecondary,
-  },
+    lineItemCard: {
+      backgroundColor: theme.colors.surface,
+      borderRadius: theme.borderRadius.md,
+      marginBottom: theme.spacing.sm,
+      padding: theme.spacing.md,
+      shadowColor: theme.colors.shadow,
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: 1,
+      shadowRadius: 3,
+      elevation: 1,
+    },
+    lineItemHeader: {
+      flexDirection: "row",
+      alignItems: "flex-start",
+      gap: theme.spacing.sm,
+    },
+    checkbox: {
+      paddingTop: 2,
+    },
+    lineItemInfo: {
+      flex: 1,
+      flexDirection: "row",
+      gap: theme.spacing.sm,
+    },
+    lineItemImage: {
+      width: 60,
+      height: 60,
+      borderRadius: theme.borderRadius.sm,
+      backgroundColor: theme.colors.surfaceAlt,
+    },
+    lineItemImagePlaceholder: {
+      width: 60,
+      height: 60,
+      borderRadius: theme.borderRadius.sm,
+      backgroundColor: theme.colors.surfaceAlt,
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    lineItemText: {
+      flex: 1,
+    },
+    lineItemName: {
+      fontSize: theme.fontSize.md,
+      fontWeight: "600",
+      color: theme.colors.text,
+    },
+    lineItemPrice: {
+      fontSize: theme.fontSize.sm,
+      fontWeight: "700",
+      color: theme.colors.success,
+      marginTop: 2,
+    },
+    lineItemCategory: {
+      fontSize: theme.fontSize.xs,
+      color: theme.colors.textSecondary,
+      marginTop: 2,
+    },
+    lineItemUrl: {
+      fontSize: theme.fontSize.xs,
+      color: theme.colors.primary,
+      marginTop: 2,
+    },
+    lineItemActions: {
+      flexDirection: "row",
+      justifyContent: "flex-end",
+      gap: theme.spacing.sm,
+      marginTop: theme.spacing.sm,
+      paddingTop: theme.spacing.sm,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: theme.colors.border,
+    },
+    fetchBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+      paddingVertical: 6,
+      paddingHorizontal: 12,
+      borderRadius: theme.borderRadius.sm,
+      borderWidth: 1,
+      borderColor: theme.colors.primary,
+    },
+    fetchBtnText: {
+      fontSize: theme.fontSize.xs,
+      fontWeight: "600",
+      color: theme.colors.primary,
+    },
+    editBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+      paddingVertical: 6,
+      paddingHorizontal: 12,
+      borderRadius: theme.borderRadius.sm,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+    },
+    editBtnText: {
+      fontSize: theme.fontSize.xs,
+      fontWeight: "600",
+      color: theme.colors.textSecondary,
+    },
+    addSelectedBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 6,
+      paddingVertical: 14,
+      borderRadius: theme.borderRadius.md,
+      backgroundColor: theme.colors.primary,
+    },
+    addSelectedBtnText: {
+      fontSize: theme.fontSize.md,
+      fontWeight: "700",
+      color: "#FFFFFF",
+    },
+    backToEmailsBtn: {
+      alignItems: "center",
+      paddingVertical: 10,
+      marginTop: theme.spacing.xs,
+    },
+    backToEmailsBtnText: {
+      fontSize: theme.fontSize.sm,
+      fontWeight: "600",
+      color: theme.colors.textSecondary,
+    },
 
-  /* ---------- Modal styles ---------- */
+    /* ---------- Modal styles ---------- */
 
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.5)",
-    justifyContent: "flex-end",
-  },
-  modalContent: {
-    backgroundColor: Theme.colors.background,
-    borderTopLeftRadius: Theme.borderRadius.lg,
-    borderTopRightRadius: Theme.borderRadius.lg,
-    maxHeight: "85%",
-    paddingBottom: Theme.spacing.xl,
-  },
-  modalHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: Theme.spacing.md,
-    paddingVertical: Theme.spacing.md,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Theme.colors.border,
-  },
-  modalTitle: {
-    fontSize: Theme.fontSize.lg,
-    fontWeight: "700",
-    color: Theme.colors.text,
-  },
-  modalScroll: {
-    paddingHorizontal: Theme.spacing.md,
-    paddingTop: Theme.spacing.md,
-  },
-  modalLabel: {
-    fontSize: Theme.fontSize.sm,
-    fontWeight: "600",
-    color: Theme.colors.text,
-    marginTop: Theme.spacing.md,
-    marginBottom: Theme.spacing.xs,
-  },
-  modalInput: {
-    backgroundColor: Theme.colors.surface,
-    borderRadius: Theme.borderRadius.sm,
-    paddingHorizontal: Theme.spacing.md,
-    paddingVertical: 12,
-    fontSize: Theme.fontSize.md,
-    color: Theme.colors.text,
-    borderWidth: 1,
-    borderColor: Theme.colors.border,
-  },
-  categoryPicker: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: Theme.spacing.xs,
-  },
-  categoryChip: {
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: Theme.borderRadius.full,
-    borderWidth: 1,
-    borderColor: Theme.colors.border,
-    backgroundColor: Theme.colors.surface,
-  },
-  categoryChipActive: {
-    borderColor: Theme.colors.primary,
-    backgroundColor: Theme.colors.primary + "15",
-  },
-  categoryChipText: {
-    fontSize: Theme.fontSize.xs,
-    fontWeight: "600",
-    color: Theme.colors.textSecondary,
-  },
-  categoryChipTextActive: {
-    color: Theme.colors.primary,
-  },
-  modalDoneBtn: {
-    marginHorizontal: Theme.spacing.md,
-    marginTop: Theme.spacing.lg,
-    paddingVertical: 14,
-    borderRadius: Theme.borderRadius.md,
-    backgroundColor: Theme.colors.primary,
-    alignItems: "center",
-  },
-  modalDoneBtnText: {
-    fontSize: Theme.fontSize.md,
-    fontWeight: "700",
-    color: "#FFFFFF",
-  },
+    modalOverlay: {
+      flex: 1,
+      backgroundColor: "rgba(0,0,0,0.5)",
+      justifyContent: "flex-end",
+    },
+    modalContent: {
+      backgroundColor: theme.colors.background,
+      borderTopLeftRadius: theme.borderRadius.lg,
+      borderTopRightRadius: theme.borderRadius.lg,
+      maxHeight: "85%",
+      paddingBottom: theme.spacing.xl,
+    },
+    modalHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      paddingHorizontal: theme.spacing.md,
+      paddingVertical: theme.spacing.md,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: theme.colors.border,
+    },
+    modalTitle: {
+      fontSize: theme.fontSize.lg,
+      fontWeight: "700",
+      color: theme.colors.text,
+    },
+    modalScroll: {
+      paddingHorizontal: theme.spacing.md,
+      paddingTop: theme.spacing.md,
+    },
+    modalLabel: {
+      fontSize: theme.fontSize.sm,
+      fontWeight: "600",
+      color: theme.colors.text,
+      marginTop: theme.spacing.md,
+      marginBottom: theme.spacing.xs,
+    },
+    modalInput: {
+      backgroundColor: theme.colors.surface,
+      borderRadius: theme.borderRadius.sm,
+      paddingHorizontal: theme.spacing.md,
+      paddingVertical: 12,
+      fontSize: theme.fontSize.md,
+      color: theme.colors.text,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+    },
+    categoryPicker: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: theme.spacing.xs,
+    },
+    categoryChip: {
+      paddingVertical: 6,
+      paddingHorizontal: 12,
+      borderRadius: theme.borderRadius.full,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+      backgroundColor: theme.colors.surface,
+    },
+    categoryChipActive: {
+      borderColor: theme.colors.primary,
+      backgroundColor: theme.colors.primary + "15",
+    },
+    categoryChipText: {
+      fontSize: theme.fontSize.xs,
+      fontWeight: "600",
+      color: theme.colors.textSecondary,
+    },
+    categoryChipTextActive: {
+      color: theme.colors.primary,
+    },
+    modalDoneBtn: {
+      marginHorizontal: theme.spacing.md,
+      marginTop: theme.spacing.lg,
+      paddingVertical: 14,
+      borderRadius: theme.borderRadius.md,
+      backgroundColor: theme.colors.primary,
+      alignItems: "center",
+    },
+    modalDoneBtnText: {
+      fontSize: theme.fontSize.md,
+      fontWeight: "700",
+      color: "#FFFFFF",
+    },
 
-  /* ---------- Existing utility styles ---------- */
+    /* ---------- Existing utility styles ---------- */
 
-  clientIdInputWrap: {
-    width: "100%",
-    marginTop: Theme.spacing.lg,
-    gap: Theme.spacing.sm,
-  },
-  clientIdLabel: {
-    fontSize: Theme.fontSize.sm,
-    fontWeight: "600",
-    color: Theme.colors.text,
-  },
-  clientIdInput: {
-    backgroundColor: Theme.colors.surface,
-    borderRadius: Theme.borderRadius.sm,
-    paddingHorizontal: Theme.spacing.md,
-    paddingVertical: 12,
-    fontSize: Theme.fontSize.sm,
-    color: Theme.colors.text,
-    borderWidth: 1,
-    borderColor: Theme.colors.border,
-  },
-  expoGoWarning: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 10,
-    backgroundColor: Theme.colors.warning + "15",
-    borderWidth: 1,
-    borderColor: Theme.colors.warning + "40",
-    borderRadius: Theme.borderRadius.md,
-    padding: Theme.spacing.md,
-    marginBottom: Theme.spacing.md,
-    width: "100%",
-  },
-  expoGoWarningText: {
-    flex: 1,
-    fontSize: Theme.fontSize.sm,
-    color: Theme.colors.warning,
-    lineHeight: 20,
-  },
-});
+    clientIdInputWrap: {
+      width: "100%",
+      marginTop: theme.spacing.lg,
+      gap: theme.spacing.sm,
+    },
+    clientIdLabel: {
+      fontSize: theme.fontSize.sm,
+      fontWeight: "600",
+      color: theme.colors.text,
+    },
+    clientIdInput: {
+      backgroundColor: theme.colors.surface,
+      borderRadius: theme.borderRadius.sm,
+      paddingHorizontal: theme.spacing.md,
+      paddingVertical: 12,
+      fontSize: theme.fontSize.sm,
+      color: theme.colors.text,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+    },
+    expoGoWarning: {
+      flexDirection: "row",
+      alignItems: "flex-start",
+      gap: 10,
+      backgroundColor: theme.colors.warning + "15",
+      borderWidth: 1,
+      borderColor: theme.colors.warning + "40",
+      borderRadius: theme.borderRadius.md,
+      padding: theme.spacing.md,
+      marginBottom: theme.spacing.md,
+      width: "100%",
+    },
+    expoGoWarningText: {
+      flex: 1,
+      fontSize: theme.fontSize.sm,
+      color: theme.colors.warning,
+      lineHeight: 20,
+    },
+  });

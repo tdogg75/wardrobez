@@ -1,7 +1,7 @@
 import React from "react";
 import { View, Text, StyleSheet } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { Theme } from "@/constants/theme";
+import { useTheme } from "@/hooks/useTheme";
 
 interface EmptyStateProps {
   icon: keyof typeof Ionicons.glyphMap;
@@ -10,11 +10,12 @@ interface EmptyStateProps {
 }
 
 export function EmptyState({ icon, title, subtitle }: EmptyStateProps) {
+  const { theme } = useTheme();
   return (
     <View style={styles.container}>
-      <Ionicons name={icon} size={64} color={Theme.colors.textLight} />
-      <Text style={styles.title}>{title}</Text>
-      <Text style={styles.subtitle}>{subtitle}</Text>
+      <Ionicons name={icon} size={64} color={theme.colors.textLight} />
+      <Text style={[styles.title, { color: theme.colors.text }]}>{title}</Text>
+      <Text style={[styles.subtitle, { color: theme.colors.textSecondary }]}>{subtitle}</Text>
     </View>
   );
 }
@@ -24,19 +25,17 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    padding: Theme.spacing.xl,
+    padding: 32,
   },
   title: {
-    fontSize: Theme.fontSize.lg,
+    fontSize: 18,
     fontWeight: "600",
-    color: Theme.colors.text,
-    marginTop: Theme.spacing.md,
+    marginTop: 16,
   },
   subtitle: {
-    fontSize: Theme.fontSize.md,
-    color: Theme.colors.textSecondary,
+    fontSize: 15,
     textAlign: "center",
-    marginTop: Theme.spacing.sm,
+    marginTop: 8,
     lineHeight: 22,
   },
 });

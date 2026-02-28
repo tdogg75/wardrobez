@@ -3,14 +3,16 @@ import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { ClothingItemsProvider } from "@/hooks/useClothingItems";
 import { OutfitsProvider } from "@/hooks/useOutfits";
+import { ThemeProvider, useTheme } from "@/hooks/useTheme";
 import {
   requestNotificationPermission,
   scheduleDailyReminder,
 } from "@/services/notifications";
 
-export default function RootLayout() {
+function AppContent() {
+  const { isDark, theme } = useTheme();
+
   useEffect(() => {
-    // Schedule daily 9pm reminder on app launch
     (async () => {
       const granted = await requestNotificationPermission();
       if (granted) {
@@ -22,8 +24,15 @@ export default function RootLayout() {
   return (
     <ClothingItemsProvider>
       <OutfitsProvider>
-        <StatusBar style="dark" />
-        <Stack screenOptions={{ headerShown: false }}>
+        <StatusBar style={isDark ? "light" : "dark"} />
+        <Stack
+          screenOptions={{
+            headerShown: false,
+            contentStyle: { backgroundColor: theme.colors.background },
+            headerStyle: { backgroundColor: theme.colors.surface },
+            headerTintColor: theme.colors.text,
+          }}
+        >
           <Stack.Screen name="(tabs)" />
           <Stack.Screen
             name="add-item"
@@ -68,5 +77,13 @@ export default function RootLayout() {
         </Stack>
       </OutfitsProvider>
     </ClothingItemsProvider>
+  );
+}
+
+export default function RootLayout() {
+  return (
+    <ThemeProvider>
+      <AppContent />
+    </ThemeProvider>
   );
 }

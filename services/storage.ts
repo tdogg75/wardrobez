@@ -1,6 +1,6 @@
 import * as FileSystem from "expo-file-system";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import type { ClothingItem, Outfit, FabricType, ArchiveReason, WishlistItem } from "@/models/types";
+import type { ClothingItem, Outfit, FabricType, ArchiveReason, WishlistItem, OutfitTemplate, PlannedOutfit, InspirationPin, PackingList } from "@/models/types";
 
 // --- File-System Storage Layer ---
 // Data is persisted as JSON files in the app's document directory.
@@ -12,6 +12,10 @@ const FILES = {
   CLOTHING_ITEMS: `${DATA_DIR}clothing-items.json`,
   OUTFITS: `${DATA_DIR}outfits.json`,
   WISHLIST: `${DATA_DIR}wishlist.json`,
+  TEMPLATES: `${DATA_DIR}outfit-templates.json`,
+  PLANNED_OUTFITS: `${DATA_DIR}planned-outfits.json`,
+  INSPIRATION: `${DATA_DIR}inspiration.json`,
+  PACKING_LISTS: `${DATA_DIR}packing-lists.json`,
 } as const;
 
 // Legacy AsyncStorage keys for one-time migration
@@ -134,6 +138,31 @@ function migrateClothingItem(item: any): ClothingItem {
     JEWELRY_SUBCATEGORIES.has(migrated.subCategory)
   ) {
     migrated.category = "jewelry";
+  }
+
+  // Migrate dress_pants -> trousers
+  if (migrated.subCategory === "dress_pants") {
+    migrated.subCategory = "trousers";
+  }
+
+  // Migrate stockings/tights from bottoms to accessories
+  if (migrated.category === "bottoms" && migrated.subCategory === "stockings") {
+    migrated.category = "accessories";
+  }
+
+  // Migrate skirt and shorts from bottoms to skirts_shorts
+  if (migrated.category === "bottoms" && migrated.subCategory === "skirt") {
+    migrated.category = "skirts_shorts";
+    migrated.subCategory = "midi_skirt";
+  }
+  if (migrated.category === "bottoms" && migrated.subCategory === "shorts") {
+    migrated.category = "skirts_shorts";
+    migrated.subCategory = "casual_shorts";
+  }
+
+  // Migrate sport_coat -> casual_blazer
+  if (migrated.subCategory === "sport_coat") {
+    migrated.subCategory = "casual_blazer";
   }
 
   if (Array.isArray(migrated.occasions)) {
@@ -621,4 +650,84 @@ export async function importAllData(jsonString: string): Promise<void> {
 /** Returns the path to the data directory for use in backup sharing */
 export function getDataDirectory(): string {
   return DATA_DIR;
+}
+
+// --- Outfit Templates ---
+
+export async function getOutfitTemplates(): Promise<OutfitTemplate[]> {
+  const data = await readJsonFile<OutfitTemplate[]>(FILES.TEMPLATES);
+  return data ?? [];
+}
+
+export async function saveOutfitTemplate(template: OutfitTemplate): Promise<void> {
+  const templates = await getOutfitTemplates();
+  const idx = templates.findIndex((t) => t.id === template.id);
+  if (idx >= 0) templates[idx] = template;
+  else templates.push(template);
+  await writeJsonFile(FILES.TEMPLATES, templates);
+}
+
+export async function deleteOutfitTemplate(id: string): Promise<void> {
+  const templates = await getOutfitTemplates();
+  await writeJsonFile(FILES.TEMPLATES, templates.filter((t) => t.id !== id));
+}
+
+// --- Planned Outfits (Weekly Planner) ---
+
+export async function getPlannedOutfits(): Promise<PlannedOutfit[]> {
+  const data = await readJsonFile<PlannedOutfit[]>(FILES.PLANNED_OUTFITS);
+  return data ?? [];
+}
+
+export async function savePlannedOutfit(planned: PlannedOutfit): Promise<void> {
+  const list = await getPlannedOutfits();
+  const idx = list.findIndex((p) => p.date === planned.date);
+  if (idx >= 0) list[idx] = planned;
+  else list.push(planned);
+  await writeJsonFile(FILES.PLANNED_OUTFITS, list);
+}
+
+export async function deletePlannedOutfit(date: string): Promise<void> {
+  const list = await getPlannedOutfits();
+  await writeJsonFile(FILES.PLANNED_OUTFITS, list.filter((p) => p.date !== date));
+}
+
+// --- Inspiration Board ---
+
+export async function getInspirationPins(): Promise<InspirationPin[]> {
+  const data = await readJsonFile<InspirationPin[]>(FILES.INSPIRATION);
+  return data ?? [];
+}
+
+export async function saveInspirationPin(pin: InspirationPin): Promise<void> {
+  const pins = await getInspirationPins();
+  const idx = pins.findIndex((p) => p.id === pin.id);
+  if (idx >= 0) pins[idx] = pin;
+  else pins.push(pin);
+  await writeJsonFile(FILES.INSPIRATION, pins);
+}
+
+export async function deleteInspirationPin(id: string): Promise<void> {
+  const pins = await getInspirationPins();
+  await writeJsonFile(FILES.INSPIRATION, pins.filter((p) => p.id !== id));
+}
+
+// --- Packing Lists ---
+
+export async function getPackingLists(): Promise<PackingList[]> {
+  const data = await readJsonFile<PackingList[]>(FILES.PACKING_LISTS);
+  return data ?? [];
+}
+
+export async function savePackingList(list: PackingList): Promise<void> {
+  const lists = await getPackingLists();
+  const idx = lists.findIndex((l) => l.id === list.id);
+  if (idx >= 0) lists[idx] = list;
+  else lists.push(list);
+  await writeJsonFile(FILES.PACKING_LISTS, lists);
+}
+
+export async function deletePackingList(id: string): Promise<void> {
+  const lists = await getPackingLists();
+  await writeJsonFile(FILES.PACKING_LISTS, lists.filter((l) => l.id !== id));
 }

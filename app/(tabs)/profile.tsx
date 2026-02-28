@@ -27,9 +27,21 @@ import {
 } from "@/services/storage";
 import { fetchProductFromUrl } from "@/services/productSearch";
 import * as ImagePicker from "expo-image-picker";
-import { Theme } from "@/constants/theme";
+import { useTheme } from "@/hooks/useTheme";
+import { hexToHSL } from "@/constants/colors";
 import { CATEGORY_LABELS, ARCHIVE_REASON_LABELS } from "@/models/types";
 import type { ClothingCategory, ClothingItem, WishlistItem } from "@/models/types";
+import {
+  getPlannedOutfits,
+  savePlannedOutfit,
+  deletePlannedOutfit,
+  getInspirationPins,
+  saveInspirationPin,
+  deleteInspirationPin,
+  getPackingLists,
+  savePackingList,
+  deletePackingList,
+} from "@/services/storage";
 import * as FileSystem from "expo-file-system";
 import * as Sharing from "expo-sharing";
 import * as DocumentPicker from "expo-document-picker";
@@ -50,6 +62,8 @@ const daysBetween = (a: Date, b: Date) =>
 
 export default function ProfileScreen() {
   const router = useRouter();
+  const { theme, isDark, toggleTheme } = useTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const { items, archivedItems, getFavorites, unarchiveItem, reload: reloadItems } = useClothingItems();
   const { outfits, reload: reloadOutfits } = useOutfits();
 
@@ -70,6 +84,12 @@ export default function ProfileScreen() {
   const [colorPaletteOpen, setColorPaletteOpen] = useState(false);
   const [gapAnalysisOpen, setGapAnalysisOpen] = useState(false);
   const [wishlistOpen, setWishlistOpen] = useState(false);
+
+  const [brandInsightsOpen, setBrandInsightsOpen] = useState(false);
+  const [roiOpen, setRoiOpen] = useState(false);
+  const [ageTrackerOpen, setAgeTrackerOpen] = useState(false);
+  const [sustainabilityOpen, setSustainabilityOpen] = useState(false);
+  const [duplicatesOpen, setDuplicatesOpen] = useState(false);
 
   /* ---------- wishlist state ---------- */
   const [wishlistItems, setWishlistItems] = useState<WishlistItem[]>([]);
@@ -231,7 +251,7 @@ export default function ProfileScreen() {
 
   /* --- Wardrobe Gap Analysis --- */
   const ALL_CATEGORIES: ClothingCategory[] = [
-    "tops", "bottoms", "dresses", "blazers", "jackets",
+    "tops", "bottoms", "skirts_shorts", "dresses", "jumpsuits", "blazers", "jackets",
     "shoes", "accessories", "swimwear", "jewelry",
   ];
 
@@ -294,6 +314,79 @@ export default function ProfileScreen() {
     }
 
     return insights;
+  }, [allActive]);
+
+  /* --- Brand Stats (#6) --- */
+  const brandStats = useMemo(() => {
+    const map: Record<string, { brand: string; count: number; totalCost: number }> = {};
+    for (const item of allActive) {
+      const brand = item.brand?.trim() || "Unknown";
+      if (!map[brand]) map[brand] = { brand, count: 0, totalCost: 0 };
+      map[brand].count++;
+      map[brand].totalCost += item.cost ?? 0;
+    }
+    return Object.values(map).sort((a, b) => b.count - a.count);
+  }, [allActive]);
+
+  /* --- Wardrobe Age (#5) --- */
+  const getItemAge = (item: ClothingItem) => {
+    const dateMs = item.purchaseDate ? new Date(item.purchaseDate).getTime() : item.createdAt;
+    return Date.now() - dateMs;
+  };
+
+  const avgItemAge = useMemo(() => {
+    if (allActive.length === 0) return "N/A";
+    const avgMs = allActive.reduce((sum, i) => sum + getItemAge(i), 0) / allActive.length;
+    const months = Math.round(avgMs / (1000 * 60 * 60 * 24 * 30));
+    if (months < 1) return "< 1 month";
+    if (months < 12) return `${months} month${months === 1 ? "" : "s"}`;
+    const years = Math.floor(months / 12);
+    const rem = months % 12;
+    return `${years}y ${rem}mo`;
+  }, [allActive]);
+
+  const oldestItem = useMemo(() => {
+    if (allActive.length === 0) return null;
+    return [...allActive].sort((a, b) => getItemAge(b) - getItemAge(a))[0];
+  }, [allActive]);
+
+  const newestItem = useMemo(() => {
+    if (allActive.length === 0) return null;
+    return [...allActive].sort((a, b) => getItemAge(a) - getItemAge(b))[0];
+  }, [allActive]);
+
+  const itemsOver3Years = useMemo(() => {
+    const threeYearsMs = 3 * 365 * 24 * 60 * 60 * 1000;
+    return allActive.filter((i) => getItemAge(i) > threeYearsMs);
+  }, [allActive]);
+
+  /* --- Sustainability Score (#37) --- */
+  const sustainableCount = useMemo(() => allActive.filter((i) => i.sustainable).length, [allActive]);
+
+  /* --- Duplicate Detector (#36) --- */
+  const duplicateGroups = useMemo(() => {
+    const groups: ClothingItem[][] = [];
+    const checked = new Set<string>();
+    for (let i = 0; i < allActive.length; i++) {
+      if (checked.has(allActive[i].id)) continue;
+      const group: ClothingItem[] = [allActive[i]];
+      for (let j = i + 1; j < allActive.length; j++) {
+        if (checked.has(allActive[j].id)) continue;
+        if (
+          allActive[i].category === allActive[j].category &&
+          allActive[i].subCategory === allActive[j].subCategory &&
+          allActive[i].colorName?.toLowerCase() === allActive[j].colorName?.toLowerCase()
+        ) {
+          group.push(allActive[j]);
+          checked.add(allActive[j].id);
+        }
+      }
+      if (group.length > 1) {
+        groups.push(group);
+        checked.add(allActive[i].id);
+      }
+    }
+    return groups;
   }, [allActive]);
 
   /* --- Wishlist load / handlers --- */
@@ -528,7 +621,7 @@ export default function ProfileScreen() {
         <Ionicons
           name={icon}
           size={20}
-          color={Theme.colors.primary}
+          color={theme.colors.primary}
           style={styles.menuIcon}
         />
         <Text style={styles.menuLabel}>{label}</Text>
@@ -536,7 +629,7 @@ export default function ProfileScreen() {
       <Ionicons
         name={open ? "chevron-up" : "chevron-down"}
         size={20}
-        color={Theme.colors.textSecondary}
+        color={theme.colors.textSecondary}
       />
     </Pressable>
   );
@@ -583,7 +676,7 @@ export default function ProfileScreen() {
           <Ionicons
             name="settings-outline"
             size={24}
-            color={Theme.colors.text}
+            color={theme.colors.text}
           />
         </Pressable>
       </View>
@@ -879,7 +972,7 @@ export default function ProfileScreen() {
                 {/* Tips */}
                 {colorPalette.neutralPct > 0.7 && (
                   <View style={styles.tipCard}>
-                    <Ionicons name="bulb-outline" size={16} color={Theme.colors.warning} />
+                    <Ionicons name="bulb-outline" size={16} color={theme.colors.warning} />
                     <Text style={styles.tipText}>
                       Your wardrobe is mostly neutrals — great foundation! Consider adding a statement
                       color.
@@ -888,7 +981,7 @@ export default function ProfileScreen() {
                 )}
                 {colorPalette.distinctFamilies < 3 && (
                   <View style={styles.tipCard}>
-                    <Ionicons name="bulb-outline" size={16} color={Theme.colors.warning} />
+                    <Ionicons name="bulb-outline" size={16} color={theme.colors.warning} />
                     <Text style={styles.tipText}>
                       Limited color variety — adding new colors could expand your outfit options.
                     </Text>
@@ -915,7 +1008,7 @@ export default function ProfileScreen() {
           <View style={styles.sectionBody}>
             {gapInsights.length === 0 ? (
               <View style={styles.tipCard}>
-                <Ionicons name="checkmark-circle-outline" size={16} color={Theme.colors.success} />
+                <Ionicons name="checkmark-circle-outline" size={16} color={theme.colors.success} />
                 <Text style={styles.tipText}>
                   Your wardrobe is well-rounded — no major gaps detected!
                 </Text>
@@ -926,8 +1019,8 @@ export default function ProfileScreen() {
                   <Ionicons
                     name={insight.icon}
                     size={18}
-                    color={Theme.colors.warning}
-                    style={{ marginRight: Theme.spacing.sm }}
+                    color={theme.colors.warning}
+                    style={{ marginRight: theme.spacing.sm }}
                   />
                   <Text style={styles.gapText}>{insight.text}</Text>
                 </View>
@@ -993,14 +1086,14 @@ export default function ProfileScreen() {
                     onPress={() => handleMoveToWardrobe(wItem)}
                     hitSlop={8}
                   >
-                    <Ionicons name="bag-add-outline" size={16} color={Theme.colors.primary} />
+                    <Ionicons name="bag-add-outline" size={16} color={theme.colors.primary} />
                   </Pressable>
                   <Pressable
                     style={styles.wishlistDeleteBtn}
                     onPress={() => handleDeleteWishlistItem(wItem)}
                     hitSlop={8}
                   >
-                    <Ionicons name="trash-outline" size={16} color={Theme.colors.error} />
+                    <Ionicons name="trash-outline" size={16} color={theme.colors.error} />
                   </Pressable>
                 </Pressable>
               ))
@@ -1010,7 +1103,7 @@ export default function ProfileScreen() {
               style={styles.addWishlistBtn}
               onPress={openWlAddModal}
             >
-              <Ionicons name="add-circle-outline" size={18} color={Theme.colors.primary} />
+              <Ionicons name="add-circle-outline" size={18} color={theme.colors.primary} />
               <Text style={styles.addWishlistBtnText}>Add to Wishlist</Text>
             </Pressable>
           </View>
@@ -1031,7 +1124,7 @@ export default function ProfileScreen() {
                 {wlEditingItem ? "Edit Wishlist Item" : "Add to Wishlist"}
               </Text>
               <Pressable hitSlop={12} onPress={() => { setWishlistModalVisible(false); resetWlForm(); }}>
-                <Ionicons name="close" size={24} color={Theme.colors.text} />
+                <Ionicons name="close" size={24} color={theme.colors.text} />
               </Pressable>
             </View>
 
@@ -1042,7 +1135,7 @@ export default function ProfileScreen() {
                   <Image source={{ uri: wlImageUri }} style={styles.wlPhotoPreview} />
                 ) : (
                   <View style={styles.wlPhotoPlaceholder}>
-                    <Ionicons name="image-outline" size={28} color={Theme.colors.textLight} />
+                    <Ionicons name="image-outline" size={28} color={theme.colors.textLight} />
                   </View>
                 )}
                 <Text style={styles.wlPhotoHint}>
@@ -1057,7 +1150,7 @@ export default function ProfileScreen() {
                   value={wlUrl}
                   onChangeText={setWlUrl}
                   placeholder="Product URL (optional)"
-                  placeholderTextColor={Theme.colors.textLight}
+                  placeholderTextColor={theme.colors.textLight}
                   keyboardType="url"
                   autoCapitalize="none"
                 />
@@ -1080,7 +1173,7 @@ export default function ProfileScreen() {
                 value={wlName}
                 onChangeText={setWlName}
                 placeholder="Item name"
-                placeholderTextColor={Theme.colors.textLight}
+                placeholderTextColor={theme.colors.textLight}
               />
 
               <Text style={styles.modalLabel}>Brand</Text>
@@ -1089,7 +1182,7 @@ export default function ProfileScreen() {
                 value={wlBrand}
                 onChangeText={setWlBrand}
                 placeholder="Brand (optional)"
-                placeholderTextColor={Theme.colors.textLight}
+                placeholderTextColor={theme.colors.textLight}
               />
 
               <Text style={styles.modalLabel}>Estimated Price</Text>
@@ -1098,7 +1191,7 @@ export default function ProfileScreen() {
                 value={wlPrice}
                 onChangeText={setWlPrice}
                 placeholder="0.00"
-                placeholderTextColor={Theme.colors.textLight}
+                placeholderTextColor={theme.colors.textLight}
                 keyboardType="decimal-pad"
               />
 
@@ -1135,7 +1228,7 @@ export default function ProfileScreen() {
                 value={wlNotes}
                 onChangeText={setWlNotes}
                 placeholder="Notes (optional)"
-                placeholderTextColor={Theme.colors.textLight}
+                placeholderTextColor={theme.colors.textLight}
                 multiline
                 numberOfLines={3}
               />
@@ -1150,7 +1243,7 @@ export default function ProfileScreen() {
                     resetWlForm();
                   }}
                 >
-                  <Ionicons name="bag-add-outline" size={18} color={Theme.colors.primary} />
+                  <Ionicons name="bag-add-outline" size={18} color={theme.colors.primary} />
                   <Text style={styles.wlMoveToWardrobeBtnText}>Move to Wardrobe</Text>
                 </Pressable>
               )}
@@ -1204,7 +1297,7 @@ export default function ProfileScreen() {
                     style={styles.unarchiveBtn}
                     onPress={() => handleUnarchive(item)}
                   >
-                    <Ionicons name="arrow-undo-outline" size={14} color={Theme.colors.primary} />
+                    <Ionicons name="arrow-undo-outline" size={14} color={theme.colors.primary} />
                     <Text style={styles.unarchiveBtnText}>Unarchive</Text>
                   </Pressable>
                 </Pressable>
@@ -1239,8 +1332,8 @@ export default function ProfileScreen() {
                   <Ionicons
                     name="heart"
                     size={16}
-                    color={Theme.colors.secondary}
-                    style={{ marginRight: Theme.spacing.sm }}
+                    color={theme.colors.secondary}
+                    style={{ marginRight: theme.spacing.sm }}
                   />
                   <View style={styles.listItemLeft}>
                     <Text style={styles.listItemName} numberOfLines={1}>
@@ -1269,7 +1362,7 @@ export default function ProfileScreen() {
             <Ionicons
               name="mail-outline"
               size={20}
-              color={Theme.colors.primary}
+              color={theme.colors.primary}
               style={styles.menuIcon}
             />
             <View>
@@ -1282,7 +1375,7 @@ export default function ProfileScreen() {
           <Ionicons
             name="chevron-forward"
             size={20}
-            color={Theme.colors.textSecondary}
+            color={theme.colors.textSecondary}
           />
         </Pressable>
       </View>
@@ -1292,20 +1385,199 @@ export default function ProfileScreen() {
       {/* ============================================================ */}
       <View style={styles.card}>
         <View style={styles.backupSection}>
-          <Ionicons name="cloud-download-outline" size={20} color={Theme.colors.primary} style={styles.menuIcon} />
+          <Ionicons name="cloud-download-outline" size={20} color={theme.colors.primary} style={styles.menuIcon} />
           <Text style={styles.menuLabel}>Backup & Restore</Text>
         </View>
         <View style={styles.backupButtons}>
           <Pressable style={styles.backupBtn} onPress={handleExport}>
-            <Ionicons name="download-outline" size={18} color={Theme.colors.primary} />
+            <Ionicons name="download-outline" size={18} color={theme.colors.primary} />
             <Text style={styles.backupBtnText}>Export Backup</Text>
           </Pressable>
           <Pressable style={styles.backupBtn} onPress={handleImport}>
-            <Ionicons name="push-outline" size={18} color={Theme.colors.primary} />
+            <Ionicons name="push-outline" size={18} color={theme.colors.primary} />
             <Text style={styles.backupBtnText}>Import Backup</Text>
           </Pressable>
         </View>
       </View>
+      {/* ============================================================ */}
+      {/*  BRAND INSIGHTS (#6)                                          */}
+      {/* ============================================================ */}
+      <View style={styles.card}>
+        <SectionHeader
+          icon="pricetag-outline"
+          label="Brand Insights"
+          open={brandInsightsOpen}
+          onPress={() => setBrandInsightsOpen((v) => !v)}
+        />
+        {brandInsightsOpen && (
+          <View style={styles.sectionBody}>
+            {brandStats.length === 0 ? (
+              <Text style={styles.emptyText}>No brands recorded yet.</Text>
+            ) : (
+              brandStats.slice(0, 10).map(({ brand, count, totalCost }) => (
+                <View key={brand} style={styles.barRow}>
+                  <View style={styles.barLabelRow}>
+                    <Text style={styles.barLabel}>{brand}</Text>
+                    <Text style={styles.barValue}>{count} items {totalCost > 0 ? `· ${fmt(totalCost)}` : ""}</Text>
+                  </View>
+                  <View style={styles.barTrack}>
+                    <View style={[styles.barFill, { width: `${(count / (brandStats[0]?.count || 1)) * 100}%` }]} />
+                  </View>
+                </View>
+              ))
+            )}
+          </View>
+        )}
+      </View>
+
+      {/* ============================================================ */}
+      {/*  ROI RANKING (#10)                                            */}
+      {/* ============================================================ */}
+      <View style={styles.card}>
+        <SectionHeader
+          icon="trending-up-outline"
+          label="Best ROI Items"
+          open={roiOpen}
+          onPress={() => setRoiOpen((v) => !v)}
+        />
+        {roiOpen && (
+          <View style={styles.sectionBody}>
+            {costPerWear.length === 0 ? (
+              <Text style={styles.emptyText}>No items with cost and wear data yet.</Text>
+            ) : (
+              costPerWear.slice(0, 10).map(({ item, cpw }, idx) => (
+                <Pressable
+                  key={item.id}
+                  style={styles.listItem}
+                  onPress={() => router.push({ pathname: "/edit-item", params: { id: item.id } })}
+                >
+                  <Text style={[styles.barLabel, { marginRight: 8, width: 20 }]}>#{idx + 1}</Text>
+                  <View style={styles.listItemLeft}>
+                    <Text style={styles.listItemName} numberOfLines={1}>{item.name}</Text>
+                    <Text style={styles.listItemSub}>{item.brand || CATEGORY_LABELS[item.category]} · {item.wearCount} wears</Text>
+                  </View>
+                  <Text style={styles.cpwValue}>{fmt(cpw)}/wear</Text>
+                </Pressable>
+              ))
+            )}
+          </View>
+        )}
+      </View>
+
+      {/* ============================================================ */}
+      {/*  WARDROBE AGE TRACKER (#5)                                    */}
+      {/* ============================================================ */}
+      <View style={styles.card}>
+        <SectionHeader
+          icon="time-outline"
+          label="Wardrobe Age"
+          open={ageTrackerOpen}
+          onPress={() => setAgeTrackerOpen((v) => !v)}
+        />
+        {ageTrackerOpen && (
+          <View style={styles.sectionBody}>
+            <View style={styles.spendTotalRow}>
+              <Text style={styles.barLabel}>Average Age</Text>
+              <Text style={styles.cpwValue}>{avgItemAge}</Text>
+            </View>
+            {oldestItem && (
+              <View style={styles.spendTotalRow}>
+                <Text style={styles.barLabel}>Oldest Item</Text>
+                <Text style={styles.listItemSub}>{oldestItem.name}</Text>
+              </View>
+            )}
+            {newestItem && (
+              <View style={styles.spendTotalRow}>
+                <Text style={styles.barLabel}>Newest Item</Text>
+                <Text style={styles.listItemSub}>{newestItem.name}</Text>
+              </View>
+            )}
+            {itemsOver3Years.length > 0 && (
+              <>
+                <Divider />
+                <SubHeading>Consider Refreshing ({itemsOver3Years.length} items)</SubHeading>
+                {itemsOver3Years.slice(0, 5).map((item) => (
+                  <Pressable key={item.id} style={styles.listItem} onPress={() => router.push({ pathname: "/edit-item", params: { id: item.id } })}>
+                    <View style={styles.listItemLeft}>
+                      <Text style={styles.listItemName} numberOfLines={1}>{item.name}</Text>
+                      <Text style={styles.listItemSub}>{CATEGORY_LABELS[item.category]}</Text>
+                    </View>
+                  </Pressable>
+                ))}
+              </>
+            )}
+          </View>
+        )}
+      </View>
+
+      {/* ============================================================ */}
+      {/*  SUSTAINABILITY SCORE (#37)                                    */}
+      {/* ============================================================ */}
+      <View style={styles.card}>
+        <SectionHeader
+          icon="leaf-outline"
+          label="Sustainability"
+          open={sustainabilityOpen}
+          onPress={() => setSustainabilityOpen((v) => !v)}
+        />
+        {sustainabilityOpen && (
+          <View style={styles.sectionBody}>
+            <View style={styles.spendTotalRow}>
+              <Text style={styles.barLabel}>Sustainable Items</Text>
+              <Text style={[styles.cpwValue, { color: theme.colors.success }]}>
+                {sustainableCount} / {allActive.length} ({allActive.length > 0 ? Math.round((sustainableCount / allActive.length) * 100) : 0}%)
+              </Text>
+            </View>
+            <View style={styles.barTrack}>
+              <View style={[styles.barFill, { width: `${allActive.length > 0 ? (sustainableCount / allActive.length) * 100 : 0}%`, backgroundColor: theme.colors.success }]} />
+            </View>
+          </View>
+        )}
+      </View>
+
+      {/* ============================================================ */}
+      {/*  DUPLICATE DETECTOR (#36)                                      */}
+      {/* ============================================================ */}
+      <View style={styles.card}>
+        <SectionHeader
+          icon="copy-outline"
+          label="Possible Duplicates"
+          open={duplicatesOpen}
+          onPress={() => setDuplicatesOpen((v) => !v)}
+        />
+        {duplicatesOpen && (
+          <View style={styles.sectionBody}>
+            {duplicateGroups.length === 0 ? (
+              <Text style={styles.emptyText}>No potential duplicates found.</Text>
+            ) : (
+              duplicateGroups.slice(0, 5).map((group, idx) => (
+                <View key={idx} style={styles.gapCard}>
+                  <Ionicons name="alert-circle-outline" size={16} color={theme.colors.warning} style={{ marginRight: 8, marginTop: 2 }} />
+                  <Text style={styles.gapText}>
+                    {group.map((i) => i.name).join(" & ")} — similar {CATEGORY_LABELS[group[0].category].toLowerCase()}
+                  </Text>
+                </View>
+              ))
+            )}
+          </View>
+        )}
+      </View>
+
+      {/* ============================================================ */}
+      {/*  DARK MODE TOGGLE (#39)                                        */}
+      {/* ============================================================ */}
+      <View style={styles.card}>
+        <Pressable style={styles.menuRow} onPress={toggleTheme}>
+          <View style={styles.menuLeft}>
+            <Ionicons name={isDark ? "moon" : "moon-outline"} size={20} color={theme.colors.primary} style={styles.menuIcon} />
+            <Text style={styles.menuLabel}>Dark Mode</Text>
+          </View>
+          <View style={{ width: 40, height: 24, borderRadius: 12, backgroundColor: isDark ? theme.colors.primary : theme.colors.border, justifyContent: "center", paddingHorizontal: 2 }}>
+            <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: "#FFFFFF", alignSelf: isDark ? "flex-end" : "flex-start" }} />
+          </View>
+        </Pressable>
+      </View>
+
     </ScrollView>
   );
 }
@@ -1314,13 +1586,13 @@ export default function ProfileScreen() {
 /*  Styles                                                              */
 /* ------------------------------------------------------------------ */
 
-const styles = StyleSheet.create({
+function createStyles(t: any) { return StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Theme.colors.background,
+    backgroundColor: t.colors.background,
   },
   content: {
-    padding: Theme.spacing.md,
+    padding: t.spacing.md,
     paddingBottom: 100,
   },
 
@@ -1329,56 +1601,56 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: Theme.spacing.lg,
+    marginBottom: t.spacing.lg,
   },
   headerTitle: {
-    fontSize: Theme.fontSize.title,
+    fontSize: t.fontSize.title,
     fontWeight: "700",
-    color: Theme.colors.text,
+    color: t.colors.text,
   },
 
   /* Quick Stats */
   statsRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    marginBottom: Theme.spacing.xs,
+    marginBottom: t.spacing.xs,
   },
   statCard: {
     flex: 1,
-    backgroundColor: Theme.colors.surface,
-    borderRadius: Theme.borderRadius.md,
-    paddingVertical: Theme.spacing.md,
+    backgroundColor: t.colors.surface,
+    borderRadius: t.borderRadius.md,
+    paddingVertical: t.spacing.md,
     alignItems: "center",
-    marginHorizontal: Theme.spacing.xs,
-    shadowColor: Theme.colors.shadow,
+    marginHorizontal: t.spacing.xs,
+    shadowColor: t.colors.shadow,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 1,
     shadowRadius: 6,
     elevation: 2,
   },
   statValue: {
-    fontSize: Theme.fontSize.xl,
+    fontSize: t.fontSize.xl,
     fontWeight: "700",
-    color: Theme.colors.primary,
+    color: t.colors.primary,
   },
   statLabel: {
-    fontSize: Theme.fontSize.sm,
-    color: Theme.colors.textSecondary,
-    marginTop: Theme.spacing.xs,
+    fontSize: t.fontSize.sm,
+    color: t.colors.textSecondary,
+    marginTop: t.spacing.xs,
   },
   utilNote: {
-    fontSize: Theme.fontSize.xs,
-    color: Theme.colors.textLight,
+    fontSize: t.fontSize.xs,
+    color: t.colors.textLight,
     textAlign: "center",
-    marginBottom: Theme.spacing.lg,
+    marginBottom: t.spacing.lg,
   },
 
   /* Card wrapper for each section */
   card: {
-    backgroundColor: Theme.colors.surface,
-    borderRadius: Theme.borderRadius.md,
-    marginBottom: Theme.spacing.md,
-    shadowColor: Theme.colors.shadow,
+    backgroundColor: t.colors.surface,
+    borderRadius: t.borderRadius.md,
+    marginBottom: t.spacing.md,
+    shadowColor: t.colors.shadow,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 1,
     shadowRadius: 6,
@@ -1391,41 +1663,41 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: Theme.spacing.md,
-    paddingVertical: Theme.spacing.md,
+    paddingHorizontal: t.spacing.md,
+    paddingVertical: t.spacing.md,
   },
   menuLeft: {
     flexDirection: "row",
     alignItems: "center",
   },
   menuIcon: {
-    marginRight: Theme.spacing.sm,
+    marginRight: t.spacing.sm,
   },
   menuLabel: {
-    fontSize: Theme.fontSize.lg,
+    fontSize: t.fontSize.lg,
     fontWeight: "600",
-    color: Theme.colors.text,
+    color: t.colors.text,
   },
 
   /* Expanded section body */
   sectionBody: {
-    paddingHorizontal: Theme.spacing.md,
-    paddingBottom: Theme.spacing.md,
+    paddingHorizontal: t.spacing.md,
+    paddingBottom: t.spacing.md,
   },
 
   /* Sub-heading inside a section */
   subHeading: {
-    fontSize: Theme.fontSize.md,
+    fontSize: t.fontSize.md,
     fontWeight: "700",
-    color: Theme.colors.text,
-    marginTop: Theme.spacing.md,
-    marginBottom: Theme.spacing.sm,
+    color: t.colors.text,
+    marginTop: t.spacing.md,
+    marginBottom: t.spacing.sm,
   },
 
   divider: {
     height: StyleSheet.hairlineWidth,
-    backgroundColor: Theme.colors.border,
-    marginVertical: Theme.spacing.md,
+    backgroundColor: t.colors.border,
+    marginVertical: t.spacing.md,
   },
 
   /* Spending total */
@@ -1433,102 +1705,102 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingVertical: Theme.spacing.sm,
+    paddingVertical: t.spacing.sm,
   },
   spendTotalLabel: {
-    fontSize: Theme.fontSize.lg,
+    fontSize: t.fontSize.lg,
     fontWeight: "600",
-    color: Theme.colors.text,
+    color: t.colors.text,
   },
   spendTotalValue: {
-    fontSize: Theme.fontSize.xl,
+    fontSize: t.fontSize.xl,
     fontWeight: "700",
-    color: Theme.colors.primary,
+    color: t.colors.primary,
   },
 
   /* Generic list item row */
   listItem: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: Theme.spacing.sm,
+    paddingVertical: t.spacing.sm,
   },
   listItemLeft: {
     flex: 1,
   },
   listItemName: {
-    fontSize: Theme.fontSize.md,
+    fontSize: t.fontSize.md,
     fontWeight: "500",
-    color: Theme.colors.text,
+    color: t.colors.text,
   },
   listItemSub: {
-    fontSize: Theme.fontSize.sm,
-    color: Theme.colors.textSecondary,
+    fontSize: t.fontSize.sm,
+    color: t.colors.textSecondary,
     marginTop: 2,
   },
 
   /* Badge (wear count) */
   badge: {
-    backgroundColor: Theme.colors.primaryLight + "22",
-    borderRadius: Theme.borderRadius.sm,
-    paddingHorizontal: Theme.spacing.sm,
-    paddingVertical: Theme.spacing.xs,
+    backgroundColor: t.colors.primaryLight + "22",
+    borderRadius: t.borderRadius.sm,
+    paddingHorizontal: t.spacing.sm,
+    paddingVertical: t.spacing.xs,
   },
   badgeText: {
-    fontSize: Theme.fontSize.sm,
+    fontSize: t.fontSize.sm,
     fontWeight: "700",
-    color: Theme.colors.primary,
+    color: t.colors.primary,
   },
   badgeMuted: {
-    backgroundColor: Theme.colors.surfaceAlt,
+    backgroundColor: t.colors.surfaceAlt,
   },
   badgeTextMuted: {
-    color: Theme.colors.textSecondary,
+    color: t.colors.textSecondary,
   },
 
   /* Bar chart rows */
   barRow: {
-    marginBottom: Theme.spacing.sm,
+    marginBottom: t.spacing.sm,
   },
   barLabelRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    marginBottom: Theme.spacing.xs,
+    marginBottom: t.spacing.xs,
   },
   barLabel: {
-    fontSize: Theme.fontSize.sm,
+    fontSize: t.fontSize.sm,
     fontWeight: "500",
-    color: Theme.colors.text,
+    color: t.colors.text,
   },
   barValue: {
-    fontSize: Theme.fontSize.sm,
+    fontSize: t.fontSize.sm,
     fontWeight: "600",
-    color: Theme.colors.primary,
+    color: t.colors.primary,
   },
   barTrack: {
     height: 8,
-    backgroundColor: Theme.colors.surfaceAlt,
-    borderRadius: Theme.borderRadius.full,
+    backgroundColor: t.colors.surfaceAlt,
+    borderRadius: t.borderRadius.full,
     overflow: "hidden",
   },
   barFill: {
     height: 8,
-    backgroundColor: Theme.colors.primary,
-    borderRadius: Theme.borderRadius.full,
+    backgroundColor: t.colors.primary,
+    borderRadius: t.borderRadius.full,
   },
 
   /* Cost per wear value */
   cpwValue: {
-    fontSize: Theme.fontSize.md,
+    fontSize: t.fontSize.md,
     fontWeight: "600",
-    color: Theme.colors.primary,
+    color: t.colors.primary,
   },
 
   /* Empty text */
   emptyText: {
-    fontSize: Theme.fontSize.sm,
-    color: Theme.colors.textLight,
+    fontSize: t.fontSize.sm,
+    color: t.colors.textLight,
     fontStyle: "italic",
-    paddingVertical: Theme.spacing.sm,
+    paddingVertical: t.spacing.sm,
   },
 
   /* Unarchive button */
@@ -1538,13 +1810,13 @@ const styles = StyleSheet.create({
     gap: 4,
     paddingVertical: 6,
     paddingHorizontal: 10,
-    borderRadius: Theme.borderRadius.sm,
-    backgroundColor: Theme.colors.primary + "12",
+    borderRadius: t.borderRadius.sm,
+    backgroundColor: t.colors.primary + "12",
   },
   unarchiveBtnText: {
-    fontSize: Theme.fontSize.xs,
+    fontSize: t.fontSize.xs,
     fontWeight: "600",
-    color: Theme.colors.primary,
+    color: t.colors.primary,
   },
 
   /* Gmail section */
@@ -1552,12 +1824,12 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: Theme.spacing.md,
-    paddingVertical: Theme.spacing.md,
+    paddingHorizontal: t.spacing.md,
+    paddingVertical: t.spacing.md,
   },
   gmailHint: {
-    fontSize: Theme.fontSize.xs,
-    color: Theme.colors.textSecondary,
+    fontSize: t.fontSize.xs,
+    color: t.colors.textSecondary,
     marginTop: 2,
   },
 
@@ -1565,14 +1837,14 @@ const styles = StyleSheet.create({
   backupSection: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: Theme.spacing.md,
-    paddingVertical: Theme.spacing.md,
+    paddingHorizontal: t.spacing.md,
+    paddingVertical: t.spacing.md,
   },
   backupButtons: {
     flexDirection: "row",
-    paddingHorizontal: Theme.spacing.md,
-    paddingBottom: Theme.spacing.md,
-    gap: Theme.spacing.sm,
+    paddingHorizontal: t.spacing.md,
+    paddingBottom: t.spacing.md,
+    gap: t.spacing.sm,
   },
   backupBtn: {
     flex: 1,
@@ -1581,22 +1853,22 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 6,
     paddingVertical: 10,
-    borderRadius: Theme.borderRadius.sm,
-    backgroundColor: Theme.colors.primary + "12",
+    borderRadius: t.borderRadius.sm,
+    backgroundColor: t.colors.primary + "12",
   },
   backupBtnText: {
-    fontSize: Theme.fontSize.sm,
+    fontSize: t.fontSize.sm,
     fontWeight: "600",
-    color: Theme.colors.primary,
+    color: t.colors.primary,
   },
 
   /* Colour Palette */
   colorBarContainer: {
     flexDirection: "row",
     height: 24,
-    borderRadius: Theme.borderRadius.sm,
+    borderRadius: t.borderRadius.sm,
     overflow: "hidden",
-    marginBottom: Theme.spacing.md,
+    marginBottom: t.spacing.md,
   },
   colorStripe: {
     height: 24,
@@ -1604,35 +1876,35 @@ const styles = StyleSheet.create({
   colorListRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: Theme.spacing.xs,
+    paddingVertical: t.spacing.xs,
   },
   colorSwatch: {
     width: 16,
     height: 16,
     borderRadius: 4,
-    marginRight: Theme.spacing.sm,
+    marginRight: t.spacing.sm,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Theme.colors.border,
+    borderColor: t.colors.border,
   },
   colorListText: {
-    fontSize: Theme.fontSize.md,
-    color: Theme.colors.text,
+    fontSize: t.fontSize.md,
+    color: t.colors.text,
   },
 
   /* Tip card */
   tipCard: {
     flexDirection: "row",
     alignItems: "flex-start",
-    backgroundColor: Theme.colors.warning + "14",
-    borderRadius: Theme.borderRadius.sm,
-    padding: Theme.spacing.sm,
-    marginTop: Theme.spacing.md,
-    gap: Theme.spacing.sm,
+    backgroundColor: t.colors.warning + "14",
+    borderRadius: t.borderRadius.sm,
+    padding: t.spacing.sm,
+    marginTop: t.spacing.md,
+    gap: t.spacing.sm,
   },
   tipText: {
     flex: 1,
-    fontSize: Theme.fontSize.sm,
-    color: Theme.colors.text,
+    fontSize: t.fontSize.sm,
+    color: t.colors.text,
     lineHeight: 18,
   },
 
@@ -1640,15 +1912,15 @@ const styles = StyleSheet.create({
   gapCard: {
     flexDirection: "row",
     alignItems: "flex-start",
-    backgroundColor: Theme.colors.surfaceAlt,
-    borderRadius: Theme.borderRadius.sm,
-    padding: Theme.spacing.sm,
-    marginBottom: Theme.spacing.sm,
+    backgroundColor: t.colors.surfaceAlt,
+    borderRadius: t.borderRadius.sm,
+    padding: t.spacing.sm,
+    marginBottom: t.spacing.sm,
   },
   gapText: {
     flex: 1,
-    fontSize: Theme.fontSize.sm,
-    color: Theme.colors.text,
+    fontSize: t.fontSize.sm,
+    color: t.colors.text,
     lineHeight: 18,
   },
 
@@ -1656,68 +1928,68 @@ const styles = StyleSheet.create({
   wishlistRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: Theme.spacing.sm,
+    paddingVertical: t.spacing.sm,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Theme.colors.border,
+    borderBottomColor: t.colors.border,
   },
   wishlistDeleteBtn: {
-    padding: Theme.spacing.xs,
+    padding: t.spacing.xs,
   },
   addWishlistBtn: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 6,
-    paddingVertical: Theme.spacing.sm,
-    marginTop: Theme.spacing.md,
-    borderRadius: Theme.borderRadius.sm,
-    backgroundColor: Theme.colors.primary + "12",
+    paddingVertical: t.spacing.sm,
+    marginTop: t.spacing.md,
+    borderRadius: t.borderRadius.sm,
+    backgroundColor: t.colors.primary + "12",
   },
   addWishlistBtnText: {
-    fontSize: Theme.fontSize.md,
+    fontSize: t.fontSize.md,
     fontWeight: "600",
-    color: Theme.colors.primary,
+    color: t.colors.primary,
   },
   wlThumb: {
     width: 40,
     height: 40,
-    borderRadius: Theme.borderRadius.sm,
-    marginRight: Theme.spacing.sm,
+    borderRadius: t.borderRadius.sm,
+    marginRight: t.spacing.sm,
   },
   wlUrlLink: {
-    fontSize: Theme.fontSize.xs,
-    color: Theme.colors.primary,
+    fontSize: t.fontSize.xs,
+    color: t.colors.primary,
     textDecorationLine: "underline",
     marginTop: 2,
   },
   wlMoveBtn: {
-    padding: Theme.spacing.xs,
+    padding: t.spacing.xs,
     marginRight: 4,
   },
   wlPhotoRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: Theme.spacing.sm,
-    gap: Theme.spacing.sm,
+    marginBottom: t.spacing.sm,
+    gap: t.spacing.sm,
   },
   wlPhotoPreview: {
     width: 64,
     height: 64,
-    borderRadius: Theme.borderRadius.sm,
+    borderRadius: t.borderRadius.sm,
   },
   wlPhotoPlaceholder: {
     width: 64,
     height: 64,
-    borderRadius: Theme.borderRadius.sm,
-    backgroundColor: Theme.colors.surfaceAlt,
+    borderRadius: t.borderRadius.sm,
+    backgroundColor: t.colors.surfaceAlt,
     justifyContent: "center",
     alignItems: "center",
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Theme.colors.border,
+    borderColor: t.colors.border,
   },
   wlPhotoHint: {
-    fontSize: Theme.fontSize.sm,
-    color: Theme.colors.textSecondary,
+    fontSize: t.fontSize.sm,
+    color: t.colors.textSecondary,
   },
   wlUrlRow: {
     flexDirection: "row",
@@ -1727,8 +1999,8 @@ const styles = StyleSheet.create({
   wlFetchBtn: {
     width: 48,
     height: 48,
-    backgroundColor: Theme.colors.primary,
-    borderRadius: Theme.borderRadius.sm,
+    backgroundColor: t.colors.primary,
+    borderRadius: t.borderRadius.sm,
     justifyContent: "center",
     alignItems: "center",
   },
@@ -1741,16 +2013,16 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 6,
     paddingVertical: 12,
-    marginTop: Theme.spacing.md,
-    borderRadius: Theme.borderRadius.sm,
-    backgroundColor: Theme.colors.primary + "12",
+    marginTop: t.spacing.md,
+    borderRadius: t.borderRadius.sm,
+    backgroundColor: t.colors.primary + "12",
     borderWidth: 1,
-    borderColor: Theme.colors.primary + "30",
+    borderColor: t.colors.primary + "30",
   },
   wlMoveToWardrobeBtnText: {
-    fontSize: Theme.fontSize.md,
+    fontSize: t.fontSize.md,
     fontWeight: "600",
-    color: Theme.colors.primary,
+    color: t.colors.primary,
   },
 
   /* Modal */
@@ -1760,77 +2032,77 @@ const styles = StyleSheet.create({
     justifyContent: "flex-end",
   },
   modalContent: {
-    backgroundColor: Theme.colors.surface,
-    borderTopLeftRadius: Theme.borderRadius.lg,
-    borderTopRightRadius: Theme.borderRadius.lg,
-    paddingHorizontal: Theme.spacing.md,
-    paddingBottom: Theme.spacing.xl,
+    backgroundColor: t.colors.surface,
+    borderTopLeftRadius: t.borderRadius.lg,
+    borderTopRightRadius: t.borderRadius.lg,
+    paddingHorizontal: t.spacing.md,
+    paddingBottom: t.spacing.xl,
     maxHeight: "85%",
   },
   modalHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingVertical: Theme.spacing.md,
+    paddingVertical: t.spacing.md,
   },
   modalTitle: {
-    fontSize: Theme.fontSize.lg,
+    fontSize: t.fontSize.lg,
     fontWeight: "700",
-    color: Theme.colors.text,
+    color: t.colors.text,
   },
   modalScroll: {
     flexGrow: 0,
   },
   modalLabel: {
-    fontSize: Theme.fontSize.sm,
+    fontSize: t.fontSize.sm,
     fontWeight: "600",
-    color: Theme.colors.textSecondary,
-    marginTop: Theme.spacing.sm,
-    marginBottom: Theme.spacing.xs,
+    color: t.colors.textSecondary,
+    marginTop: t.spacing.sm,
+    marginBottom: t.spacing.xs,
   },
   modalInput: {
-    backgroundColor: Theme.colors.surfaceAlt,
-    borderRadius: Theme.borderRadius.sm,
-    paddingHorizontal: Theme.spacing.sm,
+    backgroundColor: t.colors.surfaceAlt,
+    borderRadius: t.borderRadius.sm,
+    paddingHorizontal: t.spacing.sm,
     paddingVertical: 10,
-    fontSize: Theme.fontSize.md,
-    color: Theme.colors.text,
+    fontSize: t.fontSize.md,
+    color: t.colors.text,
   },
   modalInputMultiline: {
     minHeight: 70,
     textAlignVertical: "top",
   },
   categoryPickerScroll: {
-    marginBottom: Theme.spacing.xs,
+    marginBottom: t.spacing.xs,
   },
   categoryChip: {
-    paddingHorizontal: Theme.spacing.sm,
+    paddingHorizontal: t.spacing.sm,
     paddingVertical: 6,
-    borderRadius: Theme.borderRadius.full,
-    backgroundColor: Theme.colors.surfaceAlt,
-    marginRight: Theme.spacing.xs,
+    borderRadius: t.borderRadius.full,
+    backgroundColor: t.colors.surfaceAlt,
+    marginRight: t.spacing.xs,
   },
   categoryChipActive: {
-    backgroundColor: Theme.colors.primary,
+    backgroundColor: t.colors.primary,
   },
   categoryChipText: {
-    fontSize: Theme.fontSize.sm,
-    color: Theme.colors.textSecondary,
+    fontSize: t.fontSize.sm,
+    color: t.colors.textSecondary,
   },
   categoryChipTextActive: {
     color: "#FFFFFF",
     fontWeight: "600",
   },
   modalSaveBtn: {
-    backgroundColor: Theme.colors.primary,
-    borderRadius: Theme.borderRadius.sm,
+    backgroundColor: t.colors.primary,
+    borderRadius: t.borderRadius.sm,
     paddingVertical: 14,
     alignItems: "center",
-    marginTop: Theme.spacing.md,
+    marginTop: t.spacing.md,
   },
   modalSaveBtnText: {
     color: "#FFFFFF",
-    fontSize: Theme.fontSize.md,
+    fontSize: t.fontSize.md,
     fontWeight: "700",
   },
-});
+}); }
