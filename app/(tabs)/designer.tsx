@@ -13,7 +13,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { useClothingItems } from "@/hooks/useClothingItems";
 import { useOutfits } from "@/hooks/useOutfits";
-import { validateOutfit } from "@/services/outfitEngine";
+import { validateOutfit, generateOutfitName } from "@/services/outfitEngine";
 import { Chip } from "@/components/Chip";
 import { MoodBoard } from "@/components/MoodBoard";
 import { ColorDot } from "@/components/ColorDot";
@@ -100,7 +100,7 @@ export default function DesignerScreen() {
       return;
     }
 
-    const name = outfitName.trim() || `Custom #${Date.now().toString(36).slice(-4).toUpperCase()}`;
+    const name = outfitName.trim() || generateOutfitName(selectedItems);
 
     await saveOutfit({
       id: generateId(),
@@ -200,13 +200,33 @@ export default function DesignerScreen() {
         ListHeaderComponent={
           <View>
             <View style={styles.nameInputWrap}>
-              <TextInput
-                style={styles.nameInput}
-                placeholder="Outfit name (optional)"
-                placeholderTextColor={Theme.colors.textLight}
-                value={outfitName}
-                onChangeText={setOutfitName}
-              />
+              <View style={styles.nameInputRow}>
+                <TextInput
+                  style={[styles.nameInput, { flex: 1 }]}
+                  placeholder={selectedItems.length > 0 ? generateOutfitName(selectedItems) : "Outfit name (optional)"}
+                  placeholderTextColor={Theme.colors.textLight}
+                  value={outfitName}
+                  onChangeText={setOutfitName}
+                />
+                {selectedItems.length > 0 && (
+                  <Pressable
+                    style={styles.nameGenBtn}
+                    onPress={() => setOutfitName(generateOutfitName(selectedItems))}
+                    hitSlop={8}
+                  >
+                    <Ionicons name="sparkles-outline" size={18} color={Theme.colors.primary} />
+                  </Pressable>
+                )}
+                {outfitName.trim().length > 0 && (
+                  <Pressable
+                    style={styles.nameGenBtn}
+                    onPress={() => setOutfitName("")}
+                    hitSlop={8}
+                  >
+                    <Ionicons name="close-circle-outline" size={18} color={Theme.colors.textLight} />
+                  </Pressable>
+                )}
+              </View>
             </View>
 
             {/* Occasion tags for the outfit */}
@@ -304,6 +324,19 @@ const styles = StyleSheet.create({
   },
   nameInputWrap: {
     paddingVertical: Theme.spacing.md,
+  },
+  nameInputRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  nameGenBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: Theme.colors.primary + "12",
+    justifyContent: "center",
+    alignItems: "center",
   },
   nameInput: {
     height: 44,

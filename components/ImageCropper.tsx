@@ -65,10 +65,18 @@ export function ImageCropper({
     );
     (async () => {
       try {
-        const base64 = await FileSystem.readAsStringAsync(imageUri, {
+        let localUri = imageUri;
+        // If the image is a remote URL, download it first
+        if (imageUri.startsWith("http://") || imageUri.startsWith("https://")) {
+          const tmpFile = `${FileSystem.cacheDirectory}crop_tmp_${Date.now()}.jpg`;
+          const dl = await FileSystem.downloadAsync(imageUri, tmpFile);
+          if (dl.status !== 200) { setDataUri(null); return; }
+          localUri = dl.uri;
+        }
+        const base64 = await FileSystem.readAsStringAsync(localUri, {
           encoding: FileSystem.EncodingType.Base64,
         });
-        const ext = imageUri.toLowerCase();
+        const ext = localUri.toLowerCase();
         const mime = ext.includes(".png") ? "image/png" : "image/jpeg";
         setDataUri(`data:${mime};base64,${base64}`);
       } catch {

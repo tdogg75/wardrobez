@@ -67,7 +67,7 @@ export interface ClothingItem {
   cost?: number;
   favorite: boolean;
   wearCount: number;
-  /** ISO date strings for each time worn (standalone wears, not through outfits) */
+  /** ISO date strings for each time worn (includes both standalone and outfit wears) */
   wearDates?: string[];
   archived: boolean;
   archiveReason?: ArchiveReason;
@@ -123,6 +123,11 @@ export interface WishlistItem {
   estimatedPrice?: number;
   category?: ClothingCategory;
   notes?: string;
+  imageUri?: string;
+  color?: string;
+  colorName?: string;
+  subCategory?: string;
+  fabricType?: FabricType;
   createdAt: number;
   purchased?: boolean;
 }

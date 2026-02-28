@@ -11,6 +11,7 @@ import {
   TextInput,
   Modal,
   Linking,
+  FlatList,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -24,12 +25,33 @@ import {
   getSavedClientId,
   saveClientId,
   isOAuthRedirectSupported,
+  markEmailImported,
 } from "@/services/gmailService";
-import type { GmailPurchaseItem } from "@/services/gmailService";
+import type { GmailPurchaseItem, GmailLineItem } from "@/services/gmailService";
+import { fetchProductFromUrl } from "@/services/productSearch";
+import type { ClothingCategory } from "@/models/types";
+import { CATEGORY_LABELS } from "@/models/types";
 import { useClothingItems } from "@/hooks/useClothingItems";
 import { PRESET_COLORS } from "@/constants/colors";
 
-type ScanState = "idle" | "signing_in" | "scanning" | "done" | "error" | "need_client_id" | "manual_token";
+type ScanState =
+  | "idle"
+  | "signing_in"
+  | "scanning"
+  | "reviewing_emails"
+  | "reviewing_items"
+  | "need_client_id"
+  | "manual_token"
+  | "error";
+
+interface EditableLineItem extends GmailLineItem {
+  selected: boolean;
+  brand: string;
+  category: ClothingCategory;
+  cost: string;
+  url: string;
+  fetchingDetails: boolean;
+}
 
 export default function GmailPurchasesScreen() {
   const router = useRouter();
@@ -37,13 +59,19 @@ export default function GmailPurchasesScreen() {
 
   const [scanState, setScanState] = useState<ScanState>("idle");
   const [purchases, setPurchases] = useState<GmailPurchaseItem[]>([]);
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const [addedIds, setAddedIds] = useState<Set<string>>(new Set());
-  const [skippedIds, setSkippedIds] = useState<Set<string>>(new Set());
+  const [currentEmailIndex, setCurrentEmailIndex] = useState(0);
+  const [importedEmailCount, setImportedEmailCount] = useState(0);
+  const [skippedEmailCount, setSkippedEmailCount] = useState(0);
+  const [totalItemsAdded, setTotalItemsAdded] = useState(0);
   const [progress, setProgress] = useState({ loaded: 0, total: 0 });
   const [clientId, setClientId] = useState("");
   const [clientIdInput, setClientIdInput] = useState("");
   const [manualTokenInput, setManualTokenInput] = useState("");
+
+  // reviewing_items state
+  const [editableItems, setEditableItems] = useState<EditableLineItem[]>([]);
+  const [editModalVisible, setEditModalVisible] = useState(false);
+  const [editingIndex, setEditingIndex] = useState(-1);
 
   // Load saved client ID on mount
   useEffect(() => {
@@ -51,6 +79,9 @@ export default function GmailPurchasesScreen() {
       if (id) setClientId(id);
     });
   }, []);
+
+  const currentEmail = purchases[currentEmailIndex] ?? null;
+  const remaining = purchases.length - currentEmailIndex;
 
   const handleSaveClientId = async () => {
     const trimmed = clientIdInput.trim();
@@ -74,14 +105,19 @@ export default function GmailPurchasesScreen() {
         setProgress({ loaded, total });
       });
       setPurchases(results);
-      setCurrentIndex(0);
-      setScanState("done");
+      setCurrentEmailIndex(0);
+      setImportedEmailCount(0);
+      setSkippedEmailCount(0);
+      setTotalItemsAdded(0);
 
       if (results.length === 0) {
         Alert.alert(
           "No purchases found",
           "We couldn't find any clothing, shoes, or accessories purchase emails from the last 2 years."
         );
+        setScanState("idle");
+      } else {
+        setScanState("reviewing_emails");
       }
     } catch (err) {
       setScanState("error");
@@ -125,63 +161,147 @@ export default function GmailPurchasesScreen() {
     await runScanWithToken(token);
   }, [manualTokenInput, runScanWithToken]);
 
-  const currentItem = purchases[currentIndex] ?? null;
+  /* ---------- Email review actions ---------- */
 
-  const handleAdd = async () => {
-    if (!currentItem) return;
+  const handleShowItems = () => {
+    if (!currentEmail) return;
+    const items: EditableLineItem[] = currentEmail.lineItems.map((li) => ({
+      ...li,
+      selected: true,
+      brand: currentEmail.vendor,
+      category: "tops" as ClothingCategory,
+      cost: li.price?.replace(/[^0-9.]/g, "") ?? "",
+      url: li.productUrl ?? "",
+      fetchingDetails: false,
+    }));
+    setEditableItems(items);
+    setScanState("reviewing_items");
+  };
 
-    const costStr = currentItem.price.replace(/[^0-9.]/g, "");
-    const cost = parseFloat(costStr) || undefined;
+  const handleSkipEmail = () => {
+    setSkippedEmailCount((c) => c + 1);
+    goToNextEmail();
+  };
 
-    await addOrUpdate({
-      id: Date.now().toString(36) + Math.random().toString(36).slice(2, 9),
-      name: currentItem.itemName,
-      category: "tops", // Default — user can change after
-      color: PRESET_COLORS[0].hex,
-      colorName: PRESET_COLORS[0].name,
-      fabricType: "other",
-      imageUris: currentItem.localImageUri ? [currentItem.localImageUri] : [],
-      brand: currentItem.vendor,
-      cost,
-      favorite: false,
-      wearCount: 0,
-      archived: false,
-      createdAt: Date.now(),
-      notes: `Purchased from ${currentItem.vendor} on ${currentItem.date}`,
+  const handleStopScanning = () => {
+    Alert.alert(
+      "Scanning Complete",
+      `Added ${totalItemsAdded} items from ${importedEmailCount} emails.`,
+      [{ text: "OK", onPress: () => { clearToken(); router.back(); } }]
+    );
+  };
+
+  const goToNextEmail = () => {
+    if (currentEmailIndex < purchases.length - 1) {
+      setCurrentEmailIndex((i) => i + 1);
+    } else {
+      // No more emails
+      handleStopScanning();
+    }
+  };
+
+  const goToPrevEmail = () => {
+    if (currentEmailIndex > 0) {
+      setCurrentEmailIndex((i) => i - 1);
+    }
+  };
+
+  /* ---------- Item review actions ---------- */
+
+  const toggleItemSelected = (index: number) => {
+    setEditableItems((prev) => {
+      const next = [...prev];
+      next[index] = { ...next[index], selected: !next[index].selected };
+      return next;
     });
-
-    setAddedIds((prev) => new Set(prev).add(currentItem.id));
-    goNext();
   };
 
-  const handleSkip = () => {
-    if (!currentItem) return;
-    setSkippedIds((prev) => new Set(prev).add(currentItem.id));
-    goNext();
+  const openEditModal = (index: number) => {
+    setEditingIndex(index);
+    setEditModalVisible(true);
   };
 
-  const goNext = () => {
-    if (currentIndex < purchases.length - 1) {
-      setCurrentIndex((i) => i + 1);
+  const updateEditableItem = (index: number, updates: Partial<EditableLineItem>) => {
+    setEditableItems((prev) => {
+      const next = [...prev];
+      next[index] = { ...next[index], ...updates };
+      return next;
+    });
+  };
+
+  const handleFetchDetails = async (index: number) => {
+    const item = editableItems[index];
+    if (!item.url) return;
+
+    updateEditableItem(index, { fetchingDetails: true });
+
+    try {
+      const result = await fetchProductFromUrl(item.url);
+      if (result) {
+        const updates: Partial<EditableLineItem> = { fetchingDetails: false };
+        if (result.name) updates.name = result.name;
+        if (result.brand) updates.brand = result.brand;
+        if (result.category) updates.category = result.category;
+        if (result.cost != null) updates.cost = result.cost.toString();
+        if (result.imageUri) updates.localImageUri = result.imageUri;
+        updateEditableItem(index, updates);
+      } else {
+        updateEditableItem(index, { fetchingDetails: false });
+        Alert.alert("No details found", "Could not extract product details from that URL.");
+      }
+    } catch {
+      updateEditableItem(index, { fetchingDetails: false });
+      Alert.alert("Fetch failed", "Could not load product details from that URL.");
     }
   };
 
-  const goPrev = () => {
-    if (currentIndex > 0) {
-      setCurrentIndex((i) => i - 1);
+  const handleAddSelectedToWardrobe = async () => {
+    if (!currentEmail) return;
+
+    const selected = editableItems.filter((item) => item.selected);
+    if (selected.length === 0) {
+      Alert.alert("No items selected", "Please select at least one item to add.");
+      return;
     }
+
+    for (const item of selected) {
+      const cost = parseFloat(item.cost) || undefined;
+
+      await addOrUpdate({
+        id: Date.now().toString(36) + Math.random().toString(36).slice(2, 9),
+        name: item.name,
+        category: item.category,
+        color: PRESET_COLORS[0].hex,
+        colorName: PRESET_COLORS[0].name,
+        fabricType: "other",
+        imageUris: item.localImageUri ? [item.localImageUri] : [],
+        brand: item.brand || undefined,
+        productUrl: item.url || undefined,
+        cost,
+        favorite: false,
+        wearCount: 0,
+        archived: false,
+        createdAt: Date.now(),
+        notes: `Purchased from ${currentEmail.vendor} on ${currentEmail.date}`,
+      });
+    }
+
+    await markEmailImported(currentEmail.id);
+    setImportedEmailCount((c) => c + 1);
+    setTotalItemsAdded((c) => c + selected.length);
+    setScanState("reviewing_emails");
+    goToNextEmail();
   };
 
-  const handleDone = () => {
-    clearToken();
-    router.back();
+  const handleBackToEmails = () => {
+    setScanState("reviewing_emails");
   };
 
-  const remaining = purchases.filter(
-    (p) => !addedIds.has(p.id) && !skippedIds.has(p.id)
-  ).length;
+  /* ---------- Render helpers ---------- */
 
-  /* ---------- Render ---------- */
+  const categoryKeys = Object.keys(CATEGORY_LABELS) as ClothingCategory[];
+
+  /* ---------- Render: need_client_id ---------- */
 
   if (scanState === "need_client_id") {
     return (
@@ -232,59 +352,7 @@ export default function GmailPurchasesScreen() {
     );
   }
 
-  const oauthSupported = isOAuthRedirectSupported();
-
-  if (scanState === "idle") {
-    return (
-      <View style={styles.center}>
-        <Ionicons name="mail-outline" size={64} color={Theme.colors.primary} />
-        <Text style={styles.title}>Scan Gmail for Purchases</Text>
-        <Text style={styles.subtitle}>
-          Connect your Gmail to find clothing, shoes, jewelry, and accessories
-          purchases from the last 2 years.
-        </Text>
-        {oauthSupported ? (
-          <Pressable style={styles.primaryBtn} onPress={startScan}>
-            <Ionicons name="logo-google" size={20} color="#FFFFFF" />
-            <Text style={styles.primaryBtnText}>Connect Gmail</Text>
-          </Pressable>
-        ) : (
-          <View style={styles.expoGoWarning}>
-            <Ionicons name="information-circle-outline" size={20} color={Theme.colors.primary} />
-            <Text style={styles.expoGoWarningText}>
-              Google sign-in requires a standalone APK.{"\n"}
-              Use <Text style={{ fontWeight: "700" }}>Manual Token</Text> below to scan from Expo Go, or build an APK with{" "}
-              <Text style={{ fontWeight: "700" }}>npm run build:apk</Text>.
-            </Text>
-          </View>
-        )}
-
-        {/* Manual token entry — works in Expo Go */}
-        <Pressable
-          style={[styles.primaryBtn, { backgroundColor: Theme.colors.textSecondary }]}
-          onPress={() => setScanState("manual_token")}
-        >
-          <Ionicons name="key-outline" size={20} color="#FFFFFF" />
-          <Text style={styles.primaryBtnText}>Enter Token Manually</Text>
-        </Pressable>
-
-        {clientId ? (
-          <Pressable
-            style={styles.secondaryBtn}
-            onPress={() => {
-              setClientIdInput(clientId);
-              setScanState("need_client_id");
-            }}
-          >
-            <Text style={styles.secondaryBtnText}>Change Client ID</Text>
-          </Pressable>
-        ) : null}
-        <Pressable style={styles.secondaryBtn} onPress={() => router.back()}>
-          <Text style={styles.secondaryBtnText}>Cancel</Text>
-        </Pressable>
-      </View>
-    );
-  }
+  /* ---------- Render: manual_token ---------- */
 
   if (scanState === "manual_token") {
     return (
@@ -346,6 +414,64 @@ export default function GmailPurchasesScreen() {
     );
   }
 
+  /* ---------- Render: idle ---------- */
+
+  const oauthSupported = isOAuthRedirectSupported();
+
+  if (scanState === "idle") {
+    return (
+      <View style={styles.center}>
+        <Ionicons name="mail-outline" size={64} color={Theme.colors.primary} />
+        <Text style={styles.title}>Scan Gmail for Purchases</Text>
+        <Text style={styles.subtitle}>
+          Connect your Gmail to find clothing, shoes, jewelry, and accessories
+          purchases from the last 2 years.
+        </Text>
+        {oauthSupported ? (
+          <Pressable style={styles.primaryBtn} onPress={startScan}>
+            <Ionicons name="logo-google" size={20} color="#FFFFFF" />
+            <Text style={styles.primaryBtnText}>Connect Gmail</Text>
+          </Pressable>
+        ) : (
+          <View style={styles.expoGoWarning}>
+            <Ionicons name="information-circle-outline" size={20} color={Theme.colors.primary} />
+            <Text style={styles.expoGoWarningText}>
+              Google sign-in requires a standalone APK.{"\n"}
+              Use <Text style={{ fontWeight: "700" }}>Manual Token</Text> below to scan from Expo Go, or build an APK with{" "}
+              <Text style={{ fontWeight: "700" }}>npm run build:apk</Text>.
+            </Text>
+          </View>
+        )}
+
+        {/* Manual token entry — works in Expo Go */}
+        <Pressable
+          style={[styles.primaryBtn, { backgroundColor: Theme.colors.textSecondary }]}
+          onPress={() => setScanState("manual_token")}
+        >
+          <Ionicons name="key-outline" size={20} color="#FFFFFF" />
+          <Text style={styles.primaryBtnText}>Enter Token Manually</Text>
+        </Pressable>
+
+        {clientId ? (
+          <Pressable
+            style={styles.secondaryBtn}
+            onPress={() => {
+              setClientIdInput(clientId);
+              setScanState("need_client_id");
+            }}
+          >
+            <Text style={styles.secondaryBtnText}>Change Client ID</Text>
+          </Pressable>
+        ) : null}
+        <Pressable style={styles.secondaryBtn} onPress={() => router.back()}>
+          <Text style={styles.secondaryBtnText}>Cancel</Text>
+        </Pressable>
+      </View>
+    );
+  }
+
+  /* ---------- Render: signing_in ---------- */
+
   if (scanState === "signing_in") {
     return (
       <View style={styles.center}>
@@ -354,6 +480,8 @@ export default function GmailPurchasesScreen() {
       </View>
     );
   }
+
+  /* ---------- Render: scanning ---------- */
 
   if (scanState === "scanning") {
     return (
@@ -368,6 +496,8 @@ export default function GmailPurchasesScreen() {
       </View>
     );
   }
+
+  /* ---------- Render: error ---------- */
 
   if (scanState === "error") {
     return (
@@ -384,187 +514,432 @@ export default function GmailPurchasesScreen() {
     );
   }
 
-  // Done state — show purchases one by one
-  if (purchases.length === 0) {
+  /* ---------- Render: reviewing_items ---------- */
+
+  if (scanState === "reviewing_items" && currentEmail) {
+    const editingItem = editingIndex >= 0 ? editableItems[editingIndex] : null;
+
     return (
-      <View style={styles.center}>
-        <Ionicons name="search-outline" size={64} color={Theme.colors.textLight} />
-        <Text style={styles.title}>No Purchases Found</Text>
-        <Text style={styles.subtitle}>
-          We couldn't find any fashion-related purchase emails in the last 2 years.
-        </Text>
-        <Pressable style={styles.primaryBtn} onPress={() => router.back()}>
-          <Text style={styles.primaryBtnText}>Go Back</Text>
-        </Pressable>
+      <View style={styles.container}>
+        {/* Header */}
+        <View style={styles.header}>
+          <Pressable onPress={handleBackToEmails} hitSlop={12}>
+            <Ionicons name="arrow-back" size={24} color={Theme.colors.text} />
+          </Pressable>
+          <Text style={styles.headerTitle} numberOfLines={1}>
+            {currentEmail.vendor} Items
+          </Text>
+          <View style={{ width: 24 }} />
+        </View>
+
+        {/* Items list */}
+        <ScrollView
+          style={styles.scrollArea}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+        >
+          {editableItems.map((item, index) => (
+            <View key={index} style={styles.lineItemCard}>
+              <View style={styles.lineItemHeader}>
+                <Pressable
+                  style={styles.checkbox}
+                  onPress={() => toggleItemSelected(index)}
+                  hitSlop={8}
+                >
+                  <Ionicons
+                    name={item.selected ? "checkbox" : "square-outline"}
+                    size={24}
+                    color={item.selected ? Theme.colors.primary : Theme.colors.textLight}
+                  />
+                </Pressable>
+                <View style={styles.lineItemInfo}>
+                  {(item.localImageUri || item.imageUrl) ? (
+                    <Image
+                      source={{ uri: item.localImageUri ?? item.imageUrl }}
+                      style={styles.lineItemImage}
+                      resizeMode="cover"
+                    />
+                  ) : (
+                    <View style={styles.lineItemImagePlaceholder}>
+                      <Ionicons name="image-outline" size={24} color={Theme.colors.textLight} />
+                    </View>
+                  )}
+                  <View style={styles.lineItemText}>
+                    <Text style={styles.lineItemName} numberOfLines={2}>{item.name}</Text>
+                    {item.price ? (
+                      <Text style={styles.lineItemPrice}>{item.price}</Text>
+                    ) : null}
+                    <Text style={styles.lineItemCategory}>
+                      {CATEGORY_LABELS[item.category]} | {item.brand}
+                    </Text>
+                    {item.url ? (
+                      <Text
+                        style={styles.lineItemUrl}
+                        numberOfLines={1}
+                        onPress={() => Linking.openURL(item.url)}
+                      >
+                        {item.url}
+                      </Text>
+                    ) : null}
+                  </View>
+                </View>
+              </View>
+
+              <View style={styles.lineItemActions}>
+                {item.url ? (
+                  <Pressable
+                    style={styles.fetchBtn}
+                    onPress={() => handleFetchDetails(index)}
+                    disabled={item.fetchingDetails}
+                  >
+                    {item.fetchingDetails ? (
+                      <ActivityIndicator size="small" color={Theme.colors.primary} />
+                    ) : (
+                      <>
+                        <Ionicons name="download-outline" size={16} color={Theme.colors.primary} />
+                        <Text style={styles.fetchBtnText}>Fetch Details</Text>
+                      </>
+                    )}
+                  </Pressable>
+                ) : null}
+                <Pressable
+                  style={styles.editBtn}
+                  onPress={() => openEditModal(index)}
+                >
+                  <Ionicons name="create-outline" size={16} color={Theme.colors.textSecondary} />
+                  <Text style={styles.editBtnText}>Edit</Text>
+                </Pressable>
+              </View>
+            </View>
+          ))}
+        </ScrollView>
+
+        {/* Bottom actions */}
+        <View style={styles.bottomBar}>
+          <Pressable style={styles.addSelectedBtn} onPress={handleAddSelectedToWardrobe}>
+            <Ionicons name="add" size={20} color="#FFFFFF" />
+            <Text style={styles.addSelectedBtnText}>
+              Add Selected to Wardrobe ({editableItems.filter((i) => i.selected).length})
+            </Text>
+          </Pressable>
+          <Pressable style={styles.backToEmailsBtn} onPress={handleBackToEmails}>
+            <Text style={styles.backToEmailsBtnText}>Back to Emails</Text>
+          </Pressable>
+        </View>
+
+        {/* Edit Modal */}
+        <Modal
+          visible={editModalVisible}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setEditModalVisible(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Edit Item</Text>
+                <Pressable onPress={() => setEditModalVisible(false)} hitSlop={12}>
+                  <Ionicons name="close" size={24} color={Theme.colors.text} />
+                </Pressable>
+              </View>
+
+              {editingItem && (
+                <ScrollView style={styles.modalScroll} keyboardShouldPersistTaps="handled">
+                  <Text style={styles.modalLabel}>Name</Text>
+                  <TextInput
+                    style={styles.modalInput}
+                    value={editingItem.name}
+                    onChangeText={(v) => updateEditableItem(editingIndex, { name: v })}
+                    placeholder="Item name"
+                    placeholderTextColor={Theme.colors.textLight}
+                  />
+
+                  <Text style={styles.modalLabel}>Brand</Text>
+                  <TextInput
+                    style={styles.modalInput}
+                    value={editingItem.brand}
+                    onChangeText={(v) => updateEditableItem(editingIndex, { brand: v })}
+                    placeholder="Brand"
+                    placeholderTextColor={Theme.colors.textLight}
+                  />
+
+                  <Text style={styles.modalLabel}>Category</Text>
+                  <View style={styles.categoryPicker}>
+                    {categoryKeys.map((cat) => (
+                      <Pressable
+                        key={cat}
+                        style={[
+                          styles.categoryChip,
+                          editingItem.category === cat && styles.categoryChipActive,
+                        ]}
+                        onPress={() => updateEditableItem(editingIndex, { category: cat })}
+                      >
+                        <Text
+                          style={[
+                            styles.categoryChipText,
+                            editingItem.category === cat && styles.categoryChipTextActive,
+                          ]}
+                        >
+                          {CATEGORY_LABELS[cat]}
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </View>
+
+                  <Text style={styles.modalLabel}>Cost</Text>
+                  <TextInput
+                    style={styles.modalInput}
+                    value={editingItem.cost}
+                    onChangeText={(v) => updateEditableItem(editingIndex, { cost: v })}
+                    placeholder="0.00"
+                    placeholderTextColor={Theme.colors.textLight}
+                    keyboardType="decimal-pad"
+                  />
+
+                  <Text style={styles.modalLabel}>Product URL</Text>
+                  <TextInput
+                    style={styles.modalInput}
+                    value={editingItem.url}
+                    onChangeText={(v) => updateEditableItem(editingIndex, { url: v })}
+                    placeholder="https://..."
+                    placeholderTextColor={Theme.colors.textLight}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    keyboardType="url"
+                  />
+                </ScrollView>
+              )}
+
+              <Pressable
+                style={styles.modalDoneBtn}
+                onPress={() => setEditModalVisible(false)}
+              >
+                <Text style={styles.modalDoneBtnText}>Done</Text>
+              </Pressable>
+            </View>
+          </View>
+        </Modal>
       </View>
     );
   }
 
-  const isAdded = currentItem ? addedIds.has(currentItem.id) : false;
-  const isSkipped = currentItem ? skippedIds.has(currentItem.id) : false;
+  /* ---------- Render: reviewing_emails ---------- */
 
-  return (
-    <View style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <Pressable onPress={handleDone} hitSlop={12}>
-          <Ionicons name="close" size={24} color={Theme.colors.text} />
-        </Pressable>
-        <Text style={styles.headerTitle}>Gmail Purchases</Text>
-        <Text style={styles.counter}>
-          {currentIndex + 1} / {purchases.length}
-        </Text>
-      </View>
+  if (scanState === "reviewing_emails") {
+    if (purchases.length === 0) {
+      return (
+        <View style={styles.center}>
+          <Ionicons name="search-outline" size={64} color={Theme.colors.textLight} />
+          <Text style={styles.title}>No Purchases Found</Text>
+          <Text style={styles.subtitle}>
+            We couldn't find any fashion-related purchase emails in the last 2 years.
+          </Text>
+          <Pressable style={styles.primaryBtn} onPress={() => router.back()}>
+            <Text style={styles.primaryBtnText}>Go Back</Text>
+          </Pressable>
+        </View>
+      );
+    }
 
-      {/* Summary bar */}
-      <View style={styles.summaryBar}>
-        <Text style={styles.summaryText}>
-          Added: {addedIds.size} | Skipped: {skippedIds.size} | Remaining: {remaining}
-        </Text>
-      </View>
+    if (!currentEmail) {
+      // Reached end of emails
+      return (
+        <View style={styles.center}>
+          <Ionicons name="checkmark-circle-outline" size={64} color={Theme.colors.success} />
+          <Text style={styles.title}>All Done!</Text>
+          <Text style={styles.subtitle}>
+            Added {totalItemsAdded} items from {importedEmailCount} emails.{"\n"}
+            Skipped {skippedEmailCount} emails.
+          </Text>
+          <Pressable
+            style={styles.primaryBtn}
+            onPress={() => { clearToken(); router.back(); }}
+          >
+            <Text style={styles.primaryBtnText}>Go Back</Text>
+          </Pressable>
+        </View>
+      );
+    }
 
-      {/* Current item card */}
-      {currentItem && (
+    return (
+      <View style={styles.container}>
+        {/* Header */}
+        <View style={styles.header}>
+          <Pressable onPress={handleStopScanning} hitSlop={12}>
+            <Ionicons name="close" size={24} color={Theme.colors.text} />
+          </Pressable>
+          <Text style={styles.headerTitle}>Gmail Purchases</Text>
+          <Text style={styles.counter}>
+            Email {currentEmailIndex + 1} of {purchases.length}
+          </Text>
+        </View>
+
+        {/* Summary bar */}
+        <View style={styles.summaryBar}>
+          <Text style={styles.summaryText}>
+            Imported: {importedEmailCount} | Skipped: {skippedEmailCount} | Remaining: {remaining}
+          </Text>
+        </View>
+
+        {/* Current email card */}
         <ScrollView
           style={styles.scrollArea}
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.card}>
+            {/* Previously imported badge */}
+            {currentEmail.previouslyImported && (
+              <View style={styles.importedBadge}>
+                <Ionicons name="alert-circle" size={16} color={Theme.colors.warning} />
+                <Text style={styles.importedBadgeText}>Already Imported</Text>
+              </View>
+            )}
+
             {/* Thumbnail */}
-            {currentItem.localImageUri || currentItem.thumbnailUrl ? (
+            {currentEmail.localImageUri || currentEmail.thumbnailUrl ? (
               <Image
-                source={{ uri: currentItem.localImageUri ?? currentItem.thumbnailUrl }}
+                source={{ uri: currentEmail.localImageUri ?? currentEmail.thumbnailUrl }}
                 style={styles.thumbnail}
                 resizeMode="contain"
               />
-            ) : (
-              <View style={styles.noImage}>
-                <Ionicons name="image-outline" size={48} color={Theme.colors.textLight} />
-                <Text style={styles.noImageText}>No image available</Text>
-              </View>
-            )}
+            ) : null}
 
-            {/* Item details */}
+            {/* Email details */}
+            <View style={styles.detailSection}>
+              <Text style={styles.detailLabel}>From</Text>
+              <Text style={styles.detailValue} numberOfLines={2}>{currentEmail.from}</Text>
+            </View>
+
             <View style={styles.detailSection}>
               <Text style={styles.vendorLabel}>Vendor</Text>
-              <Text style={styles.vendorValue}>{currentItem.vendor}</Text>
+              <Text style={styles.vendorValue}>{currentEmail.vendor}</Text>
             </View>
 
             <View style={styles.detailSection}>
-              <Text style={styles.detailLabel}>Item</Text>
-              <Text style={styles.detailValue}>{currentItem.itemName}</Text>
+              <Text style={styles.detailLabel}>Subject</Text>
+              <Text style={styles.detailValue} numberOfLines={3}>{currentEmail.subject}</Text>
             </View>
-
-            {currentItem.price ? (
-              <View style={styles.detailSection}>
-                <Text style={styles.detailLabel}>Price</Text>
-                <Text style={styles.priceValue}>{currentItem.price}</Text>
-              </View>
-            ) : null}
 
             <View style={styles.detailSection}>
               <Text style={styles.detailLabel}>Date</Text>
-              <Text style={styles.detailValue}>{currentItem.date}</Text>
+              <Text style={styles.detailValue}>{currentEmail.date}</Text>
             </View>
 
-            {currentItem.snippet ? (
+            {currentEmail.snippet ? (
               <View style={styles.detailSection}>
-                <Text style={styles.detailLabel}>Email snippet</Text>
-                <Text style={styles.snippetText}>{currentItem.snippet}</Text>
+                <Text style={styles.detailLabel}>Summary</Text>
+                <Text style={styles.snippetText}>{currentEmail.snippet}</Text>
               </View>
             ) : null}
 
-            {/* Status badge */}
-            {isAdded && (
-              <View style={[styles.statusBadge, styles.addedBadge]}>
-                <Ionicons name="checkmark-circle" size={18} color={Theme.colors.success} />
-                <Text style={[styles.statusBadgeText, { color: Theme.colors.success }]}>
-                  Added to wardrobe
-                </Text>
+            {currentEmail.price ? (
+              <View style={styles.detailSection}>
+                <Text style={styles.detailLabel}>Price</Text>
+                <Text style={styles.priceValue}>{currentEmail.price}</Text>
               </View>
-            )}
-            {isSkipped && (
-              <View style={[styles.statusBadge, styles.skippedBadge]}>
-                <Ionicons name="close-circle" size={18} color={Theme.colors.textSecondary} />
-                <Text style={[styles.statusBadgeText, { color: Theme.colors.textSecondary }]}>
-                  Skipped
+            ) : null}
+
+            {currentEmail.lineItems.length > 0 && (
+              <View style={styles.detailSection}>
+                <Text style={styles.detailLabel}>
+                  Detected Items ({currentEmail.lineItems.length})
                 </Text>
+                {currentEmail.lineItems.slice(0, 5).map((li, i) => (
+                  <Text key={i} style={styles.lineItemPreview}>
+                    {li.name}{li.price ? ` - ${li.price}` : ""}
+                  </Text>
+                ))}
+                {currentEmail.lineItems.length > 5 && (
+                  <Text style={styles.lineItemPreview}>
+                    ...and {currentEmail.lineItems.length - 5} more
+                  </Text>
+                )}
               </View>
             )}
           </View>
         </ScrollView>
-      )}
 
-      {/* Navigation + action buttons */}
-      <View style={styles.bottomBar}>
-        <View style={styles.navRow}>
-          <Pressable
-            style={[styles.navBtn, currentIndex === 0 && styles.navBtnDisabled]}
-            onPress={goPrev}
-            disabled={currentIndex === 0}
-          >
-            <Ionicons
-              name="chevron-back"
-              size={20}
-              color={currentIndex === 0 ? Theme.colors.textLight : Theme.colors.text}
-            />
-            <Text
-              style={[
-                styles.navBtnText,
-                currentIndex === 0 && styles.navBtnTextDisabled,
-              ]}
+        {/* Navigation + action buttons */}
+        <View style={styles.bottomBar}>
+          {/* Navigation arrows */}
+          <View style={styles.navRow}>
+            <Pressable
+              style={[styles.navBtn, currentEmailIndex === 0 && styles.navBtnDisabled]}
+              onPress={goToPrevEmail}
+              disabled={currentEmailIndex === 0}
             >
-              Previous
-            </Text>
-          </Pressable>
-
-          <Pressable
-            style={[styles.navBtn, currentIndex >= purchases.length - 1 && styles.navBtnDisabled]}
-            onPress={goNext}
-            disabled={currentIndex >= purchases.length - 1}
-          >
-            <Text
-              style={[
-                styles.navBtnText,
-                currentIndex >= purchases.length - 1 && styles.navBtnTextDisabled,
-              ]}
-            >
-              Next
-            </Text>
-            <Ionicons
-              name="chevron-forward"
-              size={20}
-              color={
-                currentIndex >= purchases.length - 1
-                  ? Theme.colors.textLight
-                  : Theme.colors.text
-              }
-            />
-          </Pressable>
-        </View>
-
-        {!isAdded && !isSkipped && currentItem && (
-          <View style={styles.actionRow}>
-            <Pressable style={styles.skipBtn} onPress={handleSkip}>
-              <Ionicons name="close" size={20} color={Theme.colors.textSecondary} />
-              <Text style={styles.skipBtnText}>Skip</Text>
+              <Ionicons
+                name="chevron-back"
+                size={20}
+                color={currentEmailIndex === 0 ? Theme.colors.textLight : Theme.colors.text}
+              />
+              <Text
+                style={[
+                  styles.navBtnText,
+                  currentEmailIndex === 0 && styles.navBtnTextDisabled,
+                ]}
+              >
+                Previous
+              </Text>
             </Pressable>
-            <Pressable style={styles.addBtn} onPress={handleAdd}>
-              <Ionicons name="add" size={20} color="#FFFFFF" />
-              <Text style={styles.addBtnText}>Add to Wardrobe</Text>
+
+            <Pressable
+              style={[
+                styles.navBtn,
+                currentEmailIndex >= purchases.length - 1 && styles.navBtnDisabled,
+              ]}
+              onPress={() => {
+                if (currentEmailIndex < purchases.length - 1) {
+                  setCurrentEmailIndex((i) => i + 1);
+                }
+              }}
+              disabled={currentEmailIndex >= purchases.length - 1}
+            >
+              <Text
+                style={[
+                  styles.navBtnText,
+                  currentEmailIndex >= purchases.length - 1 && styles.navBtnTextDisabled,
+                ]}
+              >
+                Next
+              </Text>
+              <Ionicons
+                name="chevron-forward"
+                size={20}
+                color={
+                  currentEmailIndex >= purchases.length - 1
+                    ? Theme.colors.textLight
+                    : Theme.colors.text
+                }
+              />
             </Pressable>
           </View>
-        )}
 
-        {remaining === 0 && (
-          <Pressable style={styles.doneBtn} onPress={handleDone}>
-            <Text style={styles.doneBtnText}>
-              Done — Added {addedIds.size} items
-            </Text>
+          {/* Action buttons */}
+          <View style={styles.actionRow}>
+            <Pressable style={styles.skipBtn} onPress={handleSkipEmail}>
+              <Ionicons name="close" size={20} color={Theme.colors.textSecondary} />
+              <Text style={styles.skipBtnText}>No - Skip</Text>
+            </Pressable>
+            <Pressable style={styles.showItemsBtn} onPress={handleShowItems}>
+              <Ionicons name="checkmark" size={20} color="#FFFFFF" />
+              <Text style={styles.showItemsBtnText}>Yes - Show Items</Text>
+            </Pressable>
+          </View>
+
+          <Pressable style={styles.stopBtn} onPress={handleStopScanning}>
+            <Text style={styles.stopBtnText}>Stop Scanning</Text>
           </Pressable>
-        )}
+        </View>
       </View>
+    );
+  }
+
+  // Fallback
+  return (
+    <View style={styles.center}>
+      <ActivityIndicator size="large" color={Theme.colors.primary} />
     </View>
   );
 }
@@ -643,6 +1018,9 @@ const styles = StyleSheet.create({
     fontSize: Theme.fontSize.lg,
     fontWeight: "700",
     color: Theme.colors.text,
+    flex: 1,
+    textAlign: "center",
+    marginHorizontal: Theme.spacing.sm,
   },
   counter: {
     fontSize: Theme.fontSize.sm,
@@ -676,22 +1054,23 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 2,
   },
+  importedBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: Theme.colors.warning + "20",
+    paddingHorizontal: Theme.spacing.md,
+    paddingVertical: Theme.spacing.sm,
+  },
+  importedBadgeText: {
+    fontSize: Theme.fontSize.sm,
+    fontWeight: "600",
+    color: Theme.colors.warning,
+  },
   thumbnail: {
     width: "100%",
     height: 200,
     backgroundColor: Theme.colors.surfaceAlt,
-  },
-  noImage: {
-    width: "100%",
-    height: 120,
-    backgroundColor: Theme.colors.surfaceAlt,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  noImageText: {
-    fontSize: Theme.fontSize.sm,
-    color: Theme.colors.textLight,
-    marginTop: 4,
   },
   detailSection: {
     paddingHorizontal: Theme.spacing.md,
@@ -734,25 +1113,13 @@ const styles = StyleSheet.create({
     fontSize: Theme.fontSize.sm,
     color: Theme.colors.textSecondary,
     marginTop: 4,
-    fontStyle: "italic",
     lineHeight: 18,
   },
-  statusBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingHorizontal: Theme.spacing.md,
-    paddingVertical: Theme.spacing.sm,
-  },
-  addedBadge: {
-    backgroundColor: Theme.colors.success + "15",
-  },
-  skippedBadge: {
-    backgroundColor: Theme.colors.surfaceAlt,
-  },
-  statusBadgeText: {
+  lineItemPreview: {
     fontSize: Theme.fontSize.sm,
-    fontWeight: "600",
+    color: Theme.colors.text,
+    marginTop: 4,
+    paddingLeft: Theme.spacing.sm,
   },
   bottomBar: {
     paddingHorizontal: Theme.spacing.md,
@@ -788,6 +1155,7 @@ const styles = StyleSheet.create({
   actionRow: {
     flexDirection: "row",
     gap: Theme.spacing.sm,
+    marginBottom: Theme.spacing.sm,
   },
   skipBtn: {
     flex: 1,
@@ -806,8 +1174,135 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: Theme.colors.textSecondary,
   },
-  addBtn: {
+  showItemsBtn: {
     flex: 2,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 14,
+    borderRadius: Theme.borderRadius.md,
+    backgroundColor: Theme.colors.success,
+  },
+  showItemsBtnText: {
+    fontSize: Theme.fontSize.md,
+    fontWeight: "700",
+    color: "#FFFFFF",
+  },
+  stopBtn: {
+    alignItems: "center",
+    paddingVertical: 10,
+  },
+  stopBtnText: {
+    fontSize: Theme.fontSize.sm,
+    fontWeight: "600",
+    color: Theme.colors.textSecondary,
+  },
+
+  /* ---------- Line item card styles ---------- */
+
+  lineItemCard: {
+    backgroundColor: Theme.colors.surface,
+    borderRadius: Theme.borderRadius.md,
+    marginBottom: Theme.spacing.sm,
+    padding: Theme.spacing.md,
+    shadowColor: Theme.colors.shadow,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 1,
+    shadowRadius: 3,
+    elevation: 1,
+  },
+  lineItemHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: Theme.spacing.sm,
+  },
+  checkbox: {
+    paddingTop: 2,
+  },
+  lineItemInfo: {
+    flex: 1,
+    flexDirection: "row",
+    gap: Theme.spacing.sm,
+  },
+  lineItemImage: {
+    width: 60,
+    height: 60,
+    borderRadius: Theme.borderRadius.sm,
+    backgroundColor: Theme.colors.surfaceAlt,
+  },
+  lineItemImagePlaceholder: {
+    width: 60,
+    height: 60,
+    borderRadius: Theme.borderRadius.sm,
+    backgroundColor: Theme.colors.surfaceAlt,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  lineItemText: {
+    flex: 1,
+  },
+  lineItemName: {
+    fontSize: Theme.fontSize.md,
+    fontWeight: "600",
+    color: Theme.colors.text,
+  },
+  lineItemPrice: {
+    fontSize: Theme.fontSize.sm,
+    fontWeight: "700",
+    color: Theme.colors.success,
+    marginTop: 2,
+  },
+  lineItemCategory: {
+    fontSize: Theme.fontSize.xs,
+    color: Theme.colors.textSecondary,
+    marginTop: 2,
+  },
+  lineItemUrl: {
+    fontSize: Theme.fontSize.xs,
+    color: Theme.colors.primary,
+    marginTop: 2,
+  },
+  lineItemActions: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    gap: Theme.spacing.sm,
+    marginTop: Theme.spacing.sm,
+    paddingTop: Theme.spacing.sm,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: Theme.colors.border,
+  },
+  fetchBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: Theme.borderRadius.sm,
+    borderWidth: 1,
+    borderColor: Theme.colors.primary,
+  },
+  fetchBtnText: {
+    fontSize: Theme.fontSize.xs,
+    fontWeight: "600",
+    color: Theme.colors.primary,
+  },
+  editBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: Theme.borderRadius.sm,
+    borderWidth: 1,
+    borderColor: Theme.colors.border,
+  },
+  editBtnText: {
+    fontSize: Theme.fontSize.xs,
+    fontWeight: "600",
+    color: Theme.colors.textSecondary,
+  },
+  addSelectedBtn: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
@@ -816,30 +1311,112 @@ const styles = StyleSheet.create({
     borderRadius: Theme.borderRadius.md,
     backgroundColor: Theme.colors.primary,
   },
-  addBtnText: {
+  addSelectedBtnText: {
     fontSize: Theme.fontSize.md,
     fontWeight: "700",
     color: "#FFFFFF",
   },
-  doneBtn: {
+  backToEmailsBtn: {
+    alignItems: "center",
+    paddingVertical: 10,
+    marginTop: Theme.spacing.xs,
+  },
+  backToEmailsBtnText: {
+    fontSize: Theme.fontSize.sm,
+    fontWeight: "600",
+    color: Theme.colors.textSecondary,
+  },
+
+  /* ---------- Modal styles ---------- */
+
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "flex-end",
+  },
+  modalContent: {
+    backgroundColor: Theme.colors.background,
+    borderTopLeftRadius: Theme.borderRadius.lg,
+    borderTopRightRadius: Theme.borderRadius.lg,
+    maxHeight: "85%",
+    paddingBottom: Theme.spacing.xl,
+  },
+  modalHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: Theme.spacing.md,
+    paddingVertical: Theme.spacing.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Theme.colors.border,
+  },
+  modalTitle: {
+    fontSize: Theme.fontSize.lg,
+    fontWeight: "700",
+    color: Theme.colors.text,
+  },
+  modalScroll: {
+    paddingHorizontal: Theme.spacing.md,
+    paddingTop: Theme.spacing.md,
+  },
+  modalLabel: {
+    fontSize: Theme.fontSize.sm,
+    fontWeight: "600",
+    color: Theme.colors.text,
+    marginTop: Theme.spacing.md,
+    marginBottom: Theme.spacing.xs,
+  },
+  modalInput: {
+    backgroundColor: Theme.colors.surface,
+    borderRadius: Theme.borderRadius.sm,
+    paddingHorizontal: Theme.spacing.md,
+    paddingVertical: 12,
+    fontSize: Theme.fontSize.md,
+    color: Theme.colors.text,
+    borderWidth: 1,
+    borderColor: Theme.colors.border,
+  },
+  categoryPicker: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: Theme.spacing.xs,
+  },
+  categoryChip: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: Theme.borderRadius.full,
+    borderWidth: 1,
+    borderColor: Theme.colors.border,
+    backgroundColor: Theme.colors.surface,
+  },
+  categoryChipActive: {
+    borderColor: Theme.colors.primary,
+    backgroundColor: Theme.colors.primary + "15",
+  },
+  categoryChipText: {
+    fontSize: Theme.fontSize.xs,
+    fontWeight: "600",
+    color: Theme.colors.textSecondary,
+  },
+  categoryChipTextActive: {
+    color: Theme.colors.primary,
+  },
+  modalDoneBtn: {
+    marginHorizontal: Theme.spacing.md,
+    marginTop: Theme.spacing.lg,
     paddingVertical: 14,
     borderRadius: Theme.borderRadius.md,
-    backgroundColor: Theme.colors.success,
+    backgroundColor: Theme.colors.primary,
     alignItems: "center",
   },
-  doneBtnText: {
+  modalDoneBtnText: {
     fontSize: Theme.fontSize.md,
     fontWeight: "700",
     color: "#FFFFFF",
   },
-  codeText: {
-    fontFamily: "monospace",
-    fontSize: Theme.fontSize.xs,
-    color: Theme.colors.primary,
-    backgroundColor: Theme.colors.surfaceAlt,
-    paddingHorizontal: 4,
-    borderRadius: 3,
-  },
+
+  /* ---------- Existing utility styles ---------- */
+
   clientIdInputWrap: {
     width: "100%",
     marginTop: Theme.spacing.lg,

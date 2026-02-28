@@ -8,6 +8,7 @@ import {
   Pressable,
   Alert,
   Modal,
+  Linking,
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -166,6 +167,18 @@ export default function ItemDetailScreen() {
             <Text style={styles.infoValue}>{item.brand}</Text>
           </View>
         )}
+
+        {/* Product URL */}
+        {item.productUrl ? (
+          <View style={styles.infoRow}>
+            <Text style={styles.infoLabel}>URL</Text>
+            <Pressable onPress={() => Linking.openURL(item.productUrl!)}>
+              <Text style={[styles.infoValue, { color: Theme.colors.primary, textDecorationLine: "underline" }]} numberOfLines={1}>
+                {item.productUrl.replace(/^https?:\/\/(www\.)?/, "").slice(0, 40)}...
+              </Text>
+            </Pressable>
+          </View>
+        ) : null}
 
         {/* Cost */}
         {item.cost != null && (

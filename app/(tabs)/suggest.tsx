@@ -11,7 +11,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { useClothingItems } from "@/hooks/useClothingItems";
 import { useOutfits } from "@/hooks/useOutfits";
-import { suggestOutfits, type SuggestionResult } from "@/services/outfitEngine";
+import { suggestOutfits, generateOutfitName, type SuggestionResult } from "@/services/outfitEngine";
 import {
   getCurrentWeather,
   weatherToSeason,
@@ -88,8 +88,32 @@ export default function SuggestScreen() {
     setGenerated(true);
   }, [items, season]);
 
-  const handleSave = async (suggestion: SuggestionResult) => {
-    const name = `Outfit #${Date.now().toString(36).slice(-4).toUpperCase()}`;
+  // Track custom names per suggestion index
+  const [customNames, setCustomNames] = useState<Record<number, string>>({});
+
+  const getSuggestedName = (suggestion: SuggestionResult, idx: number): string => {
+    if (customNames[idx] !== undefined) return customNames[idx];
+    return generateOutfitName(suggestion.items);
+  };
+
+  const handleResetName = (idx: number) => {
+    setCustomNames((prev) => {
+      const next = { ...prev };
+      next[idx] = `Outfit #${Date.now().toString(36).slice(-4).toUpperCase()}`;
+      return next;
+    });
+  };
+
+  const handleRegenerateName = (suggestion: SuggestionResult, idx: number) => {
+    setCustomNames((prev) => {
+      const next = { ...prev };
+      next[idx] = generateOutfitName(suggestion.items);
+      return next;
+    });
+  };
+
+  const handleSave = async (suggestion: SuggestionResult, idx: number) => {
+    const name = getSuggestedName(suggestion, idx);
 
     await saveOutfit({
       id: generateId(),
@@ -103,7 +127,7 @@ export default function SuggestScreen() {
       wornDates: [],
     });
 
-    Alert.alert("Saved!", `${name} has been added to your outfits.`);
+    Alert.alert("Saved!", `"${name}" has been added to your outfits.`);
   };
 
   if (items.length < 2) {
@@ -207,11 +231,21 @@ export default function SuggestScreen() {
       {suggestions.map((suggestion, idx) => (
         <View key={idx} style={styles.suggestionCard}>
           <View style={styles.suggestionHeader}>
-            <Text style={styles.suggestionTitle}>Look #{idx + 1}</Text>
-            <Text style={styles.scoreText}>
-              Score: {Math.round(suggestion.score)}
+            <Text style={styles.suggestionTitle} numberOfLines={1}>
+              {getSuggestedName(suggestion, idx)}
             </Text>
+            <View style={styles.nameActions}>
+              <Pressable hitSlop={8} onPress={() => handleRegenerateName(suggestion, idx)}>
+                <Ionicons name="refresh-outline" size={16} color={Theme.colors.primary} />
+              </Pressable>
+              <Pressable hitSlop={8} onPress={() => handleResetName(idx)}>
+                <Ionicons name="text-outline" size={14} color={Theme.colors.textLight} />
+              </Pressable>
+            </View>
           </View>
+          <Text style={styles.scoreText}>
+            Score: {Math.round(suggestion.score)}
+          </Text>
 
           <View style={styles.moodBoardWrap}>
             <MoodBoard items={suggestion.items} size={260} />
@@ -254,7 +288,7 @@ export default function SuggestScreen() {
 
           <Pressable
             style={styles.saveOutfitBtn}
-            onPress={() => handleSave(suggestion)}
+            onPress={() => handleSave(suggestion, idx)}
           >
             <Ionicons
               name="bookmark-outline"
@@ -408,17 +442,25 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 10,
+    marginBottom: 4,
   },
   suggestionTitle: {
     fontSize: Theme.fontSize.lg,
     fontWeight: "700",
     color: Theme.colors.text,
+    flex: 1,
+    marginRight: 8,
+  },
+  nameActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
   },
   scoreText: {
     fontSize: Theme.fontSize.sm,
     fontWeight: "600",
     color: Theme.colors.primary,
+    marginBottom: 8,
   },
   moodBoardWrap: {
     alignItems: "center",

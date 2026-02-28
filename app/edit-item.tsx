@@ -10,6 +10,7 @@ import {
   Alert,
   Modal,
   ActivityIndicator,
+  Linking,
 } from "react-native";
 import { fetchProductFromUrl } from "@/services/productSearch";
 import { useRouter, useLocalSearchParams } from "expo-router";
@@ -403,6 +404,14 @@ export default function EditItemScreen() {
             autoCapitalize="none"
             keyboardType="url"
           />
+          {productUrl.trim().startsWith("http") && (
+            <Pressable
+              style={styles.refreshUrlBtn}
+              onPress={() => Linking.openURL(productUrl.trim())}
+            >
+              <Ionicons name="open-outline" size={18} color={Theme.colors.textSecondary} />
+            </Pressable>
+          )}
           <Pressable
             style={[styles.refreshUrlBtn, refreshingUrl && { opacity: 0.6 }]}
             onPress={handleRefreshFromUrl}
