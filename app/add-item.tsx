@@ -10,6 +10,7 @@ import {
   Alert,
   ActivityIndicator,
   Modal,
+  Linking,
 } from "react-native";
 import { useRouter } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
@@ -336,6 +337,14 @@ export default function AddItemScreen() {
             autoCapitalize="none"
             keyboardType="url"
           />
+          {productUrl.trim().startsWith("http") && (
+            <Pressable
+              style={styles.urlOpenBtn}
+              onPress={() => Linking.openURL(productUrl.trim())}
+            >
+              <Ionicons name="open-outline" size={18} color={Theme.colors.textSecondary} />
+            </Pressable>
+          )}
           <Pressable
             style={[styles.urlFetchBtn, fetchingUrl && styles.autoFillBtnDisabled]}
             onPress={handleFetchUrl}
@@ -880,6 +889,12 @@ const styles = StyleSheet.create({
   urlRow: {
     flexDirection: "row",
     gap: 8,
+    alignItems: "center",
+  },
+  urlOpenBtn: {
+    width: 40,
+    height: 48,
+    justifyContent: "center",
     alignItems: "center",
   },
   urlFetchBtn: {

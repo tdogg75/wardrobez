@@ -128,7 +128,8 @@ export function ClothingCard({ item, onPress, onToggleFavorite, onQuickLogWear, 
         {/* Quick-log wear button (bottom-right, non-compact only) */}
         {!compact && onQuickLogWear && (
           <Pressable style={styles.quickLogBtn} onPress={onQuickLogWear}>
-            <Ionicons name="checkmark" size={16} color="#FFFFFF" />
+            <Ionicons name="shirt-outline" size={13} color="#FFFFFF" />
+            <Text style={styles.quickLogPlus}>+</Text>
           </Pressable>
         )}
       </View>
@@ -237,17 +238,25 @@ const styles = StyleSheet.create({
     position: "absolute",
     bottom: 8,
     right: 8,
-    width: 28,
+    width: 32,
     height: 28,
     borderRadius: 14,
-    backgroundColor: Theme.colors.success,
+    backgroundColor: Theme.colors.primary,
+    flexDirection: "row",
     justifyContent: "center",
     alignItems: "center",
+    gap: 1,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.15,
     shadowRadius: 2,
     elevation: 2,
+  },
+  quickLogPlus: {
+    color: "#FFFFFF",
+    fontSize: 11,
+    fontWeight: "800",
+    marginTop: -2,
   },
   info: {
     padding: Theme.spacing.sm,

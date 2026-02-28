@@ -402,12 +402,18 @@ export async function removeWornDate(
   };
   await writeJsonFile(FILES.OUTFITS, outfits);
 
+  // Also remove the corresponding date from each item's wearDates
+  const removedDate = outfit.wornDates[dateIndex];
   const items = await getClothingItems();
   let itemsChanged = false;
   const updatedItems = items.map((item) => {
     if (outfit.itemIds.includes(item.id) && item.wearCount > 0) {
       itemsChanged = true;
-      return { ...item, wearCount: item.wearCount - 1 };
+      const itemDates = [...(item.wearDates ?? [])];
+      // Remove the first matching date entry
+      const dateIdx = itemDates.indexOf(removedDate);
+      if (dateIdx >= 0) itemDates.splice(dateIdx, 1);
+      return { ...item, wearCount: Math.max(0, item.wearCount - 1), wearDates: itemDates };
     }
     return item;
   });
@@ -455,6 +461,38 @@ export async function saveWishlistItem(item: WishlistItem): Promise<void> {
 export async function deleteWishlistItem(id: string): Promise<void> {
   const items = await getWishlistItems();
   await writeJsonFile(FILES.WISHLIST, items.filter((i) => i.id !== id));
+}
+
+export async function moveWishlistToWardrobe(wishlistId: string): Promise<ClothingItem | null> {
+  const wishlistItems = await getWishlistItems();
+  const item = wishlistItems.find(i => i.id === wishlistId);
+  if (!item) return null;
+
+  const clothingItem: ClothingItem = {
+    id: Date.now().toString(36) + Math.random().toString(36).slice(2, 9),
+    name: item.name,
+    category: item.category || 'tops',
+    subCategory: item.subCategory,
+    color: item.color || '#808080',
+    colorName: item.colorName || 'Grey',
+    fabricType: item.fabricType || 'other',
+    imageUris: item.imageUri ? [item.imageUri] : [],
+    brand: item.brand,
+    productUrl: item.url,
+    cost: item.estimatedPrice,
+    favorite: false,
+    wearCount: 0,
+    archived: false,
+    createdAt: Date.now(),
+    notes: item.notes,
+  };
+
+  await saveClothingItem(clothingItem);
+
+  // Mark as purchased and remove from wishlist
+  await deleteWishlistItem(wishlistId);
+
+  return clothingItem;
 }
 
 // --- Export / Import ---

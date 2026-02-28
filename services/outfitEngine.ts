@@ -726,3 +726,96 @@ export function validateOutfit(items: ClothingItem[]): string[] {
 
   return warnings;
 }
+
+/* ------------------------------------------------------------------ */
+/*  Creative Outfit Name Generator                                      */
+/* ------------------------------------------------------------------ */
+
+const STYLE_ADJECTIVES = [
+  "Chic", "Sleek", "Bold", "Classic", "Effortless", "Polished", "Fresh",
+  "Sharp", "Cozy", "Elegant", "Refined", "Sporty", "Casual", "Smart",
+  "Luxe", "Modern", "Breezy", "Crisp", "Dapper", "Radiant",
+];
+
+const MOOD_WORDS = [
+  "Vibe", "Look", "Ensemble", "Combo", "Style", "Mix",
+  "Moment", "Edit", "Statement", "Fit",
+];
+
+const COLOR_THEMES: Record<string, string[]> = {
+  dark: ["Midnight", "Shadow", "Noir", "Eclipse", "Obsidian"],
+  light: ["Cloud", "Pearl", "Ivory", "Frost", "Snow"],
+  warm: ["Sunset", "Ember", "Autumn", "Honey", "Spice"],
+  cool: ["Ocean", "Sky", "Arctic", "Glacier", "Breeze"],
+  earth: ["Terra", "Olive", "Sage", "Moss", "Stone"],
+  bold: ["Poppy", "Flame", "Ruby", "Electric", "Neon"],
+};
+
+function getColorTheme(items: ClothingItem[]): string {
+  const colors = items.map((i) => hexToHSL(i.color));
+  const avgL = colors.reduce((s, c) => s + c.l, 0) / colors.length;
+  const avgS = colors.reduce((s, c) => s + c.s, 0) / colors.length;
+  const avgH = colors.reduce((s, c) => s + c.h, 0) / colors.length;
+
+  if (avgL < 25) return "dark";
+  if (avgL > 80) return "light";
+  if (avgS < 15) return "earth";
+  if (avgS > 60 && (avgH < 30 || avgH > 330)) return "bold";
+  if (avgH >= 30 && avgH < 80) return "warm";
+  if (avgH >= 180 && avgH < 270) return "cool";
+  if (avgH >= 80 && avgH < 180) return "earth";
+  return "warm";
+}
+
+function getCategoryVibe(items: ClothingItem[]): string {
+  const cats = new Set(items.map((i) => i.category));
+  if (cats.has("blazers") || cats.has("jewelry")) return "Power";
+  if (cats.has("swimwear")) return "Beach";
+  if (cats.has("jackets")) return "Layered";
+  if (cats.has("dresses")) return "Statement";
+  if (items.some((i) => i.subCategory === "jeans")) return "Denim";
+  if (items.some((i) => i.subCategory === "sneakers" || i.subCategory === "running_shoes")) return "Street";
+  if (items.some((i) => i.subCategory === "heels")) return "Night Out";
+  return "";
+}
+
+function getFabricVibe(items: ClothingItem[]): string {
+  const fabrics = new Set(items.map((i) => i.fabricType));
+  if (fabrics.has("cashmere") || fabrics.has("silk")) return "Luxe";
+  if (fabrics.has("denim")) return "Casual";
+  if (fabrics.has("leather")) return "Edge";
+  if (fabrics.has("linen")) return "Breezy";
+  if (fabrics.has("wool") || fabrics.has("fleece")) return "Cozy";
+  return "";
+}
+
+/** Generate a creative outfit name based on the items in the outfit */
+export function generateOutfitName(items: ClothingItem[]): string {
+  if (items.length === 0) return "New Outfit";
+
+  const theme = getColorTheme(items);
+  const themeWords = COLOR_THEMES[theme] ?? COLOR_THEMES.warm;
+  const themeWord = themeWords[Math.floor(Math.random() * themeWords.length)];
+
+  const catVibe = getCategoryVibe(items);
+  const fabVibe = getFabricVibe(items);
+
+  const styleAdj = STYLE_ADJECTIVES[Math.floor(Math.random() * STYLE_ADJECTIVES.length)];
+  const moodWord = MOOD_WORDS[Math.floor(Math.random() * MOOD_WORDS.length)];
+
+  // Pick a pattern
+  const patterns = [
+    `The ${themeWord} ${moodWord}`,
+    `${styleAdj} ${themeWord}`,
+    `${catVibe || styleAdj} ${moodWord}`,
+    `${themeWord} ${catVibe || fabVibe || styleAdj}`,
+    `${fabVibe || styleAdj} ${themeWord} ${moodWord}`,
+  ];
+
+  // Filter patterns that have double spaces or empty parts
+  const valid = patterns
+    .map((p) => p.replace(/\s+/g, " ").trim())
+    .filter((p) => p.split(" ").every((w) => w.length > 0));
+
+  return valid[Math.floor(Math.random() * valid.length)] || `${styleAdj} ${moodWord}`;
+}

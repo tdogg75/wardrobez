@@ -8,6 +8,9 @@ import {
   Alert,
   Modal,
   TextInput,
+  Image,
+  ActivityIndicator,
+  Linking,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { useFocusEffect } from "expo-router";
@@ -20,7 +23,10 @@ import {
   getWishlistItems,
   saveWishlistItem,
   deleteWishlistItem,
+  moveWishlistToWardrobe,
 } from "@/services/storage";
+import { fetchProductFromUrl } from "@/services/productSearch";
+import * as ImagePicker from "expo-image-picker";
 import { Theme } from "@/constants/theme";
 import { CATEGORY_LABELS, ARCHIVE_REASON_LABELS } from "@/models/types";
 import type { ClothingCategory, ClothingItem, WishlistItem } from "@/models/types";
@@ -74,6 +80,9 @@ export default function ProfileScreen() {
   const [wlPrice, setWlPrice] = useState("");
   const [wlCategory, setWlCategory] = useState<ClothingCategory | "">("");
   const [wlNotes, setWlNotes] = useState("");
+  const [wlImageUri, setWlImageUri] = useState("");
+  const [wlFetchingUrl, setWlFetchingUrl] = useState(false);
+  const [wlEditingItem, setWlEditingItem] = useState<WishlistItem | null>(null);
 
   /* ---------- derived data ---------- */
   const allActive: ClothingItem[] = items;
@@ -299,28 +308,52 @@ export default function ProfileScreen() {
     }, [loadWishlist])
   );
 
-  const handleAddWishlistItem = async () => {
-    if (!wlName.trim()) {
-      Alert.alert("Name required", "Please enter a name for the wishlist item.");
-      return;
-    }
-    const newItem: WishlistItem = {
-      id: Date.now().toString(36) + Math.random().toString(36).slice(2, 9),
-      name: wlName.trim(),
-      brand: wlBrand.trim() || undefined,
-      url: wlUrl.trim() || undefined,
-      estimatedPrice: wlPrice ? parseFloat(wlPrice) : undefined,
-      category: wlCategory || undefined,
-      notes: wlNotes.trim() || undefined,
-      createdAt: Date.now(),
-    };
-    await saveWishlistItem(newItem);
+  const resetWlForm = () => {
     setWlName("");
     setWlBrand("");
     setWlUrl("");
     setWlPrice("");
     setWlCategory("");
     setWlNotes("");
+    setWlImageUri("");
+    setWlEditingItem(null);
+  };
+
+  const openWlAddModal = () => {
+    resetWlForm();
+    setWishlistModalVisible(true);
+  };
+
+  const openWlEditModal = (item: WishlistItem) => {
+    setWlEditingItem(item);
+    setWlName(item.name);
+    setWlBrand(item.brand ?? "");
+    setWlUrl(item.url ?? "");
+    setWlPrice(item.estimatedPrice != null ? String(item.estimatedPrice) : "");
+    setWlCategory(item.category ?? "");
+    setWlNotes(item.notes ?? "");
+    setWlImageUri(item.imageUri ?? "");
+    setWishlistModalVisible(true);
+  };
+
+  const handleSaveWishlistItem = async () => {
+    if (!wlName.trim()) {
+      Alert.alert("Name required", "Please enter a name for the wishlist item.");
+      return;
+    }
+    const itemData: WishlistItem = {
+      id: wlEditingItem?.id ?? (Date.now().toString(36) + Math.random().toString(36).slice(2, 9)),
+      name: wlName.trim(),
+      brand: wlBrand.trim() || undefined,
+      url: wlUrl.trim() || undefined,
+      estimatedPrice: wlPrice ? parseFloat(wlPrice) : undefined,
+      category: wlCategory || undefined,
+      notes: wlNotes.trim() || undefined,
+      imageUri: wlImageUri || undefined,
+      createdAt: wlEditingItem?.createdAt ?? Date.now(),
+    };
+    await saveWishlistItem(itemData);
+    resetWlForm();
     setWishlistModalVisible(false);
     loadWishlist();
   };
@@ -337,6 +370,66 @@ export default function ProfileScreen() {
         },
       },
     ]);
+  };
+
+  const handleWlFetchUrl = async () => {
+    const url = wlUrl.trim();
+    if (!url) {
+      Alert.alert("Enter a URL", "Please paste the product URL first.");
+      return;
+    }
+    setWlFetchingUrl(true);
+    try {
+      const result = await fetchProductFromUrl(url);
+      if (result) {
+        if (result.name) setWlName(result.name);
+        if (result.brand) setWlBrand(result.brand);
+        if (result.category) setWlCategory(result.category);
+        if (result.imageUri) setWlImageUri(result.imageUri);
+        if (result.cost != null) setWlPrice(String(result.cost));
+      } else {
+        Alert.alert("No data found", "Could not extract product info from this URL.");
+      }
+    } catch {
+      Alert.alert("Fetch failed", "Something went wrong fetching the URL. Please fill in manually.");
+    } finally {
+      setWlFetchingUrl(false);
+    }
+  };
+
+  const handleWlPickImage = async () => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.8,
+      allowsEditing: true,
+      aspect: [1, 1],
+    });
+    if (!result.canceled && result.assets?.[0]) {
+      setWlImageUri(result.assets[0].uri);
+    }
+  };
+
+  const handleMoveToWardrobe = (item: WishlistItem) => {
+    Alert.alert(
+      "Move to Wardrobe",
+      `Move "${item.name}" to your wardrobe? This will remove it from the wishlist.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Move",
+          onPress: async () => {
+            const clothingItem = await moveWishlistToWardrobe(item.id);
+            if (clothingItem) {
+              reloadItems();
+              loadWishlist();
+              Alert.alert("Moved!", `"${item.name}" has been added to your wardrobe.`);
+            } else {
+              Alert.alert("Error", "Could not move item to wardrobe.");
+            }
+          },
+        },
+      ]
+    );
   };
 
   /* --- Backup / Export --- */
@@ -861,7 +954,14 @@ export default function ProfileScreen() {
               <Text style={styles.emptyText}>Your wishlist is empty.</Text>
             ) : (
               wishlistItems.map((wItem) => (
-                <View key={wItem.id} style={styles.wishlistRow}>
+                <Pressable
+                  key={wItem.id}
+                  style={styles.wishlistRow}
+                  onPress={() => openWlEditModal(wItem)}
+                >
+                  {wItem.imageUri ? (
+                    <Image source={{ uri: wItem.imageUri }} style={styles.wlThumb} />
+                  ) : null}
                   <View style={styles.listItemLeft}>
                     <Text style={styles.listItemName} numberOfLines={1}>
                       {wItem.name}
@@ -874,7 +974,27 @@ export default function ProfileScreen() {
                         .filter(Boolean)
                         .join(" — ") || "No details"}
                     </Text>
+                    {wItem.url ? (
+                      <Pressable
+                        onPress={(e) => {
+                          e.stopPropagation?.();
+                          Linking.openURL(wItem.url!);
+                        }}
+                        hitSlop={4}
+                      >
+                        <Text style={styles.wlUrlLink} numberOfLines={1}>
+                          {wItem.url}
+                        </Text>
+                      </Pressable>
+                    ) : null}
                   </View>
+                  <Pressable
+                    style={styles.wlMoveBtn}
+                    onPress={() => handleMoveToWardrobe(wItem)}
+                    hitSlop={8}
+                  >
+                    <Ionicons name="bag-add-outline" size={16} color={Theme.colors.primary} />
+                  </Pressable>
                   <Pressable
                     style={styles.wishlistDeleteBtn}
                     onPress={() => handleDeleteWishlistItem(wItem)}
@@ -882,13 +1002,13 @@ export default function ProfileScreen() {
                   >
                     <Ionicons name="trash-outline" size={16} color={Theme.colors.error} />
                   </Pressable>
-                </View>
+                </Pressable>
               ))
             )}
 
             <Pressable
               style={styles.addWishlistBtn}
-              onPress={() => setWishlistModalVisible(true)}
+              onPress={openWlAddModal}
             >
               <Ionicons name="add-circle-outline" size={18} color={Theme.colors.primary} />
               <Text style={styles.addWishlistBtnText}>Add to Wishlist</Text>
@@ -902,18 +1022,58 @@ export default function ProfileScreen() {
         visible={wishlistModalVisible}
         animationType="slide"
         transparent
-        onRequestClose={() => setWishlistModalVisible(false)}
+        onRequestClose={() => { setWishlistModalVisible(false); resetWlForm(); }}
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Add to Wishlist</Text>
-              <Pressable hitSlop={12} onPress={() => setWishlistModalVisible(false)}>
+              <Text style={styles.modalTitle}>
+                {wlEditingItem ? "Edit Wishlist Item" : "Add to Wishlist"}
+              </Text>
+              <Pressable hitSlop={12} onPress={() => { setWishlistModalVisible(false); resetWlForm(); }}>
                 <Ionicons name="close" size={24} color={Theme.colors.text} />
               </Pressable>
             </View>
 
             <ScrollView style={styles.modalScroll} showsVerticalScrollIndicator={false}>
+              {/* Photo thumbnail */}
+              <Pressable style={styles.wlPhotoRow} onPress={handleWlPickImage}>
+                {wlImageUri ? (
+                  <Image source={{ uri: wlImageUri }} style={styles.wlPhotoPreview} />
+                ) : (
+                  <View style={styles.wlPhotoPlaceholder}>
+                    <Ionicons name="image-outline" size={28} color={Theme.colors.textLight} />
+                  </View>
+                )}
+                <Text style={styles.wlPhotoHint}>
+                  {wlImageUri ? "Tap to change photo" : "Tap to add photo"}
+                </Text>
+              </Pressable>
+
+              <Text style={styles.modalLabel}>URL</Text>
+              <View style={styles.wlUrlRow}>
+                <TextInput
+                  style={[styles.modalInput, { flex: 1 }]}
+                  value={wlUrl}
+                  onChangeText={setWlUrl}
+                  placeholder="Product URL (optional)"
+                  placeholderTextColor={Theme.colors.textLight}
+                  keyboardType="url"
+                  autoCapitalize="none"
+                />
+                <Pressable
+                  style={[styles.wlFetchBtn, wlFetchingUrl && styles.wlFetchBtnDisabled]}
+                  onPress={handleWlFetchUrl}
+                  disabled={wlFetchingUrl}
+                >
+                  {wlFetchingUrl ? (
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                  ) : (
+                    <Ionicons name="download-outline" size={20} color="#FFFFFF" />
+                  )}
+                </Pressable>
+              </View>
+
               <Text style={styles.modalLabel}>Name *</Text>
               <TextInput
                 style={styles.modalInput}
@@ -930,17 +1090,6 @@ export default function ProfileScreen() {
                 onChangeText={setWlBrand}
                 placeholder="Brand (optional)"
                 placeholderTextColor={Theme.colors.textLight}
-              />
-
-              <Text style={styles.modalLabel}>URL</Text>
-              <TextInput
-                style={styles.modalInput}
-                value={wlUrl}
-                onChangeText={setWlUrl}
-                placeholder="Product URL (optional)"
-                placeholderTextColor={Theme.colors.textLight}
-                keyboardType="url"
-                autoCapitalize="none"
               />
 
               <Text style={styles.modalLabel}>Estimated Price</Text>
@@ -990,10 +1139,27 @@ export default function ProfileScreen() {
                 multiline
                 numberOfLines={3}
               />
+
+              {/* Move to Wardrobe button (only in edit mode) */}
+              {wlEditingItem && (
+                <Pressable
+                  style={styles.wlMoveToWardrobeBtn}
+                  onPress={() => {
+                    setWishlistModalVisible(false);
+                    handleMoveToWardrobe(wlEditingItem);
+                    resetWlForm();
+                  }}
+                >
+                  <Ionicons name="bag-add-outline" size={18} color={Theme.colors.primary} />
+                  <Text style={styles.wlMoveToWardrobeBtnText}>Move to Wardrobe</Text>
+                </Pressable>
+              )}
             </ScrollView>
 
-            <Pressable style={styles.modalSaveBtn} onPress={handleAddWishlistItem}>
-              <Text style={styles.modalSaveBtnText}>Add Item</Text>
+            <Pressable style={styles.modalSaveBtn} onPress={handleSaveWishlistItem}>
+              <Text style={styles.modalSaveBtnText}>
+                {wlEditingItem ? "Save Changes" : "Add Item"}
+              </Text>
             </Pressable>
           </View>
         </View>
@@ -1508,6 +1674,80 @@ const styles = StyleSheet.create({
     backgroundColor: Theme.colors.primary + "12",
   },
   addWishlistBtnText: {
+    fontSize: Theme.fontSize.md,
+    fontWeight: "600",
+    color: Theme.colors.primary,
+  },
+  wlThumb: {
+    width: 40,
+    height: 40,
+    borderRadius: Theme.borderRadius.sm,
+    marginRight: Theme.spacing.sm,
+  },
+  wlUrlLink: {
+    fontSize: Theme.fontSize.xs,
+    color: Theme.colors.primary,
+    textDecorationLine: "underline",
+    marginTop: 2,
+  },
+  wlMoveBtn: {
+    padding: Theme.spacing.xs,
+    marginRight: 4,
+  },
+  wlPhotoRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: Theme.spacing.sm,
+    gap: Theme.spacing.sm,
+  },
+  wlPhotoPreview: {
+    width: 64,
+    height: 64,
+    borderRadius: Theme.borderRadius.sm,
+  },
+  wlPhotoPlaceholder: {
+    width: 64,
+    height: 64,
+    borderRadius: Theme.borderRadius.sm,
+    backgroundColor: Theme.colors.surfaceAlt,
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: Theme.colors.border,
+  },
+  wlPhotoHint: {
+    fontSize: Theme.fontSize.sm,
+    color: Theme.colors.textSecondary,
+  },
+  wlUrlRow: {
+    flexDirection: "row",
+    gap: 8,
+    alignItems: "center",
+  },
+  wlFetchBtn: {
+    width: 48,
+    height: 48,
+    backgroundColor: Theme.colors.primary,
+    borderRadius: Theme.borderRadius.sm,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  wlFetchBtnDisabled: {
+    opacity: 0.5,
+  },
+  wlMoveToWardrobeBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 12,
+    marginTop: Theme.spacing.md,
+    borderRadius: Theme.borderRadius.sm,
+    backgroundColor: Theme.colors.primary + "12",
+    borderWidth: 1,
+    borderColor: Theme.colors.primary + "30",
+  },
+  wlMoveToWardrobeBtnText: {
     fontSize: Theme.fontSize.md,
     fontWeight: "600",
     color: Theme.colors.primary,
