@@ -42,6 +42,8 @@ export default function OutfitDetailScreen() {
   const [editSeasons, setEditSeasons] = useState<Season[]>([]);
   const [editNotes, setEditNotes] = useState("");
   const [showWornLog, setShowWornLog] = useState(false);
+  const [showRenameModal, setShowRenameModal] = useState(false);
+  const [renameText, setRenameText] = useState("");
 
   // Show removed-item notification on first open
   useEffect(() => {
@@ -106,33 +108,16 @@ export default function OutfitDetailScreen() {
 
   // --- Rename ---
   const handleStartRename = () => {
-    setEditName(outfit.name);
-    Alert.prompt?.(
-      "Rename Outfit",
-      "Enter a new name:",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Save",
-          onPress: async (newName?: string) => {
-            if (newName && newName.trim()) {
-              await addOrUpdate({ ...outfit, name: newName.trim() });
-            }
-          },
-        },
-      ],
-      "plain-text",
-      outfit.name
-    );
-    // Fallback for Android (no Alert.prompt)
-    if (!Alert.prompt) {
-      setIsEditing(true);
-      setEditName(outfit.name);
-      setEditItemIds(outfit.itemIds);
-      setEditOccasions([...outfit.occasions]);
-      setEditSeasons([...(outfit.seasons ?? [])]);
-      setEditNotes(outfit.notes ?? "");
+    setRenameText(outfit.name);
+    setShowRenameModal(true);
+  };
+
+  const handleSaveRename = async () => {
+    const newName = renameText.trim();
+    if (newName && newName !== outfit.name) {
+      await addOrUpdate({ ...outfit, name: newName });
     }
+    setShowRenameModal(false);
   };
 
   // --- Edit Mode ---
@@ -539,6 +524,41 @@ export default function OutfitDetailScreen() {
         <Ionicons name="trash-outline" size={18} color={Theme.colors.error} />
         <Text style={styles.deleteBtnText}>Delete Outfit</Text>
       </Pressable>
+
+      {/* Rename Modal */}
+      <Modal
+        visible={showRenameModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowRenameModal(false)}
+      >
+        <View style={styles.renameOverlay}>
+          <View style={styles.renameDialog}>
+            <Text style={styles.renameTitle}>Rename Outfit</Text>
+            <TextInput
+              style={styles.renameInput}
+              value={renameText}
+              onChangeText={setRenameText}
+              placeholder="Enter new name"
+              placeholderTextColor={Theme.colors.textLight}
+              autoFocus
+              selectTextOnFocus
+              onSubmitEditing={handleSaveRename}
+            />
+            <View style={styles.renameActions}>
+              <Pressable
+                style={styles.renameCancelBtn}
+                onPress={() => setShowRenameModal(false)}
+              >
+                <Text style={styles.renameCancelText}>Cancel</Text>
+              </Pressable>
+              <Pressable style={styles.renameSaveBtn} onPress={handleSaveRename}>
+                <Text style={styles.renameSaveText}>Save</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
 }
@@ -884,5 +904,62 @@ const styles = StyleSheet.create({
   pickerItemMeta: {
     fontSize: Theme.fontSize.xs,
     color: Theme.colors.textSecondary,
+  },
+  // Rename modal
+  renameOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: Theme.spacing.xl,
+  },
+  renameDialog: {
+    width: "100%",
+    backgroundColor: Theme.colors.surface,
+    borderRadius: Theme.borderRadius.md,
+    padding: Theme.spacing.lg,
+  },
+  renameTitle: {
+    fontSize: Theme.fontSize.lg,
+    fontWeight: "700",
+    color: Theme.colors.text,
+    marginBottom: Theme.spacing.md,
+  },
+  renameInput: {
+    backgroundColor: Theme.colors.background,
+    borderRadius: Theme.borderRadius.sm,
+    paddingHorizontal: Theme.spacing.md,
+    paddingVertical: 12,
+    fontSize: Theme.fontSize.md,
+    color: Theme.colors.text,
+    borderWidth: 1,
+    borderColor: Theme.colors.border,
+    marginBottom: Theme.spacing.md,
+  },
+  renameActions: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    gap: Theme.spacing.sm,
+  },
+  renameCancelBtn: {
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: Theme.borderRadius.sm,
+  },
+  renameCancelText: {
+    fontSize: Theme.fontSize.md,
+    fontWeight: "600",
+    color: Theme.colors.textSecondary,
+  },
+  renameSaveBtn: {
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: Theme.borderRadius.sm,
+    backgroundColor: Theme.colors.primary,
+  },
+  renameSaveText: {
+    fontSize: Theme.fontSize.md,
+    fontWeight: "600",
+    color: "#FFFFFF",
   },
 });

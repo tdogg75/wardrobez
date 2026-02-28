@@ -61,7 +61,7 @@ export default function OutfitsScreen() {
               0
             );
 
-            const isFlagged = outfit.hasRemovedItems && !outfit.removedItemNotified;
+            const isFlagged = outfit.hasRemovedItems === true;
 
             return (
               <Pressable

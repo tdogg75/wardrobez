@@ -93,6 +93,9 @@ export default function AddItemScreen() {
   const [showDropper, setShowDropper] = useState(false);
   const [dropperTarget, setDropperTarget] = useState<"primary" | "secondary">("primary");
 
+  // Image viewer
+  const [viewingImageIdx, setViewingImageIdx] = useState<number | null>(null);
+
   // Computed final color
   const finalColor = useMemo(() => {
     if (hslAdjust) {
@@ -122,6 +125,22 @@ export default function AddItemScreen() {
 
   const removeImage = (index: number) => {
     setImageUris((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const recropImage = async (index: number) => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"],
+      allowsEditing: true,
+      quality: 0.8,
+    });
+    if (!result.canceled && result.assets[0]) {
+      setImageUris((prev) => {
+        const updated = [...prev];
+        updated[index] = result.assets[0].uri;
+        return updated;
+      });
+      setViewingImageIdx(null);
+    }
   };
 
   const handleSelectPresetColor = (idx: number) => {
@@ -242,7 +261,11 @@ export default function AddItemScreen() {
         <Text style={styles.sectionTitle}>Photos</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.photoScroll}>
           {imageUris.map((uri, index) => (
-            <View key={`${uri}-${index}`} style={styles.photoThumb}>
+            <Pressable
+              key={`${uri}-${index}`}
+              style={styles.photoThumb}
+              onPress={() => setViewingImageIdx(index)}
+            >
               <Image source={{ uri }} style={styles.photoThumbImage} />
               <Pressable
                 style={styles.removePhotoBtn}
@@ -255,7 +278,7 @@ export default function AddItemScreen() {
                   <Text style={styles.primaryBadgeText}>Main</Text>
                 </View>
               )}
-            </View>
+            </Pressable>
           ))}
           <Pressable style={styles.addPhotoBtn} onPress={pickImage}>
             <Ionicons name="camera-outline" size={28} color={Theme.colors.textLight} />
@@ -682,6 +705,58 @@ export default function AddItemScreen() {
           onClose={() => setShowDropper(false)}
         />
       )}
+
+      {/* Image Viewer Modal */}
+      <Modal
+        visible={viewingImageIdx !== null}
+        animationType="fade"
+        presentationStyle="fullScreen"
+        onRequestClose={() => setViewingImageIdx(null)}
+      >
+        <View style={styles.imageViewerContainer}>
+          <View style={styles.imageViewerHeader}>
+            <Pressable onPress={() => setViewingImageIdx(null)} hitSlop={12}>
+              <Ionicons name="close" size={28} color="#FFFFFF" />
+            </Pressable>
+            <Text style={styles.imageViewerTitle}>
+              Photo {viewingImageIdx !== null ? viewingImageIdx + 1 : ""} of {imageUris.length}
+            </Text>
+            <View style={{ width: 28 }} />
+          </View>
+
+          {viewingImageIdx !== null && imageUris[viewingImageIdx] && (
+            <View style={styles.imageViewerBody}>
+              <Image
+                source={{ uri: imageUris[viewingImageIdx] }}
+                style={styles.imageViewerImage}
+                resizeMode="contain"
+              />
+            </View>
+          )}
+
+          <View style={styles.imageViewerActions}>
+            <Pressable
+              style={styles.imageViewerBtn}
+              onPress={() => viewingImageIdx !== null && recropImage(viewingImageIdx)}
+            >
+              <Ionicons name="crop-outline" size={20} color={Theme.colors.primary} />
+              <Text style={styles.imageViewerBtnText}>Replace / Crop</Text>
+            </Pressable>
+            <Pressable
+              style={styles.imageViewerBtn}
+              onPress={() => {
+                if (viewingImageIdx !== null) {
+                  removeImage(viewingImageIdx);
+                  setViewingImageIdx(null);
+                }
+              }}
+            >
+              <Ionicons name="trash-outline" size={20} color={Theme.colors.error} />
+              <Text style={[styles.imageViewerBtnText, { color: Theme.colors.error }]}>Remove</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
     </>
   );
 }
@@ -972,5 +1047,53 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontSize: Theme.fontSize.lg,
     fontWeight: "700",
+  },
+  // Image viewer modal
+  imageViewerContainer: {
+    flex: 1,
+    backgroundColor: "#000000",
+  },
+  imageViewerHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: Theme.spacing.md,
+    paddingTop: 54,
+    paddingBottom: Theme.spacing.md,
+  },
+  imageViewerTitle: {
+    color: "#FFFFFF",
+    fontSize: Theme.fontSize.md,
+    fontWeight: "600",
+  },
+  imageViewerBody: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  imageViewerImage: {
+    width: "100%",
+    height: "100%",
+  },
+  imageViewerActions: {
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: Theme.spacing.lg,
+    paddingVertical: Theme.spacing.lg,
+    paddingBottom: Theme.spacing.xxl,
+  },
+  imageViewerBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: Theme.borderRadius.md,
+    backgroundColor: Theme.colors.surface,
+  },
+  imageViewerBtnText: {
+    fontSize: Theme.fontSize.md,
+    fontWeight: "600",
+    color: Theme.colors.primary,
   },
 });

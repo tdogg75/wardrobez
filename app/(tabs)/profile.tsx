@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   Alert,
 } from "react-native";
 import { useRouter } from "expo-router";
+import { useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useClothingItems } from "@/hooks/useClothingItems";
 import { useOutfits } from "@/hooks/useOutfits";
@@ -35,8 +36,17 @@ const daysBetween = (a: Date, b: Date) =>
 
 export default function ProfileScreen() {
   const router = useRouter();
-  const { items, archivedItems, getFavorites, unarchiveItem } = useClothingItems();
-  const { outfits } = useOutfits();
+  const { items, archivedItems, getFavorites, unarchiveItem, reload: reloadItems } = useClothingItems();
+  const { outfits, reload: reloadOutfits } = useOutfits();
+
+  // Refresh data every time the profile screen comes into focus
+  // so worn stats, flags, etc. are always up-to-date
+  useFocusEffect(
+    useCallback(() => {
+      reloadItems();
+      reloadOutfits();
+    }, [reloadItems, reloadOutfits])
+  );
 
   /* ---------- section toggles ---------- */
   const [statsOpen, setStatsOpen] = useState(false);
@@ -294,7 +304,26 @@ export default function ProfileScreen() {
       {/* -------- Header -------- */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Profile</Text>
-        <Pressable hitSlop={12}>
+        <Pressable
+          hitSlop={12}
+          onPress={() => {
+            Alert.alert("Settings", "Wardrobez v1.0.0", [
+              {
+                text: "Export Backup",
+                onPress: handleExport,
+              },
+              {
+                text: "Import Backup",
+                onPress: () => handleImport(),
+              },
+              {
+                text: "Import from Gmail",
+                onPress: () => router.push("/gmail-purchases"),
+              },
+              { text: "Close", style: "cancel" },
+            ]);
+          }}
+        >
           <Ionicons
             name="settings-outline"
             size={24}
@@ -378,7 +407,11 @@ export default function ProfileScreen() {
               </Text>
             ) : (
               costPerWear.map(({ item, cpw }) => (
-                <View key={item.id} style={styles.listItem}>
+                <Pressable
+                  key={item.id}
+                  style={styles.listItem}
+                  onPress={() => router.push({ pathname: "/edit-item", params: { id: item.id } })}
+                >
                   <View style={styles.listItemLeft}>
                     <Text style={styles.listItemName} numberOfLines={1}>
                       {item.name}
@@ -389,7 +422,7 @@ export default function ProfileScreen() {
                     </Text>
                   </View>
                   <Text style={styles.cpwValue}>{fmt(cpw)}</Text>
-                </View>
+                </Pressable>
               ))
             )}
           </View>
@@ -415,7 +448,11 @@ export default function ProfileScreen() {
               <Text style={styles.emptyText}>No worn items yet.</Text>
             ) : (
               mostWorn.map((item) => (
-                <View key={item.id} style={styles.listItem}>
+                <Pressable
+                  key={item.id}
+                  style={styles.listItem}
+                  onPress={() => router.push({ pathname: "/edit-item", params: { id: item.id } })}
+                >
                   <View style={styles.listItemLeft}>
                     <Text style={styles.listItemName} numberOfLines={1}>
                       {item.name}
@@ -429,7 +466,7 @@ export default function ProfileScreen() {
                       {item.wearCount}x
                     </Text>
                   </View>
-                </View>
+                </Pressable>
               ))
             )}
 
@@ -441,7 +478,11 @@ export default function ProfileScreen() {
               <Text style={styles.emptyText}>No worn items yet.</Text>
             ) : (
               mostWornByCategory.map(({ category, item }) => (
-                <View key={category} style={styles.listItem}>
+                <Pressable
+                  key={category}
+                  style={styles.listItem}
+                  onPress={() => router.push({ pathname: "/edit-item", params: { id: item.id } })}
+                >
                   <View style={styles.listItemLeft}>
                     <Text style={styles.listItemName} numberOfLines={1}>
                       {item.name}
@@ -455,7 +496,7 @@ export default function ProfileScreen() {
                       {item.wearCount}x
                     </Text>
                   </View>
-                </View>
+                </Pressable>
               ))
             )}
 
@@ -475,7 +516,11 @@ export default function ProfileScreen() {
                   detail = `${daysBetween(new Date(), lastWorn)}d ago`;
                 }
                 return (
-                  <View key={item.id} style={styles.listItem}>
+                  <Pressable
+                    key={item.id}
+                    style={styles.listItem}
+                    onPress={() => router.push({ pathname: "/edit-item", params: { id: item.id } })}
+                  >
                     <View style={styles.listItemLeft}>
                       <Text style={styles.listItemName} numberOfLines={1}>
                         {item.name}
@@ -487,7 +532,7 @@ export default function ProfileScreen() {
                         {item.wearCount}x
                       </Text>
                     </View>
-                  </View>
+                  </Pressable>
                 );
               })
             )}
@@ -510,7 +555,11 @@ export default function ProfileScreen() {
                   detail = `${daysBetween(new Date(), lastWorn)} days ago`;
                 }
                 return (
-                  <View key={item.id} style={styles.listItem}>
+                  <Pressable
+                    key={item.id}
+                    style={styles.listItem}
+                    onPress={() => router.push({ pathname: "/edit-item", params: { id: item.id } })}
+                  >
                     <View style={styles.listItemLeft}>
                       <Text style={styles.listItemName} numberOfLines={1}>
                         {item.name}
@@ -519,7 +568,7 @@ export default function ProfileScreen() {
                         {CATEGORY_LABELS[item.category]} - {detail}
                       </Text>
                     </View>
-                  </View>
+                  </Pressable>
                 );
               })
             )}
@@ -544,7 +593,11 @@ export default function ProfileScreen() {
               <Text style={styles.emptyText}>No archived items.</Text>
             ) : (
               archivedItems.map((item) => (
-                <View key={item.id} style={styles.listItem}>
+                <Pressable
+                  key={item.id}
+                  style={styles.listItem}
+                  onPress={() => router.push({ pathname: "/edit-item", params: { id: item.id } })}
+                >
                   <View style={styles.listItemLeft}>
                     <Text style={styles.listItemName} numberOfLines={1}>
                       {item.name}
@@ -565,7 +618,7 @@ export default function ProfileScreen() {
                     <Ionicons name="arrow-undo-outline" size={14} color={Theme.colors.primary} />
                     <Text style={styles.unarchiveBtnText}>Unarchive</Text>
                   </Pressable>
-                </View>
+                </Pressable>
               ))
             )}
           </View>
@@ -589,7 +642,11 @@ export default function ProfileScreen() {
               <Text style={styles.emptyText}>No favourite items yet.</Text>
             ) : (
               favorites.map((item) => (
-                <View key={item.id} style={styles.listItem}>
+                <Pressable
+                  key={item.id}
+                  style={styles.listItem}
+                  onPress={() => router.push({ pathname: "/edit-item", params: { id: item.id } })}
+                >
                   <Ionicons
                     name="heart"
                     size={16}
@@ -604,7 +661,7 @@ export default function ProfileScreen() {
                       {CATEGORY_LABELS[item.category]}
                     </Text>
                   </View>
-                </View>
+                </Pressable>
               ))
             )}
           </View>
