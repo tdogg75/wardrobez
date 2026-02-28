@@ -232,9 +232,9 @@ export default function GmailPurchasesScreen() {
           <View style={styles.expoGoWarning}>
             <Ionicons name="warning-outline" size={20} color={Theme.colors.warning} />
             <Text style={styles.expoGoWarningText}>
-              Google sign-in requires a standalone build. Run{" "}
-              <Text style={{ fontWeight: "700" }}>npx expo run:android</Text>{" "}
-              to build the app, then try again.{"\n"}
+              Google sign-in requires a standalone APK build.{"\n"}
+              Run <Text style={{ fontWeight: "700" }}>npm run build:apk</Text> to
+              create one with EAS Build, install it on your device, then try again.{"\n\n"}
               Expo Go does not support Google OAuth redirects.
             </Text>
           </View>

@@ -19,6 +19,7 @@ import { Chip } from "@/components/Chip";
 import { ColorDot } from "@/components/ColorDot";
 import { ColorWheelPicker } from "@/components/ColorWheelPicker";
 import { ImageColorDropper } from "@/components/ImageColorDropper";
+import { ImageCropper } from "@/components/ImageCropper";
 import { Theme } from "@/constants/theme";
 import {
   PRESET_COLORS,
@@ -127,20 +128,23 @@ export default function AddItemScreen() {
     setImageUris((prev) => prev.filter((_, i) => i !== index));
   };
 
-  const recropImage = async (index: number) => {
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ["images"],
-      allowsEditing: true,
-      quality: 0.8,
-    });
-    if (!result.canceled && result.assets[0]) {
+  // Cropper state
+  const [croppingIdx, setCroppingIdx] = useState<number | null>(null);
+
+  const recropImage = (index: number) => {
+    setViewingImageIdx(null);
+    setCroppingIdx(index);
+  };
+
+  const handleCropDone = (croppedUri: string) => {
+    if (croppingIdx !== null) {
       setImageUris((prev) => {
         const updated = [...prev];
-        updated[index] = result.assets[0].uri;
+        updated[croppingIdx] = croppedUri;
         return updated;
       });
-      setViewingImageIdx(null);
     }
+    setCroppingIdx(null);
   };
 
   const handleSelectPresetColor = (idx: number) => {
@@ -757,6 +761,16 @@ export default function AddItemScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* Image Cropper */}
+      {croppingIdx !== null && imageUris[croppingIdx] && (
+        <ImageCropper
+          imageUri={imageUris[croppingIdx]}
+          visible
+          onCropDone={handleCropDone}
+          onCancel={() => setCroppingIdx(null)}
+        />
+      )}
     </>
   );
 }
