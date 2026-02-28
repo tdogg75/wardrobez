@@ -4,8 +4,6 @@ import * as FileSystem from "expo-file-system";
 
 WebBrowser.maybeCompleteAuthSession();
 
-// Google OAuth config — uses Expo proxy for redirect
-const GOOGLE_CLIENT_ID = ""; // User must supply their own client ID
 const SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"];
 
 const discovery = {
@@ -26,6 +24,30 @@ export interface GmailPurchaseItem {
   localImageUri?: string;
 }
 
+/* ---------- Client ID persistence ---------- */
+
+const CLIENT_ID_PATH = `${FileSystem.documentDirectory}wardrobez-data/google-client-id.txt`;
+
+export async function getSavedClientId(): Promise<string | null> {
+  try {
+    const info = await FileSystem.getInfoAsync(CLIENT_ID_PATH);
+    if (!info.exists) return null;
+    const id = await FileSystem.readAsStringAsync(CLIENT_ID_PATH);
+    return id.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+export async function saveClientId(clientId: string): Promise<void> {
+  const dir = `${FileSystem.documentDirectory}wardrobez-data/`;
+  const dirInfo = await FileSystem.getInfoAsync(dir);
+  if (!dirInfo.exists) {
+    await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
+  }
+  await FileSystem.writeAsStringAsync(CLIENT_ID_PATH, clientId.trim());
+}
+
 /* ---------- Auth helpers ---------- */
 
 let cachedToken: string | null = null;
@@ -34,11 +56,13 @@ export function getRedirectUri(): string {
   return AuthSession.makeRedirectUri({ scheme: "wardrobez" });
 }
 
-export async function signInWithGoogle(): Promise<string | null> {
+export async function signInWithGoogle(clientId: string): Promise<string | null> {
+  if (!clientId) return null;
+
   const redirectUri = getRedirectUri();
 
   const request = new AuthSession.AuthRequest({
-    clientId: GOOGLE_CLIENT_ID,
+    clientId,
     redirectUri,
     scopes: SCOPES,
     responseType: AuthSession.ResponseType.Token,

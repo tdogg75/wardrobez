@@ -353,11 +353,15 @@ function findImageInLd(data: any): string | null {
 function inferAttributes(text: string): ProductSearchResult {
   const result: ProductSearchResult = {};
 
+  // Normalize: replace hyphens with spaces so "t-shirt" matches "t shirt" from URL paths
+  const normalized = text.replace(/-/g, " ");
+
   const sortedKeys = Object.keys(SUBCATEGORY_KEYWORDS).sort(
     (a, b) => b.length - a.length,
   );
   for (const keyword of sortedKeys) {
-    if (text.includes(keyword)) {
+    const normalizedKw = keyword.replace(/-/g, " ");
+    if (normalized.includes(normalizedKw) || text.includes(keyword)) {
       const match = SUBCATEGORY_KEYWORDS[keyword];
       result.category = match.category;
       result.subCategory = match.subCategory;
@@ -369,7 +373,8 @@ function inferAttributes(text: string): ProductSearchResult {
     (a, b) => b.length - a.length,
   );
   for (const keyword of sortedFabricKeys) {
-    if (text.includes(keyword)) {
+    const normalizedKw = keyword.replace(/-/g, " ");
+    if (normalized.includes(normalizedKw) || text.includes(keyword)) {
       result.fabricType = FABRIC_KEYWORDS[keyword];
       break;
     }
@@ -379,7 +384,8 @@ function inferAttributes(text: string): ProductSearchResult {
     (a, b) => b.length - a.length,
   );
   for (const keyword of sortedColorKeys) {
-    if (text.includes(keyword)) {
+    const normalizedKw = keyword.replace(/-/g, " ");
+    if (normalized.includes(normalizedKw) || text.includes(keyword)) {
       const hex = COLOR_KEYWORDS[keyword];
       result.colorIndex = findClosestPresetIndex(hex);
       break;
@@ -507,8 +513,13 @@ export async function fetchProductFromUrl(
         ""
       ).toLowerCase();
 
+      // Include URL path for better category/type detection
+      const pathText = decodeURIComponent(parsed.pathname)
+        .replace(/[-_/]/g, " ")
+        .toLowerCase();
+
       const fullText =
-        `${hostname} ${result.name ?? ""} ${desc}`.toLowerCase();
+        `${hostname} ${pathText} ${result.name ?? ""} ${desc}`.toLowerCase();
       const attrs = inferAttributes(fullText);
       if (attrs.category) result.category = attrs.category;
       if (attrs.subCategory) result.subCategory = attrs.subCategory;

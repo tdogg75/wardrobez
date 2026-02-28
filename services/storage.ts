@@ -195,10 +195,17 @@ export async function deleteClothingItem(id: string): Promise<void> {
   await writeJsonFile(FILES.CLOTHING_ITEMS, filtered);
 
   const outfits = await getOutfits();
-  const updated = outfits.map((o) => ({
-    ...o,
-    itemIds: o.itemIds.filter((itemId) => itemId !== id),
-  }));
+  const updated = outfits.map((o) => {
+    if (o.itemIds.includes(id)) {
+      return {
+        ...o,
+        itemIds: o.itemIds.filter((itemId) => itemId !== id),
+        hasRemovedItems: true,
+        removedItemNotified: false,
+      };
+    }
+    return o;
+  });
   await writeJsonFile(FILES.OUTFITS, updated);
 }
 

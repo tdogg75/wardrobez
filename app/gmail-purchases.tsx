@@ -8,6 +8,9 @@ import {
   StyleSheet,
   Alert,
   ActivityIndicator,
+  TextInput,
+  Modal,
+  Linking,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -17,13 +20,14 @@ import {
   scanGmailForPurchases,
   getCachedToken,
   clearToken,
+  getSavedClientId,
+  saveClientId,
 } from "@/services/gmailService";
 import type { GmailPurchaseItem } from "@/services/gmailService";
 import { useClothingItems } from "@/hooks/useClothingItems";
-import { findClosestPresetIndex } from "@/constants/colors";
 import { PRESET_COLORS } from "@/constants/colors";
 
-type ScanState = "idle" | "signing_in" | "scanning" | "done" | "error";
+type ScanState = "idle" | "signing_in" | "scanning" | "done" | "error" | "need_client_id";
 
 export default function GmailPurchasesScreen() {
   const router = useRouter();
@@ -35,13 +39,46 @@ export default function GmailPurchasesScreen() {
   const [addedIds, setAddedIds] = useState<Set<string>>(new Set());
   const [skippedIds, setSkippedIds] = useState<Set<string>>(new Set());
   const [progress, setProgress] = useState({ loaded: 0, total: 0 });
+  const [clientId, setClientId] = useState("");
+  const [clientIdInput, setClientIdInput] = useState("");
+
+  // Load saved client ID on mount
+  useEffect(() => {
+    getSavedClientId().then((id) => {
+      if (id) setClientId(id);
+    });
+  }, []);
+
+  const handleSaveClientId = async () => {
+    const trimmed = clientIdInput.trim();
+    if (!trimmed || !trimmed.includes(".apps.googleusercontent.com")) {
+      Alert.alert(
+        "Invalid Client ID",
+        "Please enter a valid Google OAuth Client ID. It should end with .apps.googleusercontent.com"
+      );
+      return;
+    }
+    await saveClientId(trimmed);
+    setClientId(trimmed);
+    setScanState("idle");
+  };
 
   const startScan = useCallback(async () => {
+    // Check for client ID first
+    let id = clientId;
+    if (!id) {
+      id = (await getSavedClientId()) ?? "";
+    }
+    if (!id) {
+      setScanState("need_client_id");
+      return;
+    }
+
     setScanState("signing_in");
 
     let token = getCachedToken();
     if (!token) {
-      token = await signInWithGoogle();
+      token = await signInWithGoogle(id);
     }
 
     if (!token) {
@@ -70,7 +107,7 @@ export default function GmailPurchasesScreen() {
       setScanState("error");
       Alert.alert("Scan failed", "Something went wrong scanning your emails. Please try again.");
     }
-  }, []);
+  }, [clientId]);
 
   const currentItem = purchases[currentIndex] ?? null;
 
@@ -130,6 +167,54 @@ export default function GmailPurchasesScreen() {
 
   /* ---------- Render ---------- */
 
+  if (scanState === "need_client_id") {
+    return (
+      <ScrollView
+        style={{ flex: 1, backgroundColor: Theme.colors.background }}
+        contentContainerStyle={styles.center}
+        keyboardShouldPersistTaps="handled"
+      >
+        <Ionicons name="key-outline" size={64} color={Theme.colors.primary} />
+        <Text style={styles.title}>Google OAuth Setup</Text>
+        <Text style={styles.subtitle}>
+          To scan your Gmail, you need a Google OAuth Client ID. Follow these steps:{"\n\n"}
+          1. Go to Google Cloud Console{"\n"}
+          2. Create a project (or select existing){"\n"}
+          3. Enable the Gmail API{"\n"}
+          4. Go to Credentials and create an OAuth 2.0 Client ID{"\n"}
+          5. Select "Web application" as the type{"\n"}
+          6. Add the redirect URI shown below{"\n"}
+          7. Copy the Client ID and paste it here
+        </Text>
+        <Pressable
+          style={[styles.primaryBtn, { backgroundColor: Theme.colors.textSecondary }]}
+          onPress={() => Linking.openURL("https://console.cloud.google.com/apis/credentials")}
+        >
+          <Ionicons name="open-outline" size={18} color="#FFFFFF" />
+          <Text style={styles.primaryBtnText}>Open Google Cloud Console</Text>
+        </Pressable>
+        <View style={styles.clientIdInputWrap}>
+          <Text style={styles.clientIdLabel}>OAuth Client ID</Text>
+          <TextInput
+            style={styles.clientIdInput}
+            value={clientIdInput}
+            onChangeText={setClientIdInput}
+            placeholder="xxxx.apps.googleusercontent.com"
+            placeholderTextColor={Theme.colors.textLight}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          <Pressable style={styles.primaryBtn} onPress={handleSaveClientId}>
+            <Text style={styles.primaryBtnText}>Save & Continue</Text>
+          </Pressable>
+        </View>
+        <Pressable style={styles.secondaryBtn} onPress={() => router.back()}>
+          <Text style={styles.secondaryBtnText}>Cancel</Text>
+        </Pressable>
+      </ScrollView>
+    );
+  }
+
   if (scanState === "idle") {
     return (
       <View style={styles.center}>
@@ -143,6 +228,17 @@ export default function GmailPurchasesScreen() {
           <Ionicons name="logo-google" size={20} color="#FFFFFF" />
           <Text style={styles.primaryBtnText}>Connect Gmail</Text>
         </Pressable>
+        {clientId ? (
+          <Pressable
+            style={styles.secondaryBtn}
+            onPress={() => {
+              setClientIdInput(clientId);
+              setScanState("need_client_id");
+            }}
+          >
+            <Text style={styles.secondaryBtnText}>Change Client ID</Text>
+          </Pressable>
+        ) : null}
         <Pressable style={styles.secondaryBtn} onPress={() => router.back()}>
           <Text style={styles.secondaryBtnText}>Cancel</Text>
         </Pressable>
@@ -635,5 +731,25 @@ const styles = StyleSheet.create({
     fontSize: Theme.fontSize.md,
     fontWeight: "700",
     color: "#FFFFFF",
+  },
+  clientIdInputWrap: {
+    width: "100%",
+    marginTop: Theme.spacing.lg,
+    gap: Theme.spacing.sm,
+  },
+  clientIdLabel: {
+    fontSize: Theme.fontSize.sm,
+    fontWeight: "600",
+    color: Theme.colors.text,
+  },
+  clientIdInput: {
+    backgroundColor: Theme.colors.surface,
+    borderRadius: Theme.borderRadius.sm,
+    paddingHorizontal: Theme.spacing.md,
+    paddingVertical: 12,
+    fontSize: Theme.fontSize.sm,
+    color: Theme.colors.text,
+    borderWidth: 1,
+    borderColor: Theme.colors.border,
   },
 });
