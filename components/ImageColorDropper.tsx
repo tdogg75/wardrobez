@@ -83,8 +83,8 @@ export function ImageColorDropper({
     }
   }, [imageUri, visible]);
 
-  // Image layout
-  const imageWidth = SCREEN.width;
+  // Compute displayed image size to fit within available area
+  const AVAIL_H = SCREEN.height - 260; // header + instruction + preview + actions
   const [aspectRatio, setAspectRatio] = useState(1);
 
   useEffect(() => {
@@ -97,7 +97,13 @@ export function ImageColorDropper({
     }
   }, [imageUri]);
 
-  const imageHeight = imageWidth / aspectRatio;
+  // Fit image within available space (contain mode)
+  let imageWidth = SCREEN.width;
+  let imageHeight = imageWidth / aspectRatio;
+  if (imageHeight > AVAIL_H) {
+    imageHeight = AVAIL_H;
+    imageWidth = imageHeight * aspectRatio;
+  }
 
   const handleImageLayout = useCallback((e: LayoutChangeEvent) => {
     const { width, height } = e.nativeEvent.layout;
@@ -277,7 +283,7 @@ img.src = ${JSON.stringify(dataUri)};
             <Image
               source={{ uri: imageUri }}
               style={{ width: imageWidth, height: imageHeight }}
-              resizeMode="cover"
+              resizeMode="contain"
             />
 
             {touchPos && (
@@ -316,7 +322,7 @@ img.src = ${JSON.stringify(dataUri)};
                       left: -(touchPos.x * MAGNIFIER_ZOOM - MAGNIFIER_SIZE / 2),
                       top: -(touchPos.y * MAGNIFIER_ZOOM - MAGNIFIER_SIZE / 2),
                     }}
-                    resizeMode="cover"
+                    resizeMode="contain"
                   />
                   <View style={styles.magnifierCenter} />
                 </View>
