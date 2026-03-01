@@ -961,6 +961,13 @@ export default function OutfitsScreen() {
                       </Text>
                     </View>
 
+                    {/* Mini color palette (#35) */}
+                    <View style={styles.colorPaletteRow}>
+                      {[...new Set(outfitItems.map((i) => i.color))].slice(0, 6).map((color, ci) => (
+                        <View key={ci} style={[styles.colorPaletteDot, { backgroundColor: color }]} />
+                      ))}
+                    </View>
+
                     <View style={styles.metaRow}>
                       {totalCost > 0 && (
                         <Text style={[styles.costText, { color: theme.colors.textSecondary }]}>{fmt(totalCost)}</Text>
@@ -969,6 +976,19 @@ export default function OutfitsScreen() {
                         <Text style={[styles.wornText, { color: theme.colors.success }]}>
                           Worn {outfit.wornDates.length}x
                         </Text>
+                      )}
+                      {/* Rating stars (#30) */}
+                      {(outfit.rating ?? 0) > 0 && (
+                        <View style={styles.ratingRow}>
+                          {[1, 2, 3, 4, 5].map((s) => (
+                            <Ionicons
+                              key={s}
+                              name={s <= (outfit.rating ?? 0) ? "star" : "star-outline"}
+                              size={12}
+                              color={s <= (outfit.rating ?? 0) ? "#FFD700" : theme.colors.textLight}
+                            />
+                          ))}
+                        </View>
                       )}
                     </View>
 
@@ -995,7 +1015,16 @@ export default function OutfitsScreen() {
                     </Pressable>
                     <Pressable
                       style={styles.deleteBtn}
-                      onPress={() => remove(outfit.id)}
+                      onPress={() => {
+                        Alert.alert(
+                          "Delete Outfit",
+                          `Are you sure you want to delete "${outfit.name}"?`,
+                          [
+                            { text: "Cancel", style: "cancel" },
+                            { text: "Delete", style: "destructive", onPress: () => remove(outfit.id) },
+                          ]
+                        );
+                      }}
                     >
                       <Ionicons name="trash-outline" size={14} color={theme.colors.error} />
                     </Pressable>
@@ -1122,6 +1151,23 @@ const styles = StyleSheet.create({
   itemCount: {
     fontSize: 11,
     marginLeft: 8,
+  },
+  colorPaletteRow: {
+    flexDirection: "row",
+    gap: 3,
+    marginTop: 4,
+  },
+  colorPaletteDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: "rgba(0,0,0,0.1)",
+  },
+  ratingRow: {
+    flexDirection: "row",
+    gap: 1,
+    marginLeft: 4,
   },
   metaRow: {
     flexDirection: "row",

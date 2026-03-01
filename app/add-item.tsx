@@ -84,7 +84,13 @@ export default function AddItemScreen() {
   const { theme } = useTheme();
 
   const [name, setName] = useState("");
-  const [category, setCategory] = useState<ClothingCategory>("tops");
+  // Default to most recently added item's category (#38)
+  const lastCategory = useMemo(() => {
+    if (items.length === 0) return "tops" as ClothingCategory;
+    const sorted = [...items].sort((a, b) => b.createdAt - a.createdAt);
+    return sorted[0].category;
+  }, []);
+  const [category, setCategory] = useState<ClothingCategory>(lastCategory);
   const [subCategory, setSubCategory] = useState<string | undefined>(undefined);
   const [colorIdx, setColorIdx] = useState(0);
   const [fabricType, setFabricType] = useState<FabricType>("cotton");
@@ -118,6 +124,9 @@ export default function AddItemScreen() {
   // Tags
   const [tags, setTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState("");
+
+  // Quick Add mode (#39)
+  const [quickMode, setQuickMode] = useState(false);
 
   // Notes
   const [notes, setNotes] = useState("");
@@ -356,6 +365,17 @@ export default function AddItemScreen() {
         style={[styles.container, { backgroundColor: theme.colors.background }]}
         contentContainerStyle={[styles.content, { padding: theme.spacing.md, paddingBottom: theme.spacing.xxl }]}
       >
+        {/* Quick Add toggle (#39) */}
+        <Pressable
+          style={[styles.quickModeToggle, { backgroundColor: quickMode ? theme.colors.primary + "15" : theme.colors.surfaceAlt }]}
+          onPress={() => setQuickMode(!quickMode)}
+        >
+          <Ionicons name={quickMode ? "flash" : "flash-outline"} size={16} color={quickMode ? theme.colors.primary : theme.colors.textLight} />
+          <Text style={[styles.quickModeText, { color: quickMode ? theme.colors.primary : theme.colors.textLight }]}>
+            Quick Add {quickMode ? "On" : "Off"}
+          </Text>
+        </Pressable>
+
         {/* Photos */}
         <Text style={[styles.sectionTitle, { fontSize: theme.fontSize.md, color: theme.colors.text, marginBottom: theme.spacing.sm, marginTop: theme.spacing.md }]}>Photos</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: theme.spacing.sm }}>
@@ -396,6 +416,7 @@ export default function AddItemScreen() {
           placeholderTextColor={theme.colors.textLight}
           value={name}
           onChangeText={setName}
+          autoCapitalize="words"
         />
 
         {/* Brand */}
@@ -656,8 +677,9 @@ export default function AddItemScreen() {
           ))}
         </View>
 
-        {/* Pattern / Print */}
-        <Text style={[styles.sectionTitle, { fontSize: theme.fontSize.md, color: theme.colors.text, marginBottom: theme.spacing.sm, marginTop: theme.spacing.md }]}>Pattern</Text>
+        {/* Pattern / Print - hidden in quick mode */}
+        {!quickMode && <Text style={[styles.sectionTitle, { fontSize: theme.fontSize.md, color: theme.colors.text, marginBottom: theme.spacing.sm, marginTop: theme.spacing.md }]}>Pattern</Text>}
+        {!quickMode &&
         <View style={styles.chipRow}>
           {(Object.keys(PATTERN_LABELS) as Pattern[]).map((p) => (
             <Chip
@@ -667,7 +689,10 @@ export default function AddItemScreen() {
               onPress={() => setPattern(p)}
             />
           ))}
-        </View>
+        </View>}
+
+        {/* Sections hidden in Quick Add mode */}
+        {!quickMode && <>
 
         {/* Hardware Colour */}
         {(HARDWARE_CATEGORIES.includes(category) || (subCategory && HARDWARE_SUBCATEGORIES.includes(subCategory))) && (
@@ -791,7 +816,12 @@ export default function AddItemScreen() {
           multiline
           numberOfLines={3}
           textAlignVertical="top"
+          maxLength={500}
         />
+        <Text style={[styles.charCount, { color: theme.colors.textLight }]}>{notes.length}/500</Text>
+
+        </>}
+        {/* End of quickMode hidden sections */}
 
         {/* Save Button */}
         <Pressable
@@ -1203,6 +1233,37 @@ const styles = StyleSheet.create({
   notesInput: {
     height: 80,
     paddingTop: 12,
+  },
+  charCount: {
+    textAlign: "right",
+    fontSize: 11,
+    marginTop: 2,
+  },
+  quickModeToggle: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "flex-end",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    gap: 4,
+  },
+  quickModeText: {
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  quickModeToggle: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "flex-end",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    gap: 4,
+  },
+  quickModeText: {
+    fontSize: 12,
+    fontWeight: "600",
   },
   // Modal styles
   modalContainer: {

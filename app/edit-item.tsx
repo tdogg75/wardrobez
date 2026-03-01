@@ -980,7 +980,9 @@ export default function EditItemScreen() {
           multiline
           numberOfLines={3}
           textAlignVertical="top"
+          maxLength={500}
         />
+        <Text style={{ textAlign: "right", fontSize: 11, color: theme.colors.textLight, marginTop: 2 }}>{notes.length}/500</Text>
 
       </ScrollView>
 

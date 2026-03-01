@@ -972,7 +972,14 @@ export function suggestOutfits(
     // Fabric compatibility — 25% weight
     const fabric = fabricCompatibility(combo);
     score += fabric * 25;
-    if (fabric > 0.8) reasons.push("Well-balanced fabrics");
+    if (fabric > 0.8) {
+      const fabricSet = [...new Set(combo.map((i) => i.fabricType).filter(Boolean))];
+      if (fabricSet.length >= 2) {
+        reasons.push(`${fabricSet.slice(0, 2).join(" + ")} works well together`);
+      } else {
+        reasons.push("Well-balanced fabrics");
+      }
+    }
 
     // Seasonal fit — 20% weight
     if (season) {
