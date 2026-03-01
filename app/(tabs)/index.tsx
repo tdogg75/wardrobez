@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -10,7 +10,13 @@ import {
   Alert,
   Image,
   Dimensions,
+  RefreshControl,
+  TextInput,
+  Modal,
+  NativeSyntheticEvent,
+  NativeScrollEvent,
 } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -19,7 +25,7 @@ import { ClothingCard } from "@/components/ClothingCard";
 import { Chip } from "@/components/Chip";
 import { EmptyState } from "@/components/EmptyState";
 import { useTheme } from "@/hooks/useTheme";
-import type { ClothingCategory, ClothingItem } from "@/models/types";
+import type { ClothingCategory, ClothingItem, FabricType } from "@/models/types";
 import { CATEGORY_LABELS } from "@/models/types";
 
 const ALL_CATEGORIES: (ClothingCategory | "all" | "favorites")[] = [
@@ -27,13 +33,15 @@ const ALL_CATEGORIES: (ClothingCategory | "all" | "favorites")[] = [
   "favorites",
   "tops",
   "bottoms",
-  "skirts_shorts",
+  "shorts",
+  "skirts",
   "dresses",
   "jumpsuits",
   "blazers",
   "jackets",
   "shoes",
   "accessories",
+  "purse",
   "jewelry",
   "swimwear",
 ];
@@ -45,13 +53,15 @@ type ColumnCount = (typeof COLUMN_OPTIONS)[number];
 const SECTION_ORDER: ClothingCategory[] = [
   "tops",
   "bottoms",
-  "skirts_shorts",
+  "shorts",
+  "skirts",
   "dresses",
   "jumpsuits",
   "blazers",
   "jackets",
   "shoes",
   "accessories",
+  "purse",
   "jewelry",
   "swimwear",
 ];
@@ -59,6 +69,7 @@ const SECTION_ORDER: ClothingCategory[] = [
 type SortOption =
   | "newest"
   | "oldest"
+  | "recently_added"
   | "most_worn"
   | "least_worn"
   | "highest_cost"
@@ -69,6 +80,7 @@ type SortOption =
 const SORT_OPTIONS: { value: SortOption; label: string }[] = [
   { value: "newest", label: "Newest" },
   { value: "oldest", label: "Oldest" },
+  { value: "recently_added", label: "Recently Added" },
   { value: "most_worn", label: "Most Worn" },
   { value: "least_worn", label: "Least Worn" },
   { value: "highest_cost", label: "Highest Cost" },
@@ -84,6 +96,8 @@ function sortItems(items: ClothingItem[], sort: SortOption): ClothingItem[] {
       return sorted.sort((a, b) => b.createdAt - a.createdAt);
     case "oldest":
       return sorted.sort((a, b) => a.createdAt - b.createdAt);
+    case "recently_added":
+      return sorted.sort((a, b) => b.createdAt - a.createdAt);
     case "most_worn":
       return sorted.sort((a, b) => b.wearCount - a.wearCount);
     case "least_worn":
@@ -120,12 +134,45 @@ function sortItems(items: ClothingItem[], sort: SortOption): ClothingItem[] {
   }
 }
 
+// --- Seasonal rotation helpers (#79) ---
+const SUMMER_FABRICS: FabricType[] = ["linen", "cotton", "nylon"];
+const WINTER_FABRICS: FabricType[] = ["wool", "cashmere", "fleece", "leather"];
+
+type SeasonName = "spring" | "summer" | "fall" | "winter";
+
+function getCurrentSeason(): SeasonName {
+  const month = new Date().getMonth(); // 0-indexed
+  if (month >= 2 && month <= 4) return "spring";
+  if (month >= 5 && month <= 7) return "summer";
+  if (month >= 8 && month <= 10) return "fall";
+  return "winter";
+}
+
+function getOppositeSeason(season: SeasonName): SeasonName {
+  switch (season) {
+    case "spring": return "fall";
+    case "summer": return "winter";
+    case "fall": return "spring";
+    case "winter": return "summer";
+  }
+}
+
+function getSeasonLabel(season: SeasonName): string {
+  return season.charAt(0).toUpperCase() + season.slice(1);
+}
+
+function isSeasonFabric(fabric: FabricType, season: SeasonName): boolean {
+  if (season === "summer" || season === "spring") return SUMMER_FABRICS.includes(fabric);
+  if (season === "winter" || season === "fall") return WINTER_FABRICS.includes(fabric);
+  return false;
+}
+
 const PHOTO_GRID_COLUMNS = 3;
 const screenWidth = Dimensions.get("window").width;
 
 export default function WardrobeScreen() {
   const { theme } = useTheme();
-  const { items, loading, addOrUpdate, getFavorites, remove, archiveItem, logItemWorn } =
+  const { items, loading, addOrUpdate, getFavorites, remove, archiveItem, logItemWorn, reload } =
     useClothingItems();
   const [filter, setFilter] = useState<
     ClothingCategory | "all" | "favorites"
@@ -134,6 +181,14 @@ export default function WardrobeScreen() {
   const [sortBy, setSortBy] = useState<SortOption>("newest");
   const [showSortMenu, setShowSortMenu] = useState(false);
   const [photoOnlyMode, setPhotoOnlyMode] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [seasonBannerDismissed, setSeasonBannerDismissed] = useState(false);
+
+  // Scroll-to-top button state (#28)
+  const listRef = useRef<FlatList>(null);
+  const sectionListRef = useRef<SectionList>(null);
+  const [showScrollTop, setShowScrollTop] = useState(false);
 
   // Bulk selection state
   const [selectionMode, setSelectionMode] = useState(false);
@@ -142,15 +197,92 @@ export default function WardrobeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
+  // Pull to refresh (#9)
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await reload();
+    setRefreshing(false);
+  }, [reload]);
+
+  // Load wardrobe view preferences on mount (#59)
+  useEffect(() => {
+    (async () => {
+      try {
+        const raw = await AsyncStorage.getItem("wardrobez:wardrobe_prefs");
+        if (raw) {
+          const prefs = JSON.parse(raw);
+          if (prefs.numColumns && COLUMN_OPTIONS.includes(prefs.numColumns)) {
+            setNumColumns(prefs.numColumns);
+          }
+          if (prefs.sortBy) {
+            setSortBy(prefs.sortBy);
+          }
+          if (prefs.filter) {
+            setFilter(prefs.filter);
+          }
+        }
+      } catch (_) {
+        // ignore storage errors
+      }
+    })();
+  }, []);
+
+  // Persist wardrobe view preferences when they change (#59)
+  useEffect(() => {
+    AsyncStorage.setItem(
+      "wardrobez:wardrobe_prefs",
+      JSON.stringify({ numColumns, sortBy, filter })
+    ).catch(() => {});
+  }, [numColumns, sortBy, filter]);
+
+  // Scroll handler for scroll-to-top button (#28)
+  const handleScroll = useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const offsetY = event.nativeEvent.contentOffset.y;
+      setShowScrollTop(offsetY > 400);
+    },
+    []
+  );
+
+  const scrollToTop = useCallback(() => {
+    listRef.current?.scrollToOffset?.({ offset: 0, animated: true });
+    sectionListRef.current?.scrollToLocation?.({
+      sectionIndex: 0,
+      itemIndex: 0,
+      viewOffset: 0,
+      animated: true,
+    });
+  }, []);
+
   const filtered = useMemo(() => {
-    const base =
+    let base =
       filter === "all"
         ? items
         : filter === "favorites"
           ? getFavorites()
           : items.filter((i) => i.category === filter);
+    // Search filter (#36)
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim();
+      base = base.filter(
+        (i) =>
+          i.name.toLowerCase().includes(q) ||
+          (i.brand ?? "").toLowerCase().includes(q) ||
+          (i.colorName ?? "").toLowerCase().includes(q) ||
+          (i.tags ?? []).some((t) => t.toLowerCase().includes(q))
+      );
+    }
     return sortItems(base, sortBy);
-  }, [filter, items, getFavorites, sortBy]);
+  }, [filter, items, getFavorites, sortBy, searchQuery]);
+
+  // Item counts per category for filter chips (#5)
+  const categoryCounts = useMemo(() => {
+    const counts: Record<string, number> = { all: items.length, favorites: getFavorites().length };
+    for (const item of items) {
+      counts[item.category] = (counts[item.category] ?? 0) + 1;
+    }
+    return counts;
+  }, [items, getFavorites]);
 
   // Wardrobe value summary computations
   const summary = useMemo(() => {
@@ -166,6 +298,28 @@ export default function WardrobeScreen() {
         : 0;
     return { totalItems, totalCost, avgCpw };
   }, [filtered]);
+
+  // Seasonal rotation reminder (#79)
+  const seasonalRotation = useMemo(() => {
+    const currentSeason = getCurrentSeason();
+    const oppositeSeason = getOppositeSeason(currentSeason);
+    // Count active items whose fabric belongs to the opposite season
+    const oppositeSeasonItems = items.filter((i) =>
+      isSeasonFabric(i.fabricType, oppositeSeason)
+    );
+    const count = oppositeSeasonItems.length;
+    if (count === 0) return null;
+    const currentLabel = getSeasonLabel(currentSeason);
+    const oppositeLabel = getSeasonLabel(oppositeSeason);
+    // Build contextual message
+    let message: string;
+    if (currentSeason === "spring" || currentSeason === "summer") {
+      message = `${currentLabel} is here! You have ${count} ${oppositeLabel.toLowerCase()} item${count !== 1 ? "s" : ""} that could be rotated out.`;
+    } else {
+      message = `${currentLabel} is coming! You have ${count} ${oppositeLabel.toLowerCase()} item${count !== 1 ? "s" : ""} that could be rotated out.`;
+    }
+    return { message, count };
+  }, [items]);
 
   // Group items by category for section list when filter is "all"
   const sections = useMemo(() => {
@@ -261,6 +415,27 @@ export default function WardrobeScreen() {
       ]
     );
   }, [selectedIds, remove, exitSelectionMode]);
+
+  // Bulk tag editing (#70)
+  const [bulkTagModalVisible, setBulkTagModalVisible] = useState(false);
+  const [bulkTagInput, setBulkTagInput] = useState("");
+
+  const handleBulkAddTag = useCallback(async () => {
+    if (selectedIds.size === 0 || !bulkTagInput.trim()) return;
+    const tag = bulkTagInput.trim();
+    for (const id of Array.from(selectedIds)) {
+      const item = items.find((i) => i.id === id);
+      if (item) {
+        const existingTags = item.tags ?? [];
+        if (!existingTags.includes(tag)) {
+          await addOrUpdate({ ...item, tags: [...existingTags, tag] });
+        }
+      }
+    }
+    setBulkTagInput("");
+    setBulkTagModalVisible(false);
+    Alert.alert("Done", `Tag "${tag}" added to ${selectedIds.size} item(s)`);
+  }, [selectedIds, items, addOrUpdate, bulkTagInput]);
 
   const cardWidthPct =
     numColumns === 2 ? "48%" : numColumns === 4 ? "23%" : "11.5%";
@@ -422,6 +597,26 @@ export default function WardrobeScreen() {
             {selectedIds.size} selected
           </Text>
           <View style={styles.selectionBarActions}>
+            {/* Select All / Deselect All (#2) */}
+            <Pressable
+              style={styles.selectionBarBtn}
+              onPress={() => {
+                if (selectedIds.size === filtered.length) {
+                  setSelectedIds(new Set());
+                } else {
+                  setSelectedIds(new Set(filtered.map((i) => i.id)));
+                }
+              }}
+            >
+              <Ionicons
+                name={selectedIds.size === filtered.length ? "checkbox-outline" : "square-outline"}
+                size={18}
+                color={theme.colors.primary}
+              />
+              <Text style={styles.selectionBarBtnText}>
+                {selectedIds.size === filtered.length ? "None" : "All"}
+              </Text>
+            </Pressable>
             <Pressable
               style={styles.selectionBarBtn}
               onPress={handleBulkArchive}
@@ -450,6 +645,13 @@ export default function WardrobeScreen() {
               >
                 Delete
               </Text>
+            </Pressable>
+            <Pressable
+              style={styles.selectionBarBtn}
+              onPress={() => setBulkTagModalVisible(true)}
+            >
+              <Ionicons name="pricetag-outline" size={18} color={theme.colors.primary} />
+              <Text style={styles.selectionBarBtnText}>Tag</Text>
             </Pressable>
             <Pressable
               style={styles.selectionBarBtn}
@@ -569,20 +771,41 @@ export default function WardrobeScreen() {
           data={ALL_CATEGORIES}
           keyExtractor={(item) => item}
           contentContainerStyle={styles.filterList}
-          renderItem={({ item: cat }) => (
-            <Chip
-              label={
-                cat === "all"
-                  ? "All"
-                  : cat === "favorites"
-                    ? "Favourites"
-                    : CATEGORY_LABELS[cat]
-              }
-              selected={filter === cat}
-              onPress={() => setFilter(cat)}
-            />
-          )}
+          renderItem={({ item: cat }) => {
+            const count = categoryCounts[cat] ?? 0;
+            const label = cat === "all"
+              ? `All (${count})`
+              : cat === "favorites"
+                ? `Favourites (${count})`
+                : `${CATEGORY_LABELS[cat]} (${count})`;
+            return (
+              <Chip
+                label={label}
+                selected={filter === cat}
+                onPress={() => setFilter(cat)}
+              />
+            );
+          }}
         />
+      </View>
+
+      {/* Search Bar (#36) */}
+      <View style={styles.searchRow}>
+        <Ionicons name="search-outline" size={18} color={theme.colors.textLight} />
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Search name, brand, colour, tag..."
+          placeholderTextColor={theme.colors.textLight}
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          returnKeyType="search"
+          clearButtonMode="while-editing"
+        />
+        {searchQuery.length > 0 && (
+          <Pressable onPress={() => setSearchQuery("")} hitSlop={10}>
+            <Ionicons name="close-circle" size={18} color={theme.colors.textLight} />
+          </Pressable>
+        )}
       </View>
 
       {/* Wardrobe Value Summary Banner */}
@@ -598,6 +821,21 @@ export default function WardrobeScreen() {
         </View>
       )}
 
+      {/* Seasonal Rotation Banner (#79) */}
+      {!loading && !seasonBannerDismissed && seasonalRotation && (
+        <View style={styles.seasonBanner}>
+          <Ionicons name="leaf-outline" size={18} color={theme.colors.warning} style={{ marginRight: 8 }} />
+          <Text style={styles.seasonBannerText}>{seasonalRotation.message}</Text>
+          <Pressable
+            onPress={() => setSeasonBannerDismissed(true)}
+            hitSlop={10}
+            style={styles.seasonBannerDismiss}
+          >
+            <Ionicons name="close" size={18} color={theme.colors.textLight} />
+          </Pressable>
+        </View>
+      )}
+
       {loading ? (
         <ActivityIndicator
           size="large"
@@ -606,21 +844,30 @@ export default function WardrobeScreen() {
         />
       ) : filtered.length === 0 ? (
         <EmptyState
-          icon={filter === "favorites" ? "heart-outline" : "shirt-outline"}
+          icon={searchQuery ? "search-outline" : filter === "favorites" ? "heart-outline" : "shirt-outline"}
           title={
-            filter === "favorites"
-              ? "No favourites yet"
-              : "Your wardrobe is empty"
+            searchQuery
+              ? "No results"
+              : filter === "favorites"
+                ? "No favourites yet"
+                : filter !== "all"
+                  ? `No ${CATEGORY_LABELS[filter as ClothingCategory] ?? filter} items`
+                  : "Your wardrobe is empty"
           }
           subtitle={
-            filter === "favorites"
-              ? "Tap the heart icon on items to add them to your favourites!"
-              : "Add your first clothing item to get started with outfit suggestions!"
+            searchQuery
+              ? `Nothing matches "${searchQuery}". Try a different search.`
+              : filter === "favorites"
+                ? "Tap the heart icon on items to add them to your favourites!"
+                : filter !== "all"
+                  ? "Add items in this category to see them here."
+                  : "Add your first clothing item to get started with outfit suggestions!"
           }
         />
       ) : photoOnlyMode ? (
         /* Photo-only grid view */
         <FlatList
+          ref={listRef as any}
           key="photo-grid"
           data={filtered}
           keyExtractor={(item) => item.id}
@@ -630,9 +877,13 @@ export default function WardrobeScreen() {
           }}
           contentContainerStyle={styles.list}
           renderItem={renderPhotoTile}
+          onScroll={handleScroll}
+          scrollEventThrottle={16}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.colors.primary} />}
         />
       ) : filter === "all" ? (
         <SectionList
+          ref={sectionListRef as any}
           key={`section-grid-${numColumns}`}
           sections={sections}
           keyExtractor={(item, index) =>
@@ -642,9 +893,13 @@ export default function WardrobeScreen() {
           renderSectionHeader={renderSectionHeader}
           contentContainerStyle={styles.list}
           stickySectionHeadersEnabled={false}
+          onScroll={handleScroll}
+          scrollEventThrottle={16}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.colors.primary} />}
         />
       ) : (
         <FlatList
+          ref={listRef as any}
           key={`grid-${numColumns}`}
           data={filtered}
           keyExtractor={(item) => item.id}
@@ -652,7 +907,17 @@ export default function WardrobeScreen() {
           columnWrapperStyle={[styles.row, { gap: itemGap }]}
           contentContainerStyle={styles.list}
           renderItem={({ item }) => renderCard(item)}
+          onScroll={handleScroll}
+          scrollEventThrottle={16}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.colors.primary} />}
         />
+      )}
+
+      {/* Scroll to top button (#28) */}
+      {showScrollTop && (
+        <Pressable style={styles.scrollTopBtn} onPress={scrollToTop}>
+          <Ionicons name="arrow-up" size={20} color="#FFFFFF" />
+        </Pressable>
       )}
 
       {/* FAB - hidden in selection mode */}
@@ -664,6 +929,46 @@ export default function WardrobeScreen() {
           <Ionicons name="add" size={28} color="#FFFFFF" />
         </Pressable>
       )}
+
+      {/* Bulk Tag Modal (#70) */}
+      <Modal
+        visible={bulkTagModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setBulkTagModalVisible(false)}
+      >
+        <Pressable style={styles.bulkTagOverlay} onPress={() => setBulkTagModalVisible(false)}>
+          <View style={[styles.bulkTagSheet, { backgroundColor: theme.colors.surface }]}>
+            <Text style={[styles.bulkTagTitle, { color: theme.colors.text }]}>
+              Add Tag to {selectedIds.size} Item{selectedIds.size !== 1 ? "s" : ""}
+            </Text>
+            <TextInput
+              style={[styles.bulkTagInput, { backgroundColor: theme.colors.surfaceAlt, color: theme.colors.text, borderColor: theme.colors.border }]}
+              placeholder="Enter tag name..."
+              placeholderTextColor={theme.colors.textLight}
+              value={bulkTagInput}
+              onChangeText={setBulkTagInput}
+              autoFocus
+              returnKeyType="done"
+              onSubmitEditing={handleBulkAddTag}
+            />
+            <View style={styles.bulkTagActions}>
+              <Pressable
+                style={[styles.bulkTagCancelBtn, { borderColor: theme.colors.border }]}
+                onPress={() => setBulkTagModalVisible(false)}
+              >
+                <Text style={{ color: theme.colors.textSecondary }}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.bulkTagSaveBtn, { backgroundColor: theme.colors.primary }]}
+                onPress={handleBulkAddTag}
+              >
+                <Text style={{ color: "#FFF", fontWeight: "600" }}>Add Tag</Text>
+              </Pressable>
+            </View>
+          </View>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -842,6 +1147,29 @@ function createStyles(theme: ReturnType<typeof import("@/hooks/useTheme").useThe
       fontWeight: "600",
       color: theme.colors.primary,
     },
+    // --- Seasonal Rotation Banner (#79) ---
+    seasonBanner: {
+      flexDirection: "row",
+      alignItems: "center",
+      marginHorizontal: theme.spacing.md,
+      marginTop: theme.spacing.sm,
+      paddingHorizontal: theme.spacing.md,
+      paddingVertical: theme.spacing.sm,
+      backgroundColor: theme.colors.warning + "14",
+      borderRadius: theme.borderRadius.sm,
+      borderLeftWidth: 3,
+      borderLeftColor: theme.colors.warning,
+    },
+    seasonBannerText: {
+      flex: 1,
+      fontSize: theme.fontSize.xs,
+      fontWeight: "600",
+      color: theme.colors.warning,
+    },
+    seasonBannerDismiss: {
+      marginLeft: 8,
+      padding: 4,
+    },
     // --- Loader / List ---
     loader: {
       flex: 1,
@@ -863,6 +1191,83 @@ function createStyles(theme: ReturnType<typeof import("@/hooks/useTheme").useThe
       fontSize: theme.fontSize.lg,
       fontWeight: "700",
       color: theme.colors.text,
+    },
+    // --- Search Bar ---
+    searchRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      marginHorizontal: theme.spacing.md,
+      marginTop: theme.spacing.sm,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderRadius: theme.borderRadius.md,
+      backgroundColor: theme.colors.surfaceAlt,
+      gap: 8,
+    },
+    searchInput: {
+      flex: 1,
+      fontSize: theme.fontSize.sm,
+      color: theme.colors.text,
+      paddingVertical: 0,
+    },
+    // --- Bulk Tag Modal ---
+    bulkTagOverlay: {
+      flex: 1,
+      backgroundColor: "rgba(0,0,0,0.4)",
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    bulkTagSheet: {
+      width: "85%",
+      borderRadius: theme.borderRadius.lg,
+      padding: theme.spacing.lg,
+    },
+    bulkTagTitle: {
+      fontSize: theme.fontSize.lg,
+      fontWeight: "700",
+      marginBottom: theme.spacing.md,
+    },
+    bulkTagInput: {
+      borderWidth: 1,
+      borderRadius: theme.borderRadius.sm,
+      paddingHorizontal: theme.spacing.md,
+      paddingVertical: theme.spacing.sm,
+      fontSize: theme.fontSize.md,
+      marginBottom: theme.spacing.md,
+    },
+    bulkTagActions: {
+      flexDirection: "row",
+      gap: theme.spacing.sm,
+    },
+    bulkTagCancelBtn: {
+      flex: 1,
+      borderWidth: 1,
+      borderRadius: theme.borderRadius.md,
+      paddingVertical: theme.spacing.sm,
+      alignItems: "center",
+    },
+    bulkTagSaveBtn: {
+      flex: 1,
+      borderRadius: theme.borderRadius.md,
+      paddingVertical: theme.spacing.sm,
+      alignItems: "center",
+    },
+    // --- Scroll to top button (#28) ---
+    scrollTopBtn: {
+      position: "absolute",
+      left: 20,
+      bottom: 24,
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      backgroundColor: theme.colors.primary,
+      justifyContent: "center",
+      alignItems: "center",
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.2,
+      shadowRadius: 4,
+      elevation: 4,
     },
     // --- FAB ---
     fab: {

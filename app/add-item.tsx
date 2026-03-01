@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import {
   View,
   Text,
@@ -12,7 +12,7 @@ import {
   Modal,
   Linking,
 } from "react-native";
-import { useRouter } from "expo-router";
+import { useRouter, useLocalSearchParams } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import { Ionicons } from "@expo/vector-icons";
 import { useClothingItems } from "@/hooks/useClothingItems";
@@ -38,6 +38,8 @@ import type {
   HardwareColour,
   ItemFlag,
   CareInstruction,
+  Pattern,
+  Occasion,
 } from "@/models/types";
 import {
   CATEGORY_LABELS,
@@ -49,6 +51,10 @@ import {
   HARDWARE_CATEGORIES,
   ITEM_FLAG_LABELS,
   CARE_INSTRUCTION_LABELS,
+  PATTERN_LABELS,
+  OCCASION_LABELS,
+  COMMON_SIZES,
+  SHOE_SIZES,
 } from "@/models/types";
 
 function generateId(): string {
@@ -77,11 +83,18 @@ function getTodayISO(): string {
 
 export default function AddItemScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ barcodeResult?: string }>();
   const { items, addOrUpdate } = useClothingItems();
   const { theme } = useTheme();
 
   const [name, setName] = useState("");
-  const [category, setCategory] = useState<ClothingCategory>("tops");
+  // Default to most recently added item's category (#38)
+  const lastCategory = useMemo(() => {
+    if (items.length === 0) return "tops" as ClothingCategory;
+    const sorted = [...items].sort((a, b) => b.createdAt - a.createdAt);
+    return sorted[0].category;
+  }, []);
+  const [category, setCategory] = useState<ClothingCategory>(lastCategory);
   const [subCategory, setSubCategory] = useState<string | undefined>(undefined);
   const [colorIdx, setColorIdx] = useState(0);
   const [fabricType, setFabricType] = useState<FabricType>("cotton");
@@ -109,9 +122,21 @@ export default function AddItemScreen() {
   // Sustainable
   const [sustainable, setSustainable] = useState(false);
 
+  // Pattern
+  const [pattern, setPattern] = useState<Pattern>("solid");
+
+  // Occasions (#76)
+  const [occasions, setOccasions] = useState<Occasion[]>([]);
+
+  // Size (#65)
+  const [size, setSize] = useState("");
+
   // Tags
   const [tags, setTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState("");
+
+  // Quick Add mode (#39)
+  const [quickMode, setQuickMode] = useState(false);
 
   // Notes
   const [notes, setNotes] = useState("");
@@ -162,6 +187,24 @@ export default function AddItemScreen() {
       return hueDiff <= 30;
     });
   }, [items, category, finalColor]);
+
+  // Handle barcode scan result
+  useEffect(() => {
+    if (params.barcodeResult) {
+      try {
+        const result = JSON.parse(params.barcodeResult);
+        if (result.name) setName(result.name);
+        if (result.brand) setBrand(result.brand);
+        if (result.category) setCategory(result.category);
+        if (result.subCategory) setSubCategory(result.subCategory);
+        if (result.fabricType) setFabricType(result.fabricType);
+        if (result.cost != null) setCost(String(result.cost));
+        Alert.alert("Barcode Scanned!", "Product info has been applied. Review and adjust as needed.");
+      } catch {
+        // ignore parse errors
+      }
+    }
+  }, [params.barcodeResult]);
 
   const pickImage = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -317,6 +360,9 @@ export default function AddItemScreen() {
       itemFlags: itemFlags.length > 0 ? itemFlags : undefined,
       careInstructions: careInstructions.length > 0 ? careInstructions : undefined,
       sustainable: sustainable || undefined,
+      pattern: pattern !== "solid" ? pattern : undefined,
+      occasions: occasions.length > 0 ? occasions : undefined,
+      size: size.trim() || undefined,
       tags: tags.length > 0 ? tags : undefined,
     });
 
@@ -331,6 +377,17 @@ export default function AddItemScreen() {
         style={[styles.container, { backgroundColor: theme.colors.background }]}
         contentContainerStyle={[styles.content, { padding: theme.spacing.md, paddingBottom: theme.spacing.xxl }]}
       >
+        {/* Quick Add toggle (#39) */}
+        <Pressable
+          style={[styles.quickModeToggle, { backgroundColor: quickMode ? theme.colors.primary + "15" : theme.colors.surfaceAlt }]}
+          onPress={() => setQuickMode(!quickMode)}
+        >
+          <Ionicons name={quickMode ? "flash" : "flash-outline"} size={16} color={quickMode ? theme.colors.primary : theme.colors.textLight} />
+          <Text style={[styles.quickModeText, { color: quickMode ? theme.colors.primary : theme.colors.textLight }]}>
+            Quick Add {quickMode ? "On" : "Off"}
+          </Text>
+        </Pressable>
+
         {/* Photos */}
         <Text style={[styles.sectionTitle, { fontSize: theme.fontSize.md, color: theme.colors.text, marginBottom: theme.spacing.sm, marginTop: theme.spacing.md }]}>Photos</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: theme.spacing.sm }}>
@@ -371,6 +428,7 @@ export default function AddItemScreen() {
           placeholderTextColor={theme.colors.textLight}
           value={name}
           onChangeText={setName}
+          autoCapitalize="words"
         />
 
         {/* Brand */}
@@ -382,6 +440,16 @@ export default function AddItemScreen() {
           value={brand}
           onChangeText={setBrand}
         />
+
+        {/* Barcode Scanner */}
+        <Pressable
+          style={[styles.barcodeBtn, { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border, borderRadius: theme.borderRadius.sm, marginTop: theme.spacing.md }]}
+          onPress={() => router.push("/barcode-scanner")}
+        >
+          <Ionicons name="barcode-outline" size={22} color={theme.colors.primary} />
+          <Text style={[styles.barcodeBtnText, { color: theme.colors.primary }]}>Scan Barcode / QR Code</Text>
+          <Ionicons name="chevron-forward" size={16} color={theme.colors.textLight} />
+        </Pressable>
 
         {/* Product URL */}
         <Text style={[styles.sectionTitle, { fontSize: theme.fontSize.md, color: theme.colors.text, marginBottom: theme.spacing.sm, marginTop: theme.spacing.md }]}>Product URL (optional)</Text>
@@ -460,7 +528,7 @@ export default function AddItemScreen() {
           <>
             <Text style={[styles.sectionTitle, { fontSize: theme.fontSize.md, color: theme.colors.text, marginBottom: theme.spacing.sm, marginTop: theme.spacing.md }]}>Type</Text>
             <View style={styles.chipRow}>
-              {subcats.map((sc) => (
+              {[...subcats].sort((a, b) => a.label.localeCompare(b.label)).map((sc) => (
                 <Chip
                   key={sc.value}
                   label={sc.label}
@@ -621,6 +689,57 @@ export default function AddItemScreen() {
           ))}
         </View>
 
+        {/* Pattern / Print - hidden in quick mode */}
+        {!quickMode && <Text style={[styles.sectionTitle, { fontSize: theme.fontSize.md, color: theme.colors.text, marginBottom: theme.spacing.sm, marginTop: theme.spacing.md }]}>Pattern</Text>}
+        {!quickMode &&
+        <View style={styles.chipRow}>
+          {(Object.keys(PATTERN_LABELS) as Pattern[]).map((p) => (
+            <Chip
+              key={p}
+              label={PATTERN_LABELS[p]}
+              selected={pattern === p}
+              onPress={() => setPattern(p)}
+            />
+          ))}
+        </View>}
+
+        {/* Size (#65) */}
+        <Text style={[styles.sectionTitle, { fontSize: theme.fontSize.md, color: theme.colors.text, marginBottom: theme.spacing.sm, marginTop: theme.spacing.md }]}>Size (optional)</Text>
+        <View style={styles.chipRow}>
+          {(category === "shoes" ? SHOE_SIZES : COMMON_SIZES).map((s) => (
+            <Chip key={s} label={s} selected={size === s} onPress={() => setSize(size === s ? "" : s)} />
+          ))}
+        </View>
+        <TextInput
+          style={[styles.input, { backgroundColor: theme.colors.surface, borderRadius: theme.borderRadius.sm, paddingHorizontal: theme.spacing.md, fontSize: theme.fontSize.md, color: theme.colors.text, borderColor: theme.colors.border, marginTop: 4 }]}
+          placeholder="Or enter custom size..."
+          placeholderTextColor={theme.colors.textLight}
+          value={size}
+          onChangeText={setSize}
+        />
+
+        {/* Occasions (#76) — always visible, even in quick mode */}
+        <Text style={[styles.sectionTitle, { fontSize: theme.fontSize.md, color: theme.colors.text, marginBottom: theme.spacing.sm, marginTop: theme.spacing.md }]}>Occasions</Text>
+        <View style={styles.chipRow}>
+          {(Object.keys(OCCASION_LABELS) as Occasion[]).map((occ) => (
+            <Chip
+              key={occ}
+              label={OCCASION_LABELS[occ]}
+              selected={occasions.includes(occ)}
+              onPress={() => {
+                setOccasions((prev) =>
+                  prev.includes(occ)
+                    ? prev.filter((o) => o !== occ)
+                    : [...prev, occ]
+                );
+              }}
+            />
+          ))}
+        </View>
+
+        {/* Sections hidden in Quick Add mode */}
+        {!quickMode && <>
+
         {/* Hardware Colour */}
         {(HARDWARE_CATEGORIES.includes(category) || (subCategory && HARDWARE_SUBCATEGORIES.includes(subCategory))) && (
           <>
@@ -743,7 +862,12 @@ export default function AddItemScreen() {
           multiline
           numberOfLines={3}
           textAlignVertical="top"
+          maxLength={500}
         />
+        <Text style={[styles.charCount, { color: theme.colors.textLight }]}>{notes.length}/500</Text>
+
+        </>}
+        {/* End of quickMode hidden sections */}
 
         {/* Save Button */}
         <Pressable
@@ -1010,6 +1134,19 @@ const styles = StyleSheet.create({
     height: 48,
     borderWidth: 1,
   },
+  barcodeBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderWidth: 1,
+  },
+  barcodeBtnText: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: "600",
+  },
   urlRow: {
     flexDirection: "row",
     gap: 8,
@@ -1142,6 +1279,37 @@ const styles = StyleSheet.create({
   notesInput: {
     height: 80,
     paddingTop: 12,
+  },
+  charCount: {
+    textAlign: "right",
+    fontSize: 11,
+    marginTop: 2,
+  },
+  quickModeToggle: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "flex-end",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    gap: 4,
+  },
+  quickModeText: {
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  quickModeToggle: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "flex-end",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    gap: 4,
+  },
+  quickModeText: {
+    fontSize: 12,
+    fontWeight: "600",
   },
   // Modal styles
   modalContainer: {

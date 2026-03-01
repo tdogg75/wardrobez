@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo, useLayoutEffect, useCallback } from "react";
 import {
   View,
   Text,
@@ -14,7 +14,7 @@ import {
   Switch,
 } from "react-native";
 import { fetchProductFromUrl } from "@/services/productSearch";
-import { useRouter, useLocalSearchParams } from "expo-router";
+import { useRouter, useLocalSearchParams, useNavigation } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import { Ionicons } from "@expo/vector-icons";
 import { useClothingItems } from "@/hooks/useClothingItems";
@@ -38,6 +38,8 @@ import type {
   HardwareColour,
   ItemFlag,
   CareInstruction,
+  Pattern,
+  Occasion,
 } from "@/models/types";
 import {
   CATEGORY_LABELS,
@@ -50,6 +52,10 @@ import {
   HARDWARE_CATEGORIES,
   ITEM_FLAG_LABELS,
   CARE_INSTRUCTION_LABELS,
+  PATTERN_LABELS,
+  OCCASION_LABELS,
+  COMMON_SIZES,
+  SHOE_SIZES,
 } from "@/models/types";
 
 const ARCHIVE_REASONS: ArchiveReason[] = ["donated", "sold", "worn_out", "given_away"];
@@ -58,6 +64,7 @@ export default function EditItemScreen() {
   const { theme } = useTheme();
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
+  const navigation = useNavigation();
   const { items, addOrUpdate, remove, archiveItem, removeItemWornDate } = useClothingItems();
 
   const [name, setName] = useState("");
@@ -93,6 +100,15 @@ export default function EditItemScreen() {
 
   // Item flags
   const [itemFlags, setItemFlags] = useState<ItemFlag[]>([]);
+
+  // Pattern
+  const [pattern, setPattern] = useState<Pattern>("solid");
+
+  // Occasions (#76)
+  const [occasions, setOccasions] = useState<Occasion[]>([]);
+
+  // Size (#65)
+  const [size, setSize] = useState("");
 
   // Notes
   const [notes, setNotes] = useState("");
@@ -159,6 +175,9 @@ export default function EditItemScreen() {
     setPurchaseDate(item.purchaseDate ?? "");
     setCareInstructions(item.careInstructions ?? []);
     setSustainable(item.sustainable ?? false);
+    setPattern(item.pattern ?? "solid");
+    setOccasions(item.occasions ?? []);
+    setSize(item.size ?? "");
     setTags(item.tags ?? []);
   }, [id, items]);
 
@@ -188,6 +207,17 @@ export default function EditItemScreen() {
 
   const removeImage = (index: number) => {
     setImageUris((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  // Reorder images (#69)
+  const moveImage = (index: number, direction: -1 | 1) => {
+    const target = index + direction;
+    if (target < 0 || target >= imageUris.length) return;
+    setImageUris((prev) => {
+      const next = [...prev];
+      [next[index], next[target]] = [next[target], next[index]];
+      return next;
+    });
   };
 
   // Cropper state
@@ -374,6 +404,9 @@ export default function EditItemScreen() {
       purchaseDate: purchaseDate.trim() || undefined,
       careInstructions: careInstructions.length > 0 ? careInstructions : undefined,
       sustainable,
+      pattern: pattern !== "solid" ? pattern : undefined,
+      occasions: occasions.length > 0 ? occasions : undefined,
+      size: size.trim() || undefined,
       tags: tags.length > 0 ? tags : undefined,
     });
     router.back();
@@ -400,6 +433,25 @@ export default function EditItemScreen() {
     Alert.alert("Archived", "Item has been archived and affected outfits have been flagged.");
     router.back();
   };
+
+  // Set header right icons: save, archive, delete
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerRight: () => (
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 12, marginRight: 4 }}>
+          <Pressable onPress={handleSave} hitSlop={10}>
+            <Ionicons name="checkmark-circle" size={26} color={theme.colors.primary} />
+          </Pressable>
+          <Pressable onPress={() => setShowArchiveModal(true)} hitSlop={10}>
+            <Ionicons name="archive-outline" size={22} color={theme.colors.warning} />
+          </Pressable>
+          <Pressable onPress={handleDelete} hitSlop={10}>
+            <Ionicons name="trash-outline" size={22} color={theme.colors.error} />
+          </Pressable>
+        </View>
+      ),
+    });
+  }, [navigation, handleSave, handleDelete, theme]);
 
   const subcats = SUBCATEGORIES[category];
 
@@ -428,6 +480,21 @@ export default function EditItemScreen() {
               {index === 0 && (
                 <View style={[styles.primaryBadge, { backgroundColor: theme.colors.primary }]}>
                   <Text style={styles.primaryBadgeText}>Main</Text>
+                </View>
+              )}
+              {/* Reorder buttons (#69) */}
+              {imageUris.length > 1 && (
+                <View style={styles.reorderBtns}>
+                  {index > 0 && (
+                    <Pressable onPress={() => moveImage(index, -1)} style={styles.reorderBtn}>
+                      <Ionicons name="chevron-back" size={14} color="#FFF" />
+                    </Pressable>
+                  )}
+                  {index < imageUris.length - 1 && (
+                    <Pressable onPress={() => moveImage(index, 1)} style={styles.reorderBtn}>
+                      <Ionicons name="chevron-forward" size={14} color="#FFF" />
+                    </Pressable>
+                  )}
                 </View>
               )}
             </Pressable>
@@ -560,7 +627,7 @@ export default function EditItemScreen() {
           <>
             <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Type</Text>
             <View style={styles.chipRow}>
-              {subcats.map((sc) => (
+              {[...subcats].sort((a, b) => a.label.localeCompare(b.label)).map((sc) => (
                 <Chip
                   key={sc.value}
                   label={sc.label}
@@ -719,6 +786,34 @@ export default function EditItemScreen() {
           ))}
         </View>
 
+        {/* Pattern / Print */}
+        <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Pattern</Text>
+        <View style={styles.chipRow}>
+          {(Object.keys(PATTERN_LABELS) as Pattern[]).map((p) => (
+            <Chip
+              key={p}
+              label={PATTERN_LABELS[p]}
+              selected={pattern === p}
+              onPress={() => setPattern(p)}
+            />
+          ))}
+        </View>
+
+        {/* Size (#65) */}
+        <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Size</Text>
+        <View style={styles.chipRow}>
+          {(category === "shoes" ? SHOE_SIZES : COMMON_SIZES).map((s) => (
+            <Chip key={s} label={s} selected={size === s} onPress={() => setSize(size === s ? "" : s)} />
+          ))}
+        </View>
+        <TextInput
+          style={[styles.input, { marginTop: 4 }]}
+          placeholder="Or enter custom size..."
+          placeholderTextColor={theme.colors.textLight}
+          value={size}
+          onChangeText={setSize}
+        />
+
         {/* Hardware Colour */}
         {(HARDWARE_CATEGORIES.includes(category) ||
           (subCategory && HARDWARE_SUBCATEGORIES.includes(subCategory))) && (
@@ -780,6 +875,25 @@ export default function EditItemScreen() {
             trackColor={{ false: theme.colors.border, true: theme.colors.accent }}
             thumbColor={sustainable ? theme.colors.primary : theme.colors.surfaceAlt}
           />
+        </View>
+
+        {/* Occasions (#76) */}
+        <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Occasions</Text>
+        <View style={styles.chipRow}>
+          {(Object.keys(OCCASION_LABELS) as Occasion[]).map((occ) => (
+            <Chip
+              key={occ}
+              label={OCCASION_LABELS[occ]}
+              selected={occasions.includes(occ)}
+              onPress={() => {
+                setOccasions((prev) =>
+                  prev.includes(occ)
+                    ? prev.filter((o) => o !== occ)
+                    : [...prev, occ]
+                );
+              }}
+            />
+          ))}
         </View>
 
         {/* Tags */}
@@ -940,28 +1054,10 @@ export default function EditItemScreen() {
           multiline
           numberOfLines={3}
           textAlignVertical="top"
+          maxLength={500}
         />
+        <Text style={{ textAlign: "right", fontSize: 11, color: theme.colors.textLight, marginTop: 2 }}>{notes.length}/500</Text>
 
-        <Pressable style={[styles.saveBtn, { backgroundColor: theme.colors.primary }]} onPress={handleSave}>
-          <Text style={styles.saveBtnText}>Save Changes</Text>
-        </Pressable>
-
-        {/* Archive Button */}
-        <Pressable
-          style={[
-            styles.archiveBtn,
-            { borderColor: theme.colors.warning + "40", backgroundColor: theme.colors.warning + "08" },
-          ]}
-          onPress={() => setShowArchiveModal(true)}
-        >
-          <Ionicons name="archive-outline" size={18} color={theme.colors.warning} />
-          <Text style={[styles.archiveBtnText, { color: theme.colors.warning }]}>Archive Item</Text>
-        </Pressable>
-
-        <Pressable style={styles.deleteBtn} onPress={handleDelete}>
-          <Ionicons name="trash-outline" size={18} color={theme.colors.error} />
-          <Text style={[styles.deleteBtnText, { color: theme.colors.error }]}>Delete Item</Text>
-        </Pressable>
       </ScrollView>
 
       {/* Color Picker Modal */}
@@ -1223,6 +1319,23 @@ const styles = StyleSheet.create({
   content: { padding: 16, paddingBottom: 48 },
   photoScroll: {
     marginBottom: 8,
+  },
+  reorderBtns: {
+    position: "absolute",
+    bottom: 4,
+    left: 0,
+    right: 0,
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: 4,
+  },
+  reorderBtn: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "center",
+    alignItems: "center",
   },
   photoThumb: {
     width: 100,

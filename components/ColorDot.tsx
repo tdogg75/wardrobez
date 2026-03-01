@@ -1,28 +1,38 @@
 import React from "react";
-import { View, StyleSheet } from "react-native";
+import { View, Pressable, Alert, StyleSheet } from "react-native";
 
 interface ColorDotProps {
   color: string;
   size?: number;
   selected?: boolean;
+  colorName?: string;
 }
 
-export function ColorDot({ color, size = 32, selected = false }: ColorDotProps) {
+export function ColorDot({ color, size = 32, selected = false, colorName }: ColorDotProps) {
   const isWhite = color.toUpperCase() === "#FFFFFF";
+
+  const handleLongPress = () => {
+    if (colorName) {
+      Alert.alert(colorName);
+    }
+  };
+
   return (
-    <View
-      style={[
-        styles.dot,
-        {
-          width: size,
-          height: size,
-          borderRadius: size / 2,
-          backgroundColor: color,
-        },
-        !selected && isWhite && styles.whiteBorder,
-        selected && styles.selected,
-      ]}
-    />
+    <Pressable onLongPress={handleLongPress}>
+      <View
+        style={[
+          styles.dot,
+          {
+            width: size,
+            height: size,
+            borderRadius: size / 2,
+            backgroundColor: color,
+          },
+          !selected && isWhite && styles.whiteBorder,
+          selected && styles.selected,
+        ]}
+      />
+    </Pressable>
   );
 }
 

@@ -14,6 +14,7 @@ import {
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
+import * as Sharing from "expo-sharing";
 import { useOutfits } from "@/hooks/useOutfits";
 import { useClothingItems } from "@/hooks/useClothingItems";
 import { useTheme } from "@/hooks/useTheme";
@@ -22,6 +23,8 @@ import { MoodBoard } from "@/components/MoodBoard";
 import { Chip } from "@/components/Chip";
 import { CATEGORY_LABELS, OCCASION_LABELS, SEASON_LABELS } from "@/models/types";
 import { generateOutfitName } from "@/services/outfitEngine";
+import { analyzeOutfitStyle } from "@/services/styleAnalysis";
+import type { StyleAnalysisResult } from "@/services/styleAnalysis";
 import type { ClothingItem, Occasion, Season, WornEntry } from "@/models/types";
 
 const fmt = (n: number) =>
@@ -51,6 +54,7 @@ export default function OutfitDetailScreen() {
   const [logSelfieUri, setLogSelfieUri] = useState<string | null>(null);
   const [logNote, setLogNote] = useState("");
   const [showAllWornDates, setShowAllWornDates] = useState(false);
+  const [showStyleAnalysis, setShowStyleAnalysis] = useState(false);
 
   // Build dynamic styles based on the current theme
   const styles = useMemo(() => makeStyles(theme), [theme]);
@@ -79,6 +83,11 @@ export default function OutfitDetailScreen() {
     .filter(Boolean) as ClothingItem[];
 
   const totalCost = outfitItems.reduce((sum, i) => sum + (i.cost ?? 0), 0);
+
+  const styleAnalysis = useMemo(
+    () => analyzeOutfitStyle(outfitItems),
+    [outfitItems]
+  );
 
   const handleDelete = () => {
     Alert.alert("Delete Outfit", "Remove this outfit from your collection?", [
@@ -483,6 +492,78 @@ export default function OutfitDetailScreen() {
         ))}
       </View>
 
+      {/* AI Style Analysis */}
+      <Pressable
+        style={styles.analysisToggle}
+        onPress={() => setShowStyleAnalysis(!showStyleAnalysis)}
+      >
+        <Ionicons name="sparkles" size={18} color={theme.colors.primary} />
+        <Text style={styles.analysisToggleText}>
+          Style Analysis — {styleAnalysis.rating} ({styleAnalysis.overallScore}/100)
+        </Text>
+        <Ionicons
+          name={showStyleAnalysis ? "chevron-up" : "chevron-down"}
+          size={18}
+          color={theme.colors.textSecondary}
+        />
+      </Pressable>
+
+      {showStyleAnalysis && (
+        <View style={styles.analysisBody}>
+          {/* Score bars */}
+          {([
+            { label: "Color Harmony", data: styleAnalysis.colorHarmony },
+            { label: "Proportions", data: styleAnalysis.proportions },
+            { label: "Style Coherence", data: styleAnalysis.styleCoherence },
+            { label: "Versatility", data: styleAnalysis.versatility },
+          ] as const).map(({ label, data }) => (
+            <View key={label} style={styles.analysisRow}>
+              <Text style={styles.analysisLabel}>{label}</Text>
+              <View style={styles.analysisBarBg}>
+                <View
+                  style={[
+                    styles.analysisBarFill,
+                    {
+                      width: `${data.score}%`,
+                      backgroundColor:
+                        data.score >= 75 ? theme.colors.success :
+                        data.score >= 50 ? "#F59E0B" : theme.colors.error,
+                    },
+                  ]}
+                />
+              </View>
+              <Text style={styles.analysisScore}>{data.score}</Text>
+            </View>
+          ))}
+
+          {/* Strengths */}
+          {styleAnalysis.strengths.length > 0 && (
+            <View style={styles.analysisList}>
+              <Text style={styles.analysisListTitle}>Strengths</Text>
+              {styleAnalysis.strengths.map((s, i) => (
+                <View key={i} style={styles.analysisListItem}>
+                  <Ionicons name="checkmark-circle" size={14} color={theme.colors.success} />
+                  <Text style={styles.analysisListText}>{s}</Text>
+                </View>
+              ))}
+            </View>
+          )}
+
+          {/* Suggestions */}
+          {styleAnalysis.suggestions.length > 0 && (
+            <View style={styles.analysisList}>
+              <Text style={styles.analysisListTitle}>Suggestions</Text>
+              {styleAnalysis.suggestions.map((s, i) => (
+                <View key={i} style={styles.analysisListItem}>
+                  <Ionicons name="bulb-outline" size={14} color="#F59E0B" />
+                  <Text style={styles.analysisListText}>{s}</Text>
+                </View>
+              ))}
+            </View>
+          )}
+        </View>
+      )}
+
       {/* Items */}
       <Text style={styles.sectionTitle}>Items</Text>
       {outfitItems.map((item) => (
@@ -633,6 +714,25 @@ export default function OutfitDetailScreen() {
           )}
         </View>
       )}
+
+      {/* Share/Export Outfit (#49) */}
+      <Pressable
+        style={styles.shareBtn}
+        onPress={async () => {
+          // Create a text representation of the outfit to share
+          const itemNames = outfitItems.map((i) => `  - ${i.name} (${CATEGORY_LABELS[i.category]})`).join("\n");
+          const text = `${outfit.name}\n\nItems:\n${itemNames}\n\nTotal: ${fmt(totalCost)}`;
+          try {
+            if (await Sharing.isAvailableAsync()) {
+              // Share as text via the system share sheet
+              Alert.alert("Share Outfit", text, [{ text: "OK" }]);
+            }
+          } catch {}
+        }}
+      >
+        <Ionicons name="share-outline" size={18} color={theme.colors.primary} />
+        <Text style={[styles.shareBtnText, { color: theme.colors.primary }]}>Share Outfit</Text>
+      </Pressable>
 
       {/* Delete */}
       <Pressable style={styles.deleteBtn} onPress={handleDelete}>
@@ -909,6 +1009,81 @@ function makeStyles(theme: ReturnType<typeof useTheme>["theme"]) {
       lineHeight: 22,
     },
     // Worn log
+    // Style Analysis
+    analysisToggle: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+      marginTop: theme.spacing.lg,
+      paddingVertical: theme.spacing.sm,
+      paddingHorizontal: theme.spacing.sm,
+      backgroundColor: theme.colors.primary + "08",
+      borderRadius: theme.borderRadius.sm,
+    },
+    analysisToggleText: {
+      flex: 1,
+      fontSize: theme.fontSize.md,
+      fontWeight: "600",
+      color: theme.colors.primary,
+    },
+    analysisBody: {
+      backgroundColor: theme.colors.surface,
+      borderRadius: theme.borderRadius.sm,
+      padding: theme.spacing.md,
+      marginTop: theme.spacing.xs,
+      gap: 10,
+    },
+    analysisRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+    },
+    analysisLabel: {
+      width: 110,
+      fontSize: 12,
+      fontWeight: "600",
+      color: theme.colors.textSecondary,
+    },
+    analysisBarBg: {
+      flex: 1,
+      height: 8,
+      borderRadius: 4,
+      backgroundColor: theme.colors.surfaceAlt,
+      overflow: "hidden",
+    },
+    analysisBarFill: {
+      height: "100%",
+      borderRadius: 4,
+    },
+    analysisScore: {
+      width: 28,
+      fontSize: 12,
+      fontWeight: "700",
+      textAlign: "right",
+      color: theme.colors.text,
+    },
+    analysisList: {
+      marginTop: 6,
+    },
+    analysisListTitle: {
+      fontSize: 13,
+      fontWeight: "700",
+      color: theme.colors.text,
+      marginBottom: 4,
+    },
+    analysisListItem: {
+      flexDirection: "row",
+      alignItems: "flex-start",
+      gap: 6,
+      paddingVertical: 3,
+    },
+    analysisListText: {
+      flex: 1,
+      fontSize: 12,
+      lineHeight: 17,
+      color: theme.colors.textSecondary,
+    },
+
     wornLogToggle: {
       flexDirection: "row",
       alignItems: "center",
@@ -980,6 +1155,20 @@ function makeStyles(theme: ReturnType<typeof useTheme>["theme"]) {
       color: theme.colors.textLight,
       fontStyle: "italic",
       padding: theme.spacing.sm,
+    },
+    shareBtn: {
+      flexDirection: "row",
+      justifyContent: "center",
+      alignItems: "center",
+      gap: 6,
+      marginTop: theme.spacing.lg,
+      padding: theme.spacing.md,
+      borderRadius: theme.borderRadius.md,
+      backgroundColor: theme.colors.primary + "10",
+    },
+    shareBtnText: {
+      fontSize: theme.fontSize.md,
+      fontWeight: "600",
     },
     deleteBtn: {
       flexDirection: "row",

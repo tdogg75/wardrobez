@@ -16,6 +16,7 @@ const FILES = {
   PLANNED_OUTFITS: `${DATA_DIR}planned-outfits.json`,
   INSPIRATION: `${DATA_DIR}inspiration.json`,
   PACKING_LISTS: `${DATA_DIR}packing-lists.json`,
+  OUTFIT_FLAGS: `${DATA_DIR}outfit-flags.json`,
 } as const;
 
 // Legacy AsyncStorage keys for one-time migration
@@ -150,14 +151,46 @@ function migrateClothingItem(item: any): ClothingItem {
     migrated.category = "accessories";
   }
 
-  // Migrate skirt and shorts from bottoms to skirts_shorts
+  // Migrate skirt and shorts from bottoms to separate categories
   if (migrated.category === "bottoms" && migrated.subCategory === "skirt") {
-    migrated.category = "skirts_shorts";
+    migrated.category = "skirts";
     migrated.subCategory = "midi_skirt";
   }
   if (migrated.category === "bottoms" && migrated.subCategory === "shorts") {
-    migrated.category = "skirts_shorts";
+    migrated.category = "shorts";
     migrated.subCategory = "casual_shorts";
+  }
+
+  // Migrate old skirts_shorts to the new separate categories
+  if (migrated.category === "skirts_shorts") {
+    const sub = migrated.subCategory ?? "";
+    if (sub === "casual_shorts" || sub === "athletic_shorts" || sub === "dressy_shorts") {
+      migrated.category = "shorts";
+      if (sub === "dressy_shorts") migrated.subCategory = "casual_shorts";
+    } else {
+      migrated.category = "skirts";
+    }
+  }
+
+  // Migrate bags from accessories to purse category
+  if (migrated.category === "accessories" && migrated.subCategory === "bags") {
+    migrated.category = "purse";
+    migrated.subCategory = "handbag";
+  }
+
+  // Migrate old subcategory names
+  if (migrated.subCategory === "casual_pants") migrated.subCategory = "casual";
+  if (migrated.subCategory === "joggers") migrated.subCategory = "sweatpants";
+  if (migrated.category === "bottoms" && migrated.subCategory === "other") migrated.subCategory = "casual";
+  if (migrated.subCategory === "workout_shirt") migrated.subCategory = "lounge_shirt";
+  if (migrated.subCategory === "polo") migrated.subCategory = "tshirt";
+  if (migrated.subCategory === "dress_boots") migrated.subCategory = "knee_boots";
+  if (migrated.subCategory === "formal_dress") migrated.subCategory = "work_dress";
+  if (migrated.subCategory === "swim_top") migrated.subCategory = "top";
+  if (migrated.subCategory === "swim_bottom") migrated.subCategory = "bottom";
+  if (migrated.category === "swimwear" && migrated.subCategory === "cover_up") {
+    migrated.category = "dresses";
+    migrated.subCategory = "cover_up";
   }
 
   // Migrate sport_coat -> casual_blazer
@@ -730,4 +763,29 @@ export async function savePackingList(list: PackingList): Promise<void> {
 export async function deletePackingList(id: string): Promise<void> {
   const lists = await getPackingLists();
   await writeJsonFile(FILES.PACKING_LISTS, lists.filter((l) => l.id !== id));
+}
+
+// --- Outfit Flags ---
+
+export interface OutfitFlagData {
+  id: string;
+  pattern: string;
+  reason: string;
+  createdAt: number;
+}
+
+export async function getOutfitFlags(): Promise<OutfitFlagData[]> {
+  const data = await readJsonFile<OutfitFlagData[]>(FILES.OUTFIT_FLAGS);
+  return data ?? [];
+}
+
+export async function saveOutfitFlag(flag: OutfitFlagData): Promise<void> {
+  const flags = await getOutfitFlags();
+  flags.push(flag);
+  await writeJsonFile(FILES.OUTFIT_FLAGS, flags);
+}
+
+export async function deleteOutfitFlag(id: string): Promise<void> {
+  const flags = await getOutfitFlags();
+  await writeJsonFile(FILES.OUTFIT_FLAGS, flags.filter((f) => f.id !== id));
 }

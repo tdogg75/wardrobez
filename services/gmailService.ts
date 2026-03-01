@@ -475,6 +475,29 @@ function isClothingPurchase(subject: string, body: string, from: string): boolea
   const text = `${subject} ${body} ${from}`.toLowerCase();
   const subjectLower = subject.toLowerCase();
 
+  // Skip obviously non-purchase emails early
+  const skipPatterns = [
+    /unsubscribe.*manage.*preferences/i,
+    /password reset/i,
+    /verify your email/i,
+    /welcome to/i,
+    /account.*created/i,
+    /your review/i,
+    /rate your.*experience/i,
+    /loyalty.*points/i,
+    /reward.*points/i,
+    /flash sale/i,
+    /% off/i,
+    /sale starts/i,
+    /shop now/i,
+    /new arrivals/i,
+  ];
+  // Only skip if subject matches these promotional patterns AND there's no order signal
+  if (skipPatterns.some((p) => p.test(subjectLower))) {
+    const hasStrongOrderSignal = /order\s*(#|number|confirmed)|receipt|invoice|your purchase/i.test(subjectLower);
+    if (!hasStrongOrderSignal) return false;
+  }
+
   // Check whether this looks like an order confirmation vs. a shipping update
   const hasOrderConfirmation = ORDER_CONFIRMATION_KEYWORDS.some((kw) => text.includes(kw));
   const hasShippingKeyword = SHIPPING_KEYWORDS.some((kw) => text.includes(kw));
@@ -483,11 +506,8 @@ function isClothingPurchase(subject: string, body: string, from: string): boolea
   if (!hasOrderConfirmation && !hasShippingKeyword) return false;
 
   // If this is ONLY a shipping/delivery update (no order confirmation signals),
-  // apply stricter filtering — only include if the subject itself strongly
-  // suggests it is the primary order notification (not just a tracking update)
+  // apply stricter filtering
   if (!hasOrderConfirmation && hasShippingKeyword) {
-    // Shipping-only emails are lower priority. Only include them if the subject
-    // contains a strong purchase signal (e.g., price or "order" in subject).
     const subjectHasOrder = /order|purchase|receipt|invoice/i.test(subjectLower);
     if (!subjectHasOrder) return false;
   }
@@ -497,7 +517,7 @@ function isClothingPurchase(subject: string, body: string, from: string): boolea
   const hasClothingKeyword = CLOTHING_KEYWORDS.some((kw) => text.includes(kw));
   const hasHouseholdKeyword = HOUSEHOLD_EXCLUSION_KEYWORDS.some((kw) => text.includes(kw));
 
-  // If it has clothing signals, include it (even if it also has household keywords - mixed orders)
+  // If it has clothing signals, include it
   if (hasFashionVendor || hasClothingKeyword) return true;
 
   // If it only has household keywords and no clothing keywords at all, exclude it
@@ -846,7 +866,8 @@ function generateSnippet(subject: string, vendor: string, lineItems: GmailLineIt
 export async function scanGmailForPurchases(
   token: string,
   onProgress?: (loaded: number, total: number) => void,
-  onItem?: (item: GmailPurchaseItem) => void
+  onItem?: (item: GmailPurchaseItem) => void,
+  abortSignal?: { aborted: boolean }
 ): Promise<GmailPurchaseItem[]> {
   const purchases: GmailPurchaseItem[] = [];
 
@@ -855,22 +876,42 @@ export async function scanGmailForPurchases(
   twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 2);
   const afterDate = twoYearsAgo.toISOString().split("T")[0].replace(/-/g, "/");
 
-  // Use Gmail search operators to narrow down
+  // Use Gmail search operators to narrow down — expanded keywords for better coverage
   const query = encodeURIComponent(
-    `after:${afterDate} (order OR receipt OR confirmation OR shipped OR invoice OR purchased) (clothing OR shirt OR pants OR shoes OR dress OR jacket OR jewelry OR accessories OR fashion OR sneakers OR boots OR sweater OR hoodie OR jeans)`
+    `after:${afterDate} (order OR receipt OR confirmation OR shipped OR invoice OR purchased OR "thanks for your order" OR "order placed") (clothing OR shirt OR pants OR shoes OR dress OR jacket OR jewelry OR accessories OR fashion OR sneakers OR boots OR sweater OR hoodie OR jeans OR skirt OR shorts OR blazer OR coat OR purse OR handbag OR sandals OR heels OR bikini OR swimsuit)`
   );
 
-  // Fetch message IDs
-  const listResult = await gmailFetch<{
-    messages?: GmailMessage[];
-    resultSizeEstimate?: number;
-  }>(`messages?q=${query}&maxResults=100`, token);
+  // Paginated fetch — fetch up to 500 messages across multiple pages
+  const messageIds: GmailMessage[] = [];
+  let pageToken: string | undefined = undefined;
+  const MAX_PAGES = 5; // 5 pages × 100 = up to 500 emails
 
-  if (!listResult?.messages || listResult.messages.length === 0) {
+  for (let page = 0; page < MAX_PAGES; page++) {
+    if (abortSignal?.aborted) break;
+
+    const pageQuery = pageToken
+      ? `messages?q=${query}&maxResults=100&pageToken=${pageToken}`
+      : `messages?q=${query}&maxResults=100`;
+
+    const listResult = await gmailFetch<{
+      messages?: GmailMessage[];
+      resultSizeEstimate?: number;
+      nextPageToken?: string;
+    }>(pageQuery, token);
+
+    if (listResult?.messages) {
+      messageIds.push(...listResult.messages);
+    }
+
+    // If there's no next page, we're done
+    if (!listResult?.nextPageToken) break;
+    pageToken = listResult.nextPageToken;
+  }
+
+  if (messageIds.length === 0) {
     return [];
   }
 
-  const messageIds = listResult.messages;
   const total = messageIds.length;
   let loaded = 0;
 
@@ -884,8 +925,10 @@ export async function scanGmailForPurchases(
     await FileSystem.makeDirectoryAsync(imgDir, { intermediates: true });
   }
 
-  // Fetch each message detail
+  // Fetch each message detail — user can abort by setting abortSignal.aborted
   for (const msg of messageIds) {
+    if (abortSignal?.aborted) break;
+
     const detail = await gmailFetch<GmailMessageDetail>(
       `messages/${msg.id}?format=full`,
       token

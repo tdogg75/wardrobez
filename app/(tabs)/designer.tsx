@@ -31,13 +31,15 @@ function generateId(): string {
 const CATEGORY_ORDER: ClothingCategory[] = [
   "tops",
   "bottoms",
-  "skirts_shorts",
+  "shorts",
+  "skirts",
   "dresses",
   "jumpsuits",
   "blazers",
   "jackets",
   "shoes",
   "accessories",
+  "purse",
   "jewelry",
   "swimwear",
 ];

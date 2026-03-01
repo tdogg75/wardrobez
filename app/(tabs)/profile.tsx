@@ -30,12 +30,9 @@ import * as ImagePicker from "expo-image-picker";
 import { useTheme } from "@/hooks/useTheme";
 import { hexToHSL } from "@/constants/colors";
 import { CATEGORY_LABELS, ARCHIVE_REASON_LABELS } from "@/models/types";
-import type { ClothingCategory, ClothingItem, WishlistItem, PlannedOutfit, InspirationPin } from "@/models/types";
+import type { ClothingCategory, ClothingItem, WishlistItem, InspirationPin } from "@/models/types";
 import { MoodBoard } from "@/components/MoodBoard";
 import {
-  getPlannedOutfits,
-  savePlannedOutfit,
-  deletePlannedOutfit,
   getInspirationPins,
   saveInspirationPin,
   deleteInspirationPin,
@@ -78,6 +75,9 @@ export default function ProfileScreen() {
     }, [reloadItems, reloadOutfits])
   );
 
+  /* ---------- profile tabs ---------- */
+  const [profileTab, setProfileTab] = useState<"overview" | "analytics" | "tools" | "shopping">("overview");
+
   /* ---------- section toggles ---------- */
   const [statsOpen, setStatsOpen] = useState(false);
   const [archivedOpen, setArchivedOpen] = useState(false);
@@ -94,7 +94,6 @@ export default function ProfileScreen() {
   const [duplicatesOpen, setDuplicatesOpen] = useState(false);
 
   const [consistencyOpen, setConsistencyOpen] = useState(false);
-  const [plannerOpen, setPlannerOpen] = useState(false);
   const [packingOpen, setPackingOpen] = useState(false);
   const [shoppingOpen, setShoppingOpen] = useState(false);
   const [saleAlertsOpen, setSaleAlertsOpen] = useState(false);
@@ -110,19 +109,11 @@ export default function ProfileScreen() {
   /* ---------- inspiration board state ---------- */
   const [inspirationPins, setInspirationPins] = useState<InspirationPin[]>([]);
 
-  /* ---------- weekly planner state ---------- */
-  const [weekPlan, setWeekPlan] = useState<Record<string, string | null>>({
-    Monday: null,
-    Tuesday: null,
-    Wednesday: null,
-    Thursday: null,
-    Friday: null,
-    Saturday: null,
-    Sunday: null,
-  });
-
-  /* ---------- packing list state ---------- */
+  /* ---------- packing list / travel mode state (#88) ---------- */
   const [tripDays, setTripDays] = useState("5");
+  const [tripDestination, setTripDestination] = useState("");
+  const [tripClimate, setTripClimate] = useState<"warm" | "cold" | "mild" | "">("");
+  const [tripType, setTripType] = useState<"casual" | "business" | "beach" | "adventure" | "">("");
   const [packingResult, setPackingResult] = useState<{ category: string; name: string; checked: boolean }[]>([]);
 
   /* ---------- wishlist state ---------- */
@@ -285,8 +276,8 @@ export default function ProfileScreen() {
 
   /* --- Wardrobe Gap Analysis --- */
   const ALL_CATEGORIES: ClothingCategory[] = [
-    "tops", "bottoms", "skirts_shorts", "dresses", "jumpsuits", "blazers", "jackets",
-    "shoes", "accessories", "swimwear", "jewelry",
+    "tops", "bottoms", "shorts", "skirts", "dresses", "jumpsuits", "blazers", "jackets",
+    "shoes", "accessories", "purse", "swimwear", "jewelry",
   ];
 
   const gapInsights = useMemo(() => {
@@ -573,65 +564,12 @@ export default function ProfileScreen() {
     setSplurgeResult({ verdict, reason });
   };
 
-  /* --- Weekly Planner helpers --- */
-  const loadWeekPlan = useCallback(async () => {
-    const saved = await getPlannedOutfits();
-    if (saved.length > 0) {
-      const plan: Record<string, string | null> = {
-        Monday: null, Tuesday: null, Wednesday: null, Thursday: null,
-        Friday: null, Saturday: null, Sunday: null,
-      };
-      const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-      for (const entry of saved) {
-        const d = new Date(entry.date);
-        const dayName = dayNames[d.getDay()];
-        if (dayName && entry.outfitId) {
-          plan[dayName] = entry.outfitId;
-        }
-      }
-      setWeekPlan(plan);
-    }
-  }, []);
-
-  useFocusEffect(
-    useCallback(() => {
-      loadWeekPlan();
-    }, [loadWeekPlan])
-  );
-
-  const assignOutfitToDay = (day: string) => {
-    if (outfits.length === 0) {
-      Alert.alert("No Outfits", "Create some outfits first to use the weekly planner.");
-      return;
-    }
-    const options = outfits.map((o) => ({
-      text: o.name,
-      onPress: async () => {
-        const newPlan = { ...weekPlan, [day]: o.id };
-        setWeekPlan(newPlan);
-        // Save: compute ISO date for this day of the current week
-        const now = new Date();
-        const dayIndex = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"].indexOf(day);
-        const currentDayIndex = (now.getDay() + 6) % 7; // Monday = 0
-        const diff = dayIndex - currentDayIndex;
-        const targetDate = new Date(now);
-        targetDate.setDate(now.getDate() + diff);
-        const isoDate = targetDate.toISOString().split("T")[0];
-        await savePlannedOutfit({ date: isoDate, outfitId: o.id });
-      },
-    }));
-    options.push({ text: "Clear", onPress: async () => {
-      const newPlan = { ...weekPlan, [day]: null };
-      setWeekPlan(newPlan);
-    }});
-    options.push({ text: "Cancel", onPress: () => {} });
-    Alert.alert(`Assign Outfit — ${day}`, "Pick an outfit:", options);
-  };
-
-  /* --- Packing List Generator (#12) --- */
+  /* --- Packing List Generator / Travel Mode (#12, #88) --- */
   const generatePackingList = () => {
     const days = parseInt(tripDays, 10) || 5;
     const result: { category: string; name: string; checked: boolean }[] = [];
+    const climate = tripClimate || "mild";
+    const type = tripType || "casual";
 
     const itemsByCategory: Partial<Record<ClothingCategory, ClothingItem[]>> = {};
     for (const item of allActive) {
@@ -644,9 +582,22 @@ export default function ProfileScreen() {
       return shuffled.slice(0, count);
     };
 
+    // Climate-aware fabric filter: prefer appropriate fabrics
+    const climateFabrics = (items: ClothingItem[]): ClothingItem[] => {
+      if (climate === "warm") {
+        const preferred = items.filter((i) => ["cotton", "linen", "silk", "nylon"].includes(i.fabricType));
+        return preferred.length >= 2 ? preferred : items;
+      }
+      if (climate === "cold") {
+        const preferred = items.filter((i) => ["wool", "cashmere", "fleece", "leather", "denim"].includes(i.fabricType));
+        return preferred.length >= 2 ? preferred : items;
+      }
+      return items;
+    };
+
     // Tops: ~1.5 per day
     const topsNeeded = Math.ceil(days * 1.5);
-    const availableTops = itemsByCategory.tops ?? [];
+    const availableTops = climateFabrics(itemsByCategory.tops ?? []);
     const pickedTops = pickRandom(availableTops, Math.min(topsNeeded, availableTops.length));
     for (const t of pickedTops) {
       result.push({ category: "Tops", name: t.name, checked: false });
@@ -658,7 +609,10 @@ export default function ProfileScreen() {
 
     // Bottoms: 1 per 2 days
     const bottomsNeeded = Math.ceil(days / 2);
-    const availableBottoms = [...(itemsByCategory.bottoms ?? []), ...(itemsByCategory.skirts_shorts ?? [])];
+    let bottomPool = [...(itemsByCategory.bottoms ?? [])];
+    if (climate === "warm") bottomPool = [...bottomPool, ...(itemsByCategory.shorts ?? []), ...(itemsByCategory.skirts ?? [])];
+    else bottomPool = [...bottomPool, ...(itemsByCategory.skirts ?? [])];
+    const availableBottoms = climateFabrics(bottomPool);
     const pickedBottoms = pickRandom(availableBottoms, Math.min(bottomsNeeded, availableBottoms.length));
     for (const b of pickedBottoms) {
       result.push({ category: "Bottoms", name: b.name, checked: false });
@@ -668,16 +622,19 @@ export default function ProfileScreen() {
       for (let i = 0; i < remaining; i++) result.push({ category: "Bottoms", name: `Extra bottom ${i + 1} (buy/borrow)`, checked: false });
     }
 
-    // Outerwear: 1
-    const availableOuterwear = [...(itemsByCategory.jackets ?? []), ...(itemsByCategory.blazers ?? [])];
-    if (availableOuterwear.length > 0) {
-      const picked = pickRandom(availableOuterwear, 1);
-      result.push({ category: "Outerwear", name: picked[0].name, checked: false });
-    } else {
-      result.push({ category: "Outerwear", name: "Jacket (buy/borrow)", checked: false });
+    // Outerwear: 1 for mild/cold, skip for warm beach
+    if (climate !== "warm" || type !== "beach") {
+      const outerwearCount = climate === "cold" ? 2 : 1;
+      const availableOuterwear = [...(itemsByCategory.jackets ?? []), ...(itemsByCategory.blazers ?? [])];
+      if (availableOuterwear.length > 0) {
+        const picked = pickRandom(availableOuterwear, Math.min(outerwearCount, availableOuterwear.length));
+        for (const o of picked) result.push({ category: "Outerwear", name: o.name, checked: false });
+      } else {
+        result.push({ category: "Outerwear", name: "Jacket (buy/borrow)", checked: false });
+      }
     }
 
-    // Shoes: 1-2 based on trip length
+    // Shoes: 1-2 based on trip length, climate-aware
     const shoesNeeded = days > 5 ? 2 : 1;
     const availableShoes = itemsByCategory.shoes ?? [];
     const pickedShoes = pickRandom(availableShoes, Math.min(shoesNeeded, availableShoes.length));
@@ -697,13 +654,48 @@ export default function ProfileScreen() {
       }
     }
 
-    // Accessories: 1-2
+    // Beach trip: add swimwear
+    if (type === "beach" || climate === "warm") {
+      const availableSwim = itemsByCategory.swimwear ?? [];
+      if (availableSwim.length > 0) {
+        const picked = pickRandom(availableSwim, Math.min(2, availableSwim.length));
+        for (const s of picked) result.push({ category: "Swimwear", name: s.name, checked: false });
+      } else {
+        result.push({ category: "Swimwear", name: "Swimsuit (buy/borrow)", checked: false });
+      }
+    }
+
+    // Business trip: include blazers
+    if (type === "business") {
+      const availableBl = itemsByCategory.blazers ?? [];
+      if (availableBl.length > 0) {
+        const picked = pickRandom(availableBl, 1);
+        result.push({ category: "Business", name: picked[0].name, checked: false });
+      } else {
+        result.push({ category: "Business", name: "Blazer (buy/borrow)", checked: false });
+      }
+    }
+
+    // Accessories: 1-3
+    const accessoryCount = type === "business" ? 3 : 2;
     const availableAccessories = [...(itemsByCategory.accessories ?? []), ...(itemsByCategory.jewelry ?? [])];
     if (availableAccessories.length > 0) {
-      const picked = pickRandom(availableAccessories, Math.min(2, availableAccessories.length));
+      const picked = pickRandom(availableAccessories, Math.min(accessoryCount, availableAccessories.length));
       for (const a of picked) {
         result.push({ category: "Accessories", name: a.name, checked: false });
       }
+    }
+
+    // Purse
+    const availablePurses = itemsByCategory.purse ?? [];
+    if (availablePurses.length > 0) {
+      const picked = pickRandom(availablePurses, 1);
+      result.push({ category: "Bags", name: picked[0].name, checked: false });
+    }
+
+    // Destination header
+    if (tripDestination.trim()) {
+      result.unshift({ category: "Trip", name: `${tripDestination} — ${days} days (${climate}, ${type})`, checked: false });
     }
 
     setPackingResult(result);
@@ -928,6 +920,34 @@ export default function ProfileScreen() {
   };
 
   /* ---------------------------------------------------------------- */
+  /*  Tab-based section visibility                                       */
+  const SECTION_TABS: Record<string, typeof profileTab> = {
+    spending: "overview",
+    stats: "analytics",
+    colorPalette: "analytics",
+    gapAnalysis: "analytics",
+    wishlist: "tools",
+    archived: "overview",
+    favorites: "overview",
+    gmail: "overview",
+    backup: "overview",
+    brandInsights: "analytics",
+    roi: "analytics",
+    ageTracker: "analytics",
+    sustainability: "analytics",
+    duplicates: "analytics",
+    consistency: "analytics",
+    packing: "tools",
+    shopping: "shopping",
+    saleAlerts: "shopping",
+    splurge: "shopping",
+    resale: "shopping",
+    inspiration: "tools",
+  };
+
+  const show = (section: string) => profileTab === SECTION_TABS[section];
+
+  /* ---------------------------------------------------------------- */
   /*  Sub-components                                                    */
   /* ---------------------------------------------------------------- */
 
@@ -1027,9 +1047,47 @@ export default function ProfileScreen() {
         Items worn in the last 120 days
       </Text>
 
+      {/* Tab bar */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.profileTabBar}
+      >
+        {([
+          { key: "overview", label: "Overview", icon: "home-outline" },
+          { key: "analytics", label: "Analytics", icon: "analytics-outline" },
+          { key: "tools", label: "Tools", icon: "construct-outline" },
+          { key: "shopping", label: "Shopping", icon: "cart-outline" },
+        ] as const).map((tab) => (
+          <Pressable
+            key={tab.key}
+            style={[
+              styles.profileTabBtn,
+              profileTab === tab.key && styles.profileTabBtnActive,
+            ]}
+            onPress={() => setProfileTab(tab.key)}
+          >
+            <Ionicons
+              name={tab.icon as any}
+              size={16}
+              color={profileTab === tab.key ? theme.colors.primary : theme.colors.textLight}
+            />
+            <Text
+              style={[
+                styles.profileTabLabel,
+                profileTab === tab.key && styles.profileTabLabelActive,
+              ]}
+            >
+              {tab.label}
+            </Text>
+          </Pressable>
+        ))}
+      </ScrollView>
+
       {/* ============================================================ */}
       {/*  SPENDING                                                     */}
       {/* ============================================================ */}
+      {show("spending") && (
       <View style={styles.card}>
         <SectionHeader
           icon="wallet-outline"
@@ -1074,6 +1132,41 @@ export default function ProfileScreen() {
 
             <Divider />
 
+            {/* Monthly Spending Breakdown (#61) */}
+            <SubHeading>Monthly Spending</SubHeading>
+            {(() => {
+              const monthlySpend: Record<string, number> = {};
+              for (const item of allActive) {
+                if (!item.cost || item.cost <= 0) continue;
+                const date = item.purchaseDate ?? new Date(item.createdAt).toISOString().slice(0, 10);
+                const monthKey = date.slice(0, 7); // "YYYY-MM"
+                monthlySpend[monthKey] = (monthlySpend[monthKey] ?? 0) + item.cost;
+              }
+              const months = Object.keys(monthlySpend).sort().reverse().slice(0, 6);
+              if (months.length === 0) {
+                return <Text style={styles.emptyText}>No purchase date data available.</Text>;
+              }
+              const maxMonthly = Math.max(...months.map((m) => monthlySpend[m]), 1);
+              return months.map((month) => {
+                const [y, m] = month.split("-");
+                const label = `${["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][parseInt(m, 10) - 1]} ${y}`;
+                const total = monthlySpend[month];
+                return (
+                  <View key={month} style={styles.barRow}>
+                    <View style={styles.barLabelRow}>
+                      <Text style={styles.barLabel}>{label}</Text>
+                      <Text style={styles.barValue}>{fmt(total)}</Text>
+                    </View>
+                    <View style={styles.barTrack}>
+                      <View style={[styles.barFill, { width: `${(total / maxMonthly) * 100}%` }]} />
+                    </View>
+                  </View>
+                );
+              });
+            })()}
+
+            <Divider />
+
             {/* Cost per Wear */}
             <SubHeading>Cost per Wear</SubHeading>
             {costPerWear.length === 0 ? (
@@ -1081,7 +1174,7 @@ export default function ProfileScreen() {
                 No items with cost and wear data.
               </Text>
             ) : (
-              costPerWear.map(({ item, cpw }) => (
+              costPerWear.slice(0, 10).map(({ item, cpw }) => (
                 <Pressable
                   key={item.id}
                   style={styles.listItem}
@@ -1103,10 +1196,12 @@ export default function ProfileScreen() {
           </View>
         )}
       </View>
+      )}
 
       {/* ============================================================ */}
       {/*  STATS & REPORTS                                              */}
       {/* ============================================================ */}
+      {show("stats") && (
       <View style={styles.card}>
         <SectionHeader
           icon="bar-chart-outline"
@@ -1250,10 +1345,12 @@ export default function ProfileScreen() {
           </View>
         )}
       </View>
+      )}
 
       {/* ============================================================ */}
       {/*  COLOUR PALETTE ANALYSIS                                      */}
       {/* ============================================================ */}
+      {show("colorPalette") && (
       <View style={styles.card}>
         <SectionHeader
           icon="color-palette-outline"
@@ -1318,10 +1415,12 @@ export default function ProfileScreen() {
           </View>
         )}
       </View>
+      )}
 
       {/* ============================================================ */}
       {/*  WARDROBE GAP ANALYSIS                                        */}
       {/* ============================================================ */}
+      {show("gapAnalysis") && (
       <View style={styles.card}>
         <SectionHeader
           icon="analytics-outline"
@@ -1355,10 +1454,12 @@ export default function ProfileScreen() {
           </View>
         )}
       </View>
+      )}
 
       {/* ============================================================ */}
       {/*  WISHLIST                                                      */}
       {/* ============================================================ */}
+      {show("wishlist") && (
       <View style={styles.card}>
         <SectionHeader
           icon="gift-outline"
@@ -1435,6 +1536,7 @@ export default function ProfileScreen() {
           </View>
         )}
       </View>
+      )}
 
       {/* -------- Wishlist Modal -------- */}
       <Modal
@@ -1587,6 +1689,7 @@ export default function ProfileScreen() {
       {/* ============================================================ */}
       {/*  ARCHIVED ITEMS                                               */}
       {/* ============================================================ */}
+      {show("archived") && (
       <View style={styles.card}>
         <SectionHeader
           icon="archive-outline"
@@ -1632,10 +1735,12 @@ export default function ProfileScreen() {
           </View>
         )}
       </View>
+      )}
 
       {/* ============================================================ */}
       {/*  FAVOURITES                                                   */}
       {/* ============================================================ */}
+      {show("favorites") && (
       <View style={styles.card}>
         <SectionHeader
           icon="heart-outline"
@@ -1675,10 +1780,12 @@ export default function ProfileScreen() {
           </View>
         )}
       </View>
+      )}
 
       {/* ============================================================ */}
       {/*  GMAIL PURCHASES                                              */}
       {/* ============================================================ */}
+      {show("gmail") && (
       <View style={styles.card}>
         <Pressable
           style={styles.gmailSection}
@@ -1705,10 +1812,12 @@ export default function ProfileScreen() {
           />
         </Pressable>
       </View>
+      )}
 
       {/* ============================================================ */}
       {/*  BACKUP & RESTORE                                             */}
       {/* ============================================================ */}
+      {show("backup") && (
       <View style={styles.card}>
         <View style={styles.backupSection}>
           <Ionicons name="cloud-download-outline" size={20} color={theme.colors.primary} style={styles.menuIcon} />
@@ -1725,9 +1834,11 @@ export default function ProfileScreen() {
           </Pressable>
         </View>
       </View>
+      )}
       {/* ============================================================ */}
       {/*  BRAND INSIGHTS (#6)                                          */}
       {/* ============================================================ */}
+      {show("brandInsights") && (
       <View style={styles.card}>
         <SectionHeader
           icon="pricetag-outline"
@@ -1755,14 +1866,16 @@ export default function ProfileScreen() {
           </View>
         )}
       </View>
+      )}
 
       {/* ============================================================ */}
       {/*  ROI RANKING (#10)                                            */}
       {/* ============================================================ */}
+      {show("roi") && (
       <View style={styles.card}>
         <SectionHeader
           icon="trending-up-outline"
-          label="Best ROI Items"
+          label="Cost-Per-Wear Chart"
           open={roiOpen}
           onPress={() => setRoiOpen((v) => !v)}
         />
@@ -1771,28 +1884,56 @@ export default function ProfileScreen() {
             {costPerWear.length === 0 ? (
               <Text style={styles.emptyText}>No items with cost and wear data yet.</Text>
             ) : (
-              costPerWear.slice(0, 10).map(({ item, cpw }, idx) => (
-                <Pressable
-                  key={item.id}
-                  style={styles.listItem}
-                  onPress={() => router.push({ pathname: "/edit-item", params: { id: item.id } })}
-                >
-                  <Text style={[styles.barLabel, { marginRight: 8, width: 20 }]}>#{idx + 1}</Text>
-                  <View style={styles.listItemLeft}>
-                    <Text style={styles.listItemName} numberOfLines={1}>{item.name}</Text>
-                    <Text style={styles.listItemSub}>{item.brand || CATEGORY_LABELS[item.category]} · {item.wearCount} wears</Text>
-                  </View>
-                  <Text style={styles.cpwValue}>{fmt(cpw)}/wear</Text>
-                </Pressable>
-              ))
+              <>
+                {/* Visual CPW bar chart (#58) */}
+                {(() => {
+                  const top10 = costPerWear.slice(0, 10);
+                  const maxCpw = Math.max(...top10.map((c) => c.cpw), 1);
+                  return top10.map(({ item, cpw }, idx) => {
+                    const barPct = Math.min(100, (cpw / maxCpw) * 100);
+                    const isGood = cpw < 5;
+                    const isOk = cpw < 15;
+                    const barColor = isGood ? theme.colors.success : isOk ? theme.colors.warning : theme.colors.error;
+                    return (
+                      <Pressable
+                        key={item.id}
+                        style={{ marginBottom: 10 }}
+                        onPress={() => router.push({ pathname: "/edit-item", params: { id: item.id } })}
+                      >
+                        <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 2 }}>
+                          <Text style={styles.listItemName} numberOfLines={1}>
+                            {idx + 1}. {item.name}
+                          </Text>
+                          <Text style={[styles.cpwValue, { color: barColor }]}>{fmt(cpw)}/wear</Text>
+                        </View>
+                        <View style={styles.barTrack}>
+                          <View style={[styles.barFill, { width: `${barPct}%`, backgroundColor: barColor }]} />
+                        </View>
+                        <Text style={styles.listItemSub}>
+                          {item.brand || CATEGORY_LABELS[item.category]} · {item.wearCount} wears · {fmt(item.cost ?? 0)} total
+                        </Text>
+                      </Pressable>
+                    );
+                  });
+                })()}
+                <Divider />
+                <View style={styles.spendTotalRow}>
+                  <Text style={styles.barLabel}>Average CPW</Text>
+                  <Text style={styles.cpwValue}>
+                    {fmt(costPerWear.reduce((sum, c) => sum + c.cpw, 0) / costPerWear.length)}
+                  </Text>
+                </View>
+              </>
             )}
           </View>
         )}
       </View>
+      )}
 
       {/* ============================================================ */}
       {/*  WARDROBE AGE TRACKER (#5)                                    */}
       {/* ============================================================ */}
+      {show("ageTracker") && (
       <View style={styles.card}>
         <SectionHeader
           icon="time-outline"
@@ -1835,10 +1976,12 @@ export default function ProfileScreen() {
           </View>
         )}
       </View>
+      )}
 
       {/* ============================================================ */}
       {/*  SUSTAINABILITY SCORE (#37)                                    */}
       {/* ============================================================ */}
+      {show("sustainability") && (
       <View style={styles.card}>
         <SectionHeader
           icon="leaf-outline"
@@ -1860,10 +2003,12 @@ export default function ProfileScreen() {
           </View>
         )}
       </View>
+      )}
 
       {/* ============================================================ */}
       {/*  DUPLICATE DETECTOR (#36)                                      */}
       {/* ============================================================ */}
+      {show("duplicates") && (
       <View style={styles.card}>
         <SectionHeader
           icon="copy-outline"
@@ -1888,6 +2033,7 @@ export default function ProfileScreen() {
           </View>
         )}
       </View>
+      )}
 
       {/* ============================================================ */}
       {/*  DARK MODE TOGGLE (#39)                                        */}
@@ -1907,6 +2053,7 @@ export default function ProfileScreen() {
       {/* ============================================================ */}
       {/*  STYLE CONSISTENCY SCORE (#3)                                  */}
       {/* ============================================================ */}
+      {show("consistency") && (
       <View style={styles.card}>
         <SectionHeader
           icon="ribbon-outline"
@@ -1975,83 +2122,59 @@ export default function ProfileScreen() {
           </View>
         )}
       </View>
+      )}
 
       {/* ============================================================ */}
-      {/*  WEEKLY OUTFIT PLANNER (#11)                                   */}
+      {/*  PACKING LIST / TRAVEL MODE (#12, #88)                           */}
       {/* ============================================================ */}
+      {show("packing") && (
       <View style={styles.card}>
         <SectionHeader
-          icon="calendar-outline"
-          label="Weekly Outfit Planner"
-          open={plannerOpen}
-          onPress={() => setPlannerOpen((v) => !v)}
-        />
-        {plannerOpen && (
-          <View style={styles.sectionBody}>
-            {["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"].map((day) => {
-              const outfitId = weekPlan[day];
-              const outfit = outfitId ? outfits.find((o) => o.id === outfitId) : null;
-              const outfitItems = outfit
-                ? allActive.filter((item) => outfit.itemIds.includes(item.id))
-                : [];
-              return (
-                <Pressable
-                  key={day}
-                  style={styles.plannerDayRow}
-                  onPress={() => assignOutfitToDay(day)}
-                >
-                  <View style={styles.plannerDayLabel}>
-                    <Text style={styles.plannerDayText}>{day.slice(0, 3)}</Text>
-                  </View>
-                  {outfit ? (
-                    <View style={styles.plannerOutfitInfo}>
-                      <View style={styles.plannerMoodBoardWrap}>
-                        <MoodBoard items={outfitItems} size={56} />
-                      </View>
-                      <Text style={styles.plannerOutfitName} numberOfLines={1}>
-                        {outfit.name}
-                      </Text>
-                    </View>
-                  ) : (
-                    <View style={styles.plannerEmptySlot}>
-                      <Ionicons name="add-outline" size={18} color={theme.colors.textLight} />
-                      <Text style={styles.plannerEmptyText}>Tap to assign</Text>
-                    </View>
-                  )}
-                </Pressable>
-              );
-            })}
-          </View>
-        )}
-      </View>
-
-      {/* ============================================================ */}
-      {/*  PACKING LIST GENERATOR (#12)                                  */}
-      {/* ============================================================ */}
-      <View style={styles.card}>
-        <SectionHeader
-          icon="briefcase-outline"
-          label="Packing List Generator"
+          icon="airplane-outline"
+          label="Travel Mode"
           open={packingOpen}
           onPress={() => setPackingOpen((v) => !v)}
         />
         {packingOpen && (
           <View style={styles.sectionBody}>
+            <Text style={styles.barLabel}>Destination</Text>
+            <TextInput
+              style={[styles.packingInput, { width: "100%", marginBottom: theme.spacing.sm }]}
+              value={tripDestination}
+              onChangeText={setTripDestination}
+              placeholder="e.g., Paris, Cancún, NYC"
+              placeholderTextColor={theme.colors.textLight}
+              autoCapitalize="words"
+            />
+
             <Text style={styles.barLabel}>Trip Duration (days)</Text>
-            <View style={styles.packingInputRow}>
-              <TextInput
-                style={styles.packingInput}
-                value={tripDays}
-                onChangeText={setTripDays}
-                keyboardType="number-pad"
-                placeholder="5"
-                placeholderTextColor={theme.colors.textLight}
-              />
-              <Pressable style={styles.packingGenerateBtn} onPress={generatePackingList}>
-                <Ionicons name="shuffle-outline" size={18} color="#FFFFFF" />
-                <Text style={styles.packingGenerateBtnText}>Generate</Text>
-              </Pressable>
+            <TextInput
+              style={[styles.packingInput, { width: "100%", marginBottom: theme.spacing.sm }]}
+              value={tripDays}
+              onChangeText={setTripDays}
+              keyboardType="number-pad"
+              placeholder="5"
+              placeholderTextColor={theme.colors.textLight}
+            />
+
+            <Text style={styles.barLabel}>Climate</Text>
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: theme.spacing.sm }}>
+              {(["warm", "mild", "cold"] as const).map((c) => (
+                <Chip key={c} label={c === "warm" ? "Warm / Hot" : c === "cold" ? "Cold / Winter" : "Mild / Temperate"} selected={tripClimate === c} onPress={() => setTripClimate(tripClimate === c ? "" : c)} />
+              ))}
             </View>
+
+            <Text style={styles.barLabel}>Trip Type</Text>
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: theme.spacing.md }}>
+              {(["casual", "business", "beach", "adventure"] as const).map((t) => (
+                <Chip key={t} label={t.charAt(0).toUpperCase() + t.slice(1)} selected={tripType === t} onPress={() => setTripType(tripType === t ? "" : t)} />
+              ))}
+            </View>
+
+            <Pressable style={styles.packingGenerateBtn} onPress={generatePackingList}>
+              <Ionicons name="briefcase-outline" size={18} color="#FFFFFF" />
+              <Text style={styles.packingGenerateBtnText}>Generate Packing List</Text>
+            </Pressable>
 
             {packingResult.length > 0 && (
               <>
@@ -2090,10 +2213,12 @@ export default function ProfileScreen() {
           </View>
         )}
       </View>
+      )}
 
       {/* ============================================================ */}
       {/*  SMART SHOPPING SUGGESTIONS (#32)                              */}
       {/* ============================================================ */}
+      {show("shopping") && (
       <View style={styles.card}>
         <SectionHeader
           icon="cart-outline"
@@ -2128,10 +2253,12 @@ export default function ProfileScreen() {
           </View>
         )}
       </View>
+      )}
 
       {/* ============================================================ */}
       {/*  SALE PRICE ALERTS (#33)                                        */}
       {/* ============================================================ */}
+      {show("saleAlerts") && (
       <View style={styles.card}>
         <SectionHeader
           icon="notifications-outline"
@@ -2173,10 +2300,12 @@ export default function ProfileScreen() {
           </View>
         )}
       </View>
+      )}
 
       {/* ============================================================ */}
       {/*  WORTH THE SPLURGE CALCULATOR (#35)                             */}
       {/* ============================================================ */}
+      {show("splurge") && (
       <View style={styles.card}>
         <SectionHeader
           icon="calculator-outline"
@@ -2248,10 +2377,12 @@ export default function ProfileScreen() {
           </View>
         )}
       </View>
+      )}
 
       {/* ============================================================ */}
       {/*  RESALE VALUE ESTIMATOR (#38)                                   */}
       {/* ============================================================ */}
+      {show("resale") && (
       <View style={styles.card}>
         <SectionHeader
           icon="cash-outline"
@@ -2297,10 +2428,12 @@ export default function ProfileScreen() {
           </View>
         )}
       </View>
+      )}
 
       {/* ============================================================ */}
       {/*  STYLE INSPIRATION BOARD (#28)                                  */}
       {/* ============================================================ */}
+      {show("inspiration") && (
       <View style={styles.card}>
         <SectionHeader
           icon="images-outline"
@@ -2375,6 +2508,7 @@ export default function ProfileScreen() {
           </View>
         )}
       </View>
+      )}
 
     </ScrollView>
   );
@@ -2440,7 +2574,35 @@ function createStyles(t: any) { return StyleSheet.create({
     fontSize: t.fontSize.xs,
     color: t.colors.textLight,
     textAlign: "center",
-    marginBottom: t.spacing.lg,
+    marginBottom: t.spacing.sm,
+  },
+
+  /* Profile tab bar */
+  profileTabBar: {
+    flexDirection: "row",
+    paddingHorizontal: t.spacing.md,
+    paddingBottom: t.spacing.md,
+    gap: 8,
+  },
+  profileTabBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: t.colors.surfaceAlt,
+  },
+  profileTabBtnActive: {
+    backgroundColor: t.colors.primary + "15",
+  },
+  profileTabLabel: {
+    fontSize: t.fontSize.sm,
+    fontWeight: "600",
+    color: t.colors.textLight,
+  },
+  profileTabLabelActive: {
+    color: t.colors.primary,
   },
 
   /* Card wrapper for each section */
@@ -2925,57 +3087,6 @@ function createStyles(t: any) { return StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
     marginBottom: t.spacing.xs,
-  },
-
-  /* Weekly Planner */
-  plannerDayRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: t.spacing.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: t.colors.border,
-  },
-  plannerDayLabel: {
-    width: 44,
-    marginRight: t.spacing.sm,
-  },
-  plannerDayText: {
-    fontSize: t.fontSize.md,
-    fontWeight: "700",
-    color: t.colors.text,
-  },
-  plannerOutfitInfo: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: t.spacing.sm,
-  },
-  plannerMoodBoardWrap: {
-    borderRadius: t.borderRadius.sm,
-    overflow: "hidden",
-  },
-  plannerOutfitName: {
-    flex: 1,
-    fontSize: t.fontSize.md,
-    fontWeight: "500",
-    color: t.colors.text,
-  },
-  plannerEmptySlot: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: t.spacing.xs,
-    paddingVertical: t.spacing.sm,
-    paddingHorizontal: t.spacing.sm,
-    borderRadius: t.borderRadius.sm,
-    backgroundColor: t.colors.surfaceAlt,
-    borderWidth: 1,
-    borderColor: t.colors.border,
-    borderStyle: "dashed",
-  },
-  plannerEmptyText: {
-    fontSize: t.fontSize.sm,
-    color: t.colors.textLight,
   },
 
   /* Packing List */

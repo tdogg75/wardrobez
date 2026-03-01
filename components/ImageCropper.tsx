@@ -18,11 +18,10 @@ import { Theme } from "@/constants/theme";
 
 const SCREEN = Dimensions.get("window");
 const HANDLE_SIZE = 28;
-const HANDLE_HIT = 36;
-const MIN_CROP = 60;
+const HANDLE_HIT = 40;
+const MIN_CROP = 50;
 const HEADER_HEIGHT = 64;
 const FOOTER_HEIGHT = 84;
-// Estimate available canvas height = screen minus header, footer, and safe areas
 const ESTIMATED_CANVAS_H = SCREEN.height - HEADER_HEIGHT - FOOTER_HEIGHT - 80;
 
 interface ImageCropperProps {
@@ -45,6 +44,13 @@ export function ImageCropper({
   const [applying, setApplying] = useState(false);
   const [dataUri, setDataUri] = useState<string | null>(null);
   const webViewRef = useRef<WebView>(null);
+
+  // Use refs for values accessed by PanResponder to avoid stale closures
+  const cropRef = useRef(crop);
+  cropRef.current = crop;
+  const imgSizeRef = useRef(imgSize);
+  imgSizeRef.current = imgSize;
+
   const dragRef = useRef<{
     mode: "move" | "tl" | "tr" | "bl" | "br";
     startCrop: { x: number; y: number; w: number; h: number };
@@ -66,7 +72,6 @@ export function ImageCropper({
     (async () => {
       try {
         let localUri = imageUri;
-        // If the image is a remote URL, download it first
         if (imageUri.startsWith("http://") || imageUri.startsWith("https://")) {
           const tmpFile = `${FileSystem.cacheDirectory}crop_tmp_${Date.now()}.jpg`;
           const dl = await FileSystem.downloadAsync(imageUri, tmpFile);
@@ -115,75 +120,90 @@ export function ImageCropper({
     }
   }, []);
 
-  // Hit-test for drag targets
-  const hitTest = useCallback(
-    (px: number, py: number) => {
-      const inHandle = (hx: number, hy: number) =>
-        Math.abs(px - hx) < HANDLE_HIT && Math.abs(py - hy) < HANDLE_HIT;
-      if (inHandle(crop.x, crop.y)) return "tl" as const;
-      if (inHandle(crop.x + crop.w, crop.y)) return "tr" as const;
-      if (inHandle(crop.x, crop.y + crop.h)) return "bl" as const;
-      if (inHandle(crop.x + crop.w, crop.y + crop.h)) return "br" as const;
-      if (
-        px >= crop.x &&
-        px <= crop.x + crop.w &&
-        py >= crop.y &&
-        py <= crop.y + crop.h
-      )
-        return "move" as const;
-      return null;
-    },
-    [crop],
+  // Stable PanResponder created once — reads from refs to avoid stale closures
+  const panResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => true,
+        onMoveShouldSetPanResponder: () => true,
+        onPanResponderGrant: (evt) => {
+          const { locationX, locationY } = evt.nativeEvent;
+          const c = cropRef.current;
+
+          // Hit-test using ref values
+          const inHandle = (hx: number, hy: number) =>
+            Math.abs(locationX - hx) < HANDLE_HIT && Math.abs(locationY - hy) < HANDLE_HIT;
+
+          let mode: "move" | "tl" | "tr" | "bl" | "br" | null = null;
+          if (inHandle(c.x, c.y)) mode = "tl";
+          else if (inHandle(c.x + c.w, c.y)) mode = "tr";
+          else if (inHandle(c.x, c.y + c.h)) mode = "bl";
+          else if (inHandle(c.x + c.w, c.y + c.h)) mode = "br";
+          else if (
+            locationX >= c.x &&
+            locationX <= c.x + c.w &&
+            locationY >= c.y &&
+            locationY <= c.y + c.h
+          )
+            mode = "move";
+
+          if (mode) {
+            dragRef.current = { mode, startCrop: { ...c } };
+          }
+        },
+        onPanResponderMove: (_, gs: PanResponderGestureState) => {
+          if (!dragRef.current) return;
+          const { mode, startCrop } = dragRef.current;
+          const { dx, dy } = gs;
+          const iSz = imgSizeRef.current;
+
+          if (mode === "move") {
+            let nx = startCrop.x + dx;
+            let ny = startCrop.y + dy;
+            nx = Math.max(0, Math.min(nx, iSz.w - startCrop.w));
+            ny = Math.max(0, Math.min(ny, iSz.h - startCrop.h));
+            setCrop({ ...startCrop, x: nx, y: ny });
+          } else {
+            let { x, y, w, h } = startCrop;
+            if (mode === "tl") {
+              x += dx; y += dy; w -= dx; h -= dy;
+            } else if (mode === "tr") {
+              y += dy; w += dx; h -= dy;
+            } else if (mode === "bl") {
+              x += dx; w -= dx; h += dy;
+            } else if (mode === "br") {
+              w += dx; h += dy;
+            }
+            // Enforce minimum crop size
+            if (w < MIN_CROP) {
+              if (mode === "tl" || mode === "bl") {
+                x = startCrop.x + startCrop.w - MIN_CROP;
+              }
+              w = MIN_CROP;
+            }
+            if (h < MIN_CROP) {
+              if (mode === "tl" || mode === "tr") {
+                y = startCrop.y + startCrop.h - MIN_CROP;
+              }
+              h = MIN_CROP;
+            }
+            // Clamp to image bounds
+            if (x < 0) { w += x; x = 0; }
+            if (y < 0) { h += y; y = 0; }
+            if (x + w > iSz.w) w = iSz.w - x;
+            if (y + h > iSz.h) h = iSz.h - y;
+            // Final min check after clamping
+            if (w < MIN_CROP) w = MIN_CROP;
+            if (h < MIN_CROP) h = MIN_CROP;
+            setCrop({ x, y, w, h });
+          }
+        },
+        onPanResponderRelease: () => {
+          dragRef.current = null;
+        },
+      }),
+    [],
   );
-
-  // PanResponder for crop interaction
-  const panResponder = useRef(PanResponder.create({ onStartShouldSetPanResponder: () => false }));
-
-  panResponder.current = PanResponder.create({
-    onStartShouldSetPanResponder: () => true,
-    onMoveShouldSetPanResponder: () => true,
-    onPanResponderGrant: (evt) => {
-      const { locationX, locationY } = evt.nativeEvent;
-      const mode = hitTest(locationX, locationY);
-      if (mode) {
-        dragRef.current = { mode, startCrop: { ...crop } };
-      }
-    },
-    onPanResponderMove: (_, gs: PanResponderGestureState) => {
-      if (!dragRef.current) return;
-      const { mode, startCrop } = dragRef.current;
-      const { dx, dy } = gs;
-
-      if (mode === "move") {
-        let nx = startCrop.x + dx;
-        let ny = startCrop.y + dy;
-        nx = Math.max(0, Math.min(nx, imgSize.w - startCrop.w));
-        ny = Math.max(0, Math.min(ny, imgSize.h - startCrop.h));
-        setCrop({ ...startCrop, x: nx, y: ny });
-      } else {
-        let { x, y, w, h } = startCrop;
-        if (mode === "tl") {
-          x += dx; y += dy; w -= dx; h -= dy;
-        } else if (mode === "tr") {
-          y += dy; w += dx; h -= dy;
-        } else if (mode === "bl") {
-          x += dx; w -= dx; h += dy;
-        } else if (mode === "br") {
-          w += dx; h += dy;
-        }
-        if (w < MIN_CROP) { w = MIN_CROP; x = startCrop.x + startCrop.w - MIN_CROP; }
-        if (h < MIN_CROP) { h = MIN_CROP; y = startCrop.y + startCrop.h - MIN_CROP; }
-        if (x < 0) { w += x; x = 0; }
-        if (y < 0) { h += y; y = 0; }
-        if (x + w > imgSize.w) w = imgSize.w - x;
-        if (y + h > imgSize.h) h = imgSize.h - y;
-        setCrop({ x, y, w, h });
-      }
-    },
-    onPanResponderRelease: () => {
-      dragRef.current = null;
-    },
-  });
 
   // Canvas HTML for cropping
   const canvasHtml = useMemo(() => {
@@ -299,14 +319,20 @@ function cropImage(sx,sy,sw,sh) {
                 <View style={[styles.dim, { top: crop.y, left: crop.x + crop.w, right: 0, height: crop.h }]} />
               </View>
 
-              {/* Crop border */}
+              {/* Crop border + grid lines */}
               <View
                 pointerEvents="none"
                 style={[
                   styles.cropBorder,
                   { left: crop.x, top: crop.y, width: crop.w, height: crop.h },
                 ]}
-              />
+              >
+                {/* Rule of thirds grid */}
+                <View style={[styles.gridLineH, { top: "33.3%" }]} />
+                <View style={[styles.gridLineH, { top: "66.6%" }]} />
+                <View style={[styles.gridLineV, { left: "33.3%" }]} />
+                <View style={[styles.gridLineV, { left: "66.6%" }]} />
+              </View>
 
               {/* Corner handles */}
               <Handle left={crop.x} top={crop.y} />
@@ -315,7 +341,7 @@ function cropImage(sx,sy,sw,sh) {
               <Handle left={crop.x + crop.w} top={crop.y + crop.h} />
 
               {/* Pan responder overlay */}
-              <View style={StyleSheet.absoluteFill} {...panResponder.current.panHandlers} />
+              <View style={StyleSheet.absoluteFill} {...panResponder.panHandlers} />
             </View>
           )}
         </View>
@@ -373,6 +399,20 @@ const styles = StyleSheet.create({
     position: "absolute",
     borderWidth: 2,
     borderColor: "#FFF",
+  },
+  gridLineH: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: "rgba(255,255,255,0.35)",
+  },
+  gridLineV: {
+    position: "absolute",
+    top: 0,
+    bottom: 0,
+    width: StyleSheet.hairlineWidth,
+    backgroundColor: "rgba(255,255,255,0.35)",
   },
   handle: {
     position: "absolute",

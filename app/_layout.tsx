@@ -51,6 +51,21 @@ function AppContent() {
             }}
           />
           <Stack.Screen
+            name="brand-items"
+            options={{
+              presentation: "modal",
+              headerShown: true,
+              headerTitle: "Brand Items",
+            }}
+          />
+          <Stack.Screen
+            name="barcode-scanner"
+            options={{
+              presentation: "fullScreenModal",
+              headerShown: false,
+            }}
+          />
+          <Stack.Screen
             name="outfit-detail"
             options={{
               presentation: "modal",

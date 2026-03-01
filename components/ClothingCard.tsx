@@ -86,6 +86,17 @@ export function ClothingCard({ item, onPress, onToggleFavorite, onQuickLogWear, 
   const flagBadges = getFlagBadges(item);
   const costPerWear = getCostPerWear(item);
 
+  // Last worn label (#15)
+  const lastWornLabel = (() => {
+    const days = getDaysSinceLastWear(item);
+    if (days === null || days === Infinity) return null;
+    if (days === 0) return "today";
+    if (days === 1) return "yesterday";
+    if (days < 7) return `${days}d ago`;
+    if (days < 30) return `${Math.floor(days / 7)}w ago`;
+    return `${Math.floor(days / 30)}mo ago`;
+  })();
+
   if (photoOnly) {
     return (
       <Pressable style={[styles.card, { backgroundColor: theme.colors.surface }]} onPress={onPress}>
@@ -161,12 +172,13 @@ export function ClothingCard({ item, onPress, onToggleFavorite, onQuickLogWear, 
       </View>
       {!compact ? (
         <View style={{ padding: theme.spacing.sm }}>
-          <Text style={[styles.name, { color: theme.colors.text, fontSize: theme.fontSize.md }]} numberOfLines={1}>
+          <Text style={[styles.name, { color: theme.colors.text, fontSize: theme.fontSize.md }]} numberOfLines={1} ellipsizeMode="tail">
             {item.name}
           </Text>
           <View style={styles.metaRow}>
             <View style={styles.meta}>
               <ColorDot color={item.color} size={14} />
+              {item.secondaryColor && <ColorDot color={item.secondaryColor} size={14} />}
               <Text style={[styles.category, { color: theme.colors.textSecondary, fontSize: theme.fontSize.xs }]} numberOfLines={1}>
                 {CATEGORY_LABELS[item.category]}
                 {item.subCategory
@@ -178,9 +190,16 @@ export function ClothingCard({ item, onPress, onToggleFavorite, onQuickLogWear, 
               <Text style={[styles.brand, { color: theme.colors.textSecondary, fontSize: theme.fontSize.xs }]} numberOfLines={1}>{item.brand}</Text>
             ) : null}
           </View>
-          {costPerWear && (
-            <Text style={[styles.costPerWear, { color: theme.colors.textSecondary, fontSize: theme.fontSize.xs }]}>$/wear: ${costPerWear}</Text>
-          )}
+          <View style={styles.bottomMetaRow}>
+            {costPerWear && (
+              <Text style={[styles.costPerWear, { color: theme.colors.textSecondary, fontSize: theme.fontSize.xs }]}>$/wear: ${costPerWear}</Text>
+            )}
+            {item.wearCount > 0 && (
+              <Text style={[styles.wearCountText, { color: theme.colors.textSecondary, fontSize: theme.fontSize.xs }]}>
+                {item.wearCount}x{lastWornLabel ? ` · ${lastWornLabel}` : ""}
+              </Text>
+            )}
+          </View>
         </View>
       ) : (
         <View style={styles.compactInfo}>
@@ -315,8 +334,15 @@ const styles = StyleSheet.create({
     marginLeft: 4,
     fontStyle: "italic",
   },
-  costPerWear: {
+  bottomMetaRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     marginTop: 2,
+  },
+  costPerWear: {},
+  wearCountText: {
+    fontWeight: "500",
   },
   compactInfo: {
     paddingHorizontal: 4,
