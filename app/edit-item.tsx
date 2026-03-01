@@ -11,6 +11,7 @@ import {
   Modal,
   ActivityIndicator,
   Linking,
+  Switch,
 } from "react-native";
 import { fetchProductFromUrl } from "@/services/productSearch";
 import { useRouter, useLocalSearchParams } from "expo-router";
@@ -22,7 +23,7 @@ import { ColorDot } from "@/components/ColorDot";
 import { ColorWheelPicker } from "@/components/ColorWheelPicker";
 import { ImageColorDropper } from "@/components/ImageColorDropper";
 import { ImageCropper } from "@/components/ImageCropper";
-import { Theme } from "@/constants/theme";
+import { useTheme } from "@/hooks/useTheme";
 import {
   PRESET_COLORS,
   hexToHSL,
@@ -36,6 +37,7 @@ import type {
   ArchiveReason,
   HardwareColour,
   ItemFlag,
+  CareInstruction,
 } from "@/models/types";
 import {
   CATEGORY_LABELS,
@@ -47,11 +49,13 @@ import {
   HARDWARE_SUBCATEGORIES,
   HARDWARE_CATEGORIES,
   ITEM_FLAG_LABELS,
+  CARE_INSTRUCTION_LABELS,
 } from "@/models/types";
 
 const ARCHIVE_REASONS: ArchiveReason[] = ["donated", "sold", "worn_out", "given_away"];
 
 export default function EditItemScreen() {
+  const { theme } = useTheme();
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { items, addOrUpdate, remove, archiveItem, removeItemWornDate } = useClothingItems();
@@ -108,6 +112,19 @@ export default function EditItemScreen() {
   // Image viewer
   const [viewingImageIdx, setViewingImageIdx] = useState<number | null>(null);
 
+  // Purchase date
+  const [purchaseDate, setPurchaseDate] = useState("");
+
+  // Care instructions
+  const [careInstructions, setCareInstructions] = useState<CareInstruction[]>([]);
+
+  // Sustainable
+  const [sustainable, setSustainable] = useState(false);
+
+  // Tags
+  const [tags, setTags] = useState<string[]>([]);
+  const [tagInput, setTagInput] = useState("");
+
   useEffect(() => {
     const item = items.find((i) => i.id === id);
     if (!item) return;
@@ -139,6 +156,10 @@ export default function EditItemScreen() {
     setItemFlags(item.itemFlags ?? []);
     setNotes(item.notes ?? "");
     setOriginalAutoColor(item.originalAutoColor);
+    setPurchaseDate(item.purchaseDate ?? "");
+    setCareInstructions(item.careInstructions ?? []);
+    setSustainable(item.sustainable ?? false);
+    setTags(item.tags ?? []);
   }, [id, items]);
 
   const finalColor = useMemo(() => {
@@ -174,7 +195,8 @@ export default function EditItemScreen() {
 
   const recropImage = (index: number) => {
     setViewingImageIdx(null);
-    setCroppingIdx(index);
+    // Delay opening cropper to let the viewer modal fully close (avoids Android modal overlap bug)
+    setTimeout(() => setCroppingIdx(index), 350);
   };
 
   const handleCropDone = (croppedUri: string) => {
@@ -227,6 +249,27 @@ export default function EditItemScreen() {
   const wearDates = useMemo(() => {
     return items.find((i) => i.id === id)?.wearDates ?? [];
   }, [items, id]);
+
+  // isOpen default logic: when category/subcategory changes (not from initial load),
+  // default isOpen to true for blazers (all subcats), cardigan, zip_up; false otherwise.
+  // Track whether the initial load has completed.
+  const [initialLoadDone, setInitialLoadDone] = useState(false);
+
+  useEffect(() => {
+    if (items.find((i) => i.id === id)) {
+      setInitialLoadDone(true);
+    }
+  }, [id, items]);
+
+  useEffect(() => {
+    if (!initialLoadDone) return;
+    // When category or subcategory changes after initial load, compute default isOpen
+    const shouldBeOpen =
+      category === "blazers" ||
+      subCategory === "cardigan" ||
+      subCategory === "zip_up";
+    setIsOpen(shouldBeOpen);
+  }, [category, subCategory, initialLoadDone]);
 
   const handleRefreshFromUrl = async () => {
     if (!productUrl.trim()) {
@@ -289,6 +332,18 @@ export default function EditItemScreen() {
     }
   };
 
+  const handleAddTag = () => {
+    const trimmed = tagInput.trim();
+    if (trimmed && !tags.includes(trimmed)) {
+      setTags((prev) => [...prev, trimmed]);
+    }
+    setTagInput("");
+  };
+
+  const handleRemoveTag = (tag: string) => {
+    setTags((prev) => prev.filter((t) => t !== tag));
+  };
+
   const handleSave = async () => {
     if (!name.trim() || !id) return;
     const parsedCost = cost.trim() ? parseFloat(cost.trim()) : undefined;
@@ -316,6 +371,10 @@ export default function EditItemScreen() {
       itemFlags: itemFlags.length > 0 ? itemFlags : undefined,
       notes: notes.trim() || undefined,
       originalAutoColor,
+      purchaseDate: purchaseDate.trim() || undefined,
+      careInstructions: careInstructions.length > 0 ? careInstructions : undefined,
+      sustainable,
+      tags: tags.length > 0 ? tags : undefined,
     });
     router.back();
   };
@@ -346,9 +405,12 @@ export default function EditItemScreen() {
 
   return (
     <>
-      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+      <ScrollView
+        style={[styles.container, { backgroundColor: theme.colors.background }]}
+        contentContainerStyle={styles.content}
+      >
         {/* Photos */}
-        <Text style={styles.sectionTitle}>Photos</Text>
+        <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Photos</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.photoScroll}>
           {imageUris.map((uri, index) => (
             <Pressable
@@ -361,83 +423,124 @@ export default function EditItemScreen() {
                 style={styles.removePhotoBtn}
                 onPress={() => removeImage(index)}
               >
-                <Ionicons name="close-circle" size={22} color={Theme.colors.error} />
+                <Ionicons name="close-circle" size={22} color={theme.colors.error} />
               </Pressable>
               {index === 0 && (
-                <View style={styles.primaryBadge}>
+                <View style={[styles.primaryBadge, { backgroundColor: theme.colors.primary }]}>
                   <Text style={styles.primaryBadgeText}>Main</Text>
                 </View>
               )}
             </Pressable>
           ))}
-          <Pressable style={styles.addPhotoBtn} onPress={pickImage}>
-            <Ionicons name="camera-outline" size={28} color={Theme.colors.textLight} />
-            <Text style={styles.addPhotoLabel}>Add Photo</Text>
+          <Pressable
+            style={[
+              styles.addPhotoBtn,
+              { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border },
+            ]}
+            onPress={pickImage}
+          >
+            <Ionicons name="camera-outline" size={28} color={theme.colors.textLight} />
+            <Text style={[styles.addPhotoLabel, { color: theme.colors.textLight }]}>Add Photo</Text>
           </Pressable>
         </ScrollView>
 
-        <Text style={styles.sectionTitle}>Name</Text>
+        <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Name</Text>
         <TextInput
-          style={styles.input}
+          style={[
+            styles.input,
+            { backgroundColor: theme.colors.surface, color: theme.colors.text, borderColor: theme.colors.border },
+          ]}
           value={name}
           onChangeText={setName}
-          placeholderTextColor={Theme.colors.textLight}
+          placeholderTextColor={theme.colors.textLight}
         />
 
-        <Text style={styles.sectionTitle}>Brand (optional)</Text>
+        <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Brand (optional)</Text>
         <TextInput
-          style={styles.input}
+          style={[
+            styles.input,
+            { backgroundColor: theme.colors.surface, color: theme.colors.text, borderColor: theme.colors.border },
+          ]}
           value={brand}
           onChangeText={setBrand}
-          placeholderTextColor={Theme.colors.textLight}
+          placeholder="e.g. Zara"
+          placeholderTextColor={theme.colors.textLight}
         />
 
         {/* Product URL */}
-        <Text style={styles.sectionTitle}>Product URL (optional)</Text>
+        <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Product URL (optional)</Text>
         <View style={styles.urlRow}>
           <TextInput
-            style={[styles.input, styles.urlInput]}
+            style={[
+              styles.input,
+              styles.urlInput,
+              { backgroundColor: theme.colors.surface, color: theme.colors.text, borderColor: theme.colors.border },
+            ]}
             value={productUrl}
             onChangeText={setProductUrl}
             placeholder="https://..."
-            placeholderTextColor={Theme.colors.textLight}
+            placeholderTextColor={theme.colors.textLight}
             autoCapitalize="none"
             keyboardType="url"
           />
           {productUrl.trim().startsWith("http") && (
             <Pressable
-              style={styles.refreshUrlBtn}
+              style={[
+                styles.refreshUrlBtn,
+                { backgroundColor: theme.colors.primary + "12", borderColor: theme.colors.primary + "30" },
+              ]}
               onPress={() => Linking.openURL(productUrl.trim())}
             >
-              <Ionicons name="open-outline" size={18} color={Theme.colors.textSecondary} />
+              <Ionicons name="open-outline" size={18} color={theme.colors.textSecondary} />
             </Pressable>
           )}
           <Pressable
-            style={[styles.refreshUrlBtn, refreshingUrl && { opacity: 0.6 }]}
+            style={[
+              styles.refreshUrlBtn,
+              { backgroundColor: theme.colors.primary + "12", borderColor: theme.colors.primary + "30" },
+              refreshingUrl && { opacity: 0.6 },
+            ]}
             onPress={handleRefreshFromUrl}
             disabled={refreshingUrl}
           >
             {refreshingUrl ? (
-              <ActivityIndicator size="small" color={Theme.colors.primary} />
+              <ActivityIndicator size="small" color={theme.colors.primary} />
             ) : (
-              <Ionicons name="refresh-outline" size={20} color={Theme.colors.primary} />
+              <Ionicons name="refresh-outline" size={20} color={theme.colors.primary} />
             )}
           </Pressable>
         </View>
 
         {/* Cost */}
-        <Text style={styles.sectionTitle}>Cost (optional)</Text>
+        <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Cost (optional)</Text>
         <TextInput
-          style={styles.input}
+          style={[
+            styles.input,
+            { backgroundColor: theme.colors.surface, color: theme.colors.text, borderColor: theme.colors.border },
+          ]}
           placeholder="e.g. 49.99"
-          placeholderTextColor={Theme.colors.textLight}
+          placeholderTextColor={theme.colors.textLight}
           value={cost}
           onChangeText={setCost}
           keyboardType="decimal-pad"
         />
 
+        {/* Purchase Date */}
+        <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Purchase Date (optional)</Text>
+        <TextInput
+          style={[
+            styles.input,
+            { backgroundColor: theme.colors.surface, color: theme.colors.text, borderColor: theme.colors.border },
+          ]}
+          placeholder="YYYY-MM-DD"
+          placeholderTextColor={theme.colors.textLight}
+          value={purchaseDate}
+          onChangeText={setPurchaseDate}
+          keyboardType="default"
+        />
+
         {/* Category */}
-        <Text style={styles.sectionTitle}>Category</Text>
+        <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Category</Text>
         <View style={styles.chipRow}>
           {(Object.keys(CATEGORY_LABELS) as ClothingCategory[]).map((cat) => (
             <Chip
@@ -455,7 +558,7 @@ export default function EditItemScreen() {
         {/* Subcategory */}
         {subcats.length > 0 && (
           <>
-            <Text style={styles.sectionTitle}>Type</Text>
+            <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Type</Text>
             <View style={styles.chipRow}>
               {subcats.map((sc) => (
                 <Chip
@@ -475,11 +578,15 @@ export default function EditItemScreen() {
         {(category === "tops" || category === "blazers") && subCategory && (
           <>
             <View style={styles.openTopRow}>
-              <Text style={styles.sectionTitle}>Open Top (requires shirt under)</Text>
+              <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Open Top (requires shirt under)</Text>
               <Pressable
                 style={[
                   styles.openTopToggle,
-                  (isOpen || ALWAYS_OPEN_SUBCATEGORIES.includes(subCategory)) && styles.openTopToggleActive,
+                  { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border },
+                  (isOpen || ALWAYS_OPEN_SUBCATEGORIES.includes(subCategory)) && [
+                    styles.openTopToggleActive,
+                    { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary },
+                  ],
                 ]}
                 onPress={() => {
                   if (!ALWAYS_OPEN_SUBCATEGORIES.includes(subCategory)) {
@@ -491,6 +598,7 @@ export default function EditItemScreen() {
                 <Text
                   style={[
                     styles.openTopToggleText,
+                    { color: theme.colors.textSecondary },
                     (isOpen || ALWAYS_OPEN_SUBCATEGORIES.includes(subCategory)) && styles.openTopToggleTextActive,
                   ]}
                 >
@@ -499,7 +607,7 @@ export default function EditItemScreen() {
               </Pressable>
             </View>
             {ALWAYS_OPEN_SUBCATEGORIES.includes(subCategory) && (
-              <Text style={styles.openTopHint}>
+              <Text style={[styles.openTopHint, { color: theme.colors.textLight }]}>
                 {subcats.find((sc) => sc.value === subCategory)?.label ?? subCategory} items are always open
               </Text>
             )}
@@ -508,26 +616,26 @@ export default function EditItemScreen() {
 
         {/* Colour */}
         <View style={styles.colorHeader}>
-          <Text style={styles.sectionTitle}>
+          <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
             Colour — {finalColorName}
           </Text>
           <View style={{ flexDirection: "row", gap: 6 }}>
             {imageUris.length > 0 && (
               <Pressable
-                style={styles.colorPickerBtn}
+                style={[styles.colorPickerBtn, { backgroundColor: theme.colors.primary + "12" }]}
                 onPress={() => {
                   setDropperTarget("primary");
                   setShowDropper(true);
                 }}
               >
-                <Ionicons name="eyedrop-outline" size={16} color={Theme.colors.primary} />
-                <Text style={styles.colorPickerBtnText}>Dropper</Text>
+                <Ionicons name="eyedrop-outline" size={16} color={theme.colors.primary} />
+                <Text style={[styles.colorPickerBtnText, { color: theme.colors.primary }]}>Dropper</Text>
               </Pressable>
             )}
-            <Pressable style={styles.colorPickerBtn} onPress={openColorPicker}>
+            <Pressable style={[styles.colorPickerBtn, { backgroundColor: theme.colors.primary + "12" }]} onPress={openColorPicker}>
               <View style={[styles.colorPickerSwatch, { backgroundColor: finalColor }]} />
-              <Ionicons name="color-palette-outline" size={18} color={Theme.colors.primary} />
-              <Text style={styles.colorPickerBtnText}>Fine-tune</Text>
+              <Ionicons name="color-palette-outline" size={18} color={theme.colors.primary} />
+              <Text style={[styles.colorPickerBtnText, { color: theme.colors.primary }]}>Fine-tune</Text>
             </Pressable>
           </View>
         </View>
@@ -542,8 +650,8 @@ export default function EditItemScreen() {
         {/* Revert to original colour */}
         {originalAutoColor && (
           <Pressable style={styles.revertBtn} onPress={handleRevertToOriginalColor}>
-            <Ionicons name="refresh-outline" size={16} color={Theme.colors.primary} />
-            <Text style={styles.revertBtnText}>Revert to original colour</Text>
+            <Ionicons name="refresh-outline" size={16} color={theme.colors.primary} />
+            <Text style={[styles.revertBtnText, { color: theme.colors.primary }]}>Revert to original colour</Text>
           </Pressable>
         )}
 
@@ -558,9 +666,9 @@ export default function EditItemScreen() {
           <Ionicons
             name={showSecondaryColor ? "chevron-up" : "chevron-down"}
             size={16}
-            color={Theme.colors.primary}
+            color={theme.colors.primary}
           />
-          <Text style={styles.secondaryToggleText}>
+          <Text style={[styles.secondaryToggleText, { color: theme.colors.primary }]}>
             {showSecondaryColor ? "Hide secondary colour" : "Add secondary colour (optional)"}
           </Text>
         </Pressable>
@@ -568,19 +676,19 @@ export default function EditItemScreen() {
         {showSecondaryColor && (
           <>
             <View style={styles.colorHeader}>
-              <Text style={styles.sectionTitle}>
+              <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
                 Secondary Colour{secondaryColorIdx !== null ? ` — ${PRESET_COLORS[secondaryColorIdx].name}` : ""}
               </Text>
               {imageUris.length > 0 && (
                 <Pressable
-                  style={styles.colorPickerBtn}
+                  style={[styles.colorPickerBtn, { backgroundColor: theme.colors.primary + "12" }]}
                   onPress={() => {
                     setDropperTarget("secondary");
                     setShowDropper(true);
                   }}
                 >
-                  <Ionicons name="eyedrop-outline" size={16} color={Theme.colors.primary} />
-                  <Text style={styles.colorPickerBtnText}>Dropper</Text>
+                  <Ionicons name="eyedrop-outline" size={16} color={theme.colors.primary} />
+                  <Text style={[styles.colorPickerBtnText, { color: theme.colors.primary }]}>Dropper</Text>
                 </Pressable>
               )}
             </View>
@@ -599,7 +707,7 @@ export default function EditItemScreen() {
         )}
 
         {/* Fabric Type */}
-        <Text style={styles.sectionTitle}>Fabric Type</Text>
+        <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Fabric Type</Text>
         <View style={styles.chipRow}>
           {(Object.keys(FABRIC_TYPE_LABELS) as FabricType[]).map((ft) => (
             <Chip
@@ -615,7 +723,7 @@ export default function EditItemScreen() {
         {(HARDWARE_CATEGORIES.includes(category) ||
           (subCategory && HARDWARE_SUBCATEGORIES.includes(subCategory))) && (
           <>
-            <Text style={styles.sectionTitle}>Hardware Colour</Text>
+            <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Hardware Colour</Text>
             <View style={styles.chipRow}>
               {(Object.keys(HARDWARE_COLOUR_LABELS) as HardwareColour[]).map((hc) => (
                 <Chip
@@ -629,8 +737,25 @@ export default function EditItemScreen() {
           </>
         )}
 
+        {/* Care Instructions */}
+        <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Care Instructions</Text>
+        <View style={styles.chipRow}>
+          {(Object.keys(CARE_INSTRUCTION_LABELS) as CareInstruction[]).map((ci) => (
+            <Chip
+              key={ci}
+              label={CARE_INSTRUCTION_LABELS[ci]}
+              selected={careInstructions.includes(ci)}
+              onPress={() =>
+                setCareInstructions((prev) =>
+                  prev.includes(ci) ? prev.filter((c) => c !== ci) : [...prev, ci]
+                )
+              }
+            />
+          ))}
+        </View>
+
         {/* Item Flags */}
-        <Text style={styles.sectionTitle}>Flags</Text>
+        <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Flags</Text>
         <View style={styles.chipRow}>
           {(Object.keys(ITEM_FLAG_LABELS) as ItemFlag[]).map((flag) => (
             <Chip
@@ -646,24 +771,85 @@ export default function EditItemScreen() {
           ))}
         </View>
 
-        {/* Wear Count */}
-        <Text style={styles.sectionTitle}>Wear Count</Text>
-        <View style={styles.wearCountRow}>
+        {/* Sustainable Toggle */}
+        <View style={styles.sustainableRow}>
+          <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Sustainable / Ethical</Text>
+          <Switch
+            value={sustainable}
+            onValueChange={setSustainable}
+            trackColor={{ false: theme.colors.border, true: theme.colors.accent }}
+            thumbColor={sustainable ? theme.colors.primary : theme.colors.surfaceAlt}
+          />
+        </View>
+
+        {/* Tags */}
+        <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Tags</Text>
+        <View style={styles.tagInputRow}>
+          <TextInput
+            style={[
+              styles.input,
+              styles.tagInput,
+              { backgroundColor: theme.colors.surface, color: theme.colors.text, borderColor: theme.colors.border },
+            ]}
+            placeholder="Add a tag..."
+            placeholderTextColor={theme.colors.textLight}
+            value={tagInput}
+            onChangeText={setTagInput}
+            onSubmitEditing={handleAddTag}
+            returnKeyType="done"
+          />
           <Pressable
-            style={[styles.wearCountBtn, wearCount <= 0 && { opacity: 0.3 }]}
+            style={[styles.tagAddBtn, { backgroundColor: theme.colors.primary }]}
+            onPress={handleAddTag}
+          >
+            <Ionicons name="add" size={20} color="#FFFFFF" />
+          </Pressable>
+        </View>
+        {tags.length > 0 && (
+          <View style={styles.chipRow}>
+            {tags.map((tag) => (
+              <Pressable
+                key={tag}
+                style={[styles.tagChip, { backgroundColor: theme.colors.primary + "18", borderColor: theme.colors.primary + "40" }]}
+                onPress={() => handleRemoveTag(tag)}
+              >
+                <Text style={[styles.tagChipText, { color: theme.colors.primary }]}>{tag}</Text>
+                <Ionicons name="close" size={14} color={theme.colors.primary} />
+              </Pressable>
+            ))}
+          </View>
+        )}
+
+        {/* Wear Count */}
+        <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Wear Count</Text>
+        <View
+          style={[
+            styles.wearCountRow,
+            { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
+          ]}
+        >
+          <Pressable
+            style={[
+              styles.wearCountBtn,
+              { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border },
+              wearCount <= 0 && { opacity: 0.3 },
+            ]}
             onPress={() => setWearCount(Math.max(0, wearCount - 1))}
             disabled={wearCount <= 0}
           >
-            <Ionicons name="remove" size={20} color={Theme.colors.text} />
+            <Ionicons name="remove" size={20} color={theme.colors.text} />
           </Pressable>
-          <Text style={styles.wearCountValue}>
+          <Text style={[styles.wearCountValue, { color: theme.colors.text }]}>
             {wearCount} wear{wearCount !== 1 ? "s" : ""}
           </Text>
           <Pressable
-            style={styles.wearCountBtn}
+            style={[
+              styles.wearCountBtn,
+              { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border },
+            ]}
             onPress={() => setWearCount(wearCount + 1)}
           >
-            <Ionicons name="add" size={20} color={Theme.colors.text} />
+            <Ionicons name="add" size={20} color={theme.colors.text} />
           </Pressable>
         </View>
 
@@ -677,22 +863,30 @@ export default function EditItemScreen() {
               <Ionicons
                 name={showWearDates ? "chevron-up" : "chevron-down"}
                 size={16}
-                color={Theme.colors.primary}
+                color={theme.colors.primary}
               />
-              <Text style={styles.wearDatesToggleText}>
+              <Text style={[styles.wearDatesToggleText, { color: theme.colors.primary }]}>
                 {showWearDates ? "Hide wear history" : `Show wear history (${wearDates.length})`}
               </Text>
             </Pressable>
 
             {showWearDates && (
-              <View style={styles.wearDatesContainer}>
+              <View
+                style={[
+                  styles.wearDatesContainer,
+                  { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
+                ]}
+              >
                 {[...wearDates]
                   .map((d, i) => ({ date: d, originalIndex: i }))
                   .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
                   .slice(0, 10)
                   .map(({ date, originalIndex }) => (
-                    <View key={`${date}-${originalIndex}`} style={styles.wearDateRow}>
-                      <Text style={styles.wearDateText}>
+                    <View
+                      key={`${date}-${originalIndex}`}
+                      style={[styles.wearDateRow, { borderBottomColor: theme.colors.border }]}
+                    >
+                      <Text style={[styles.wearDateText, { color: theme.colors.text }]}>
                         {new Date(date).toLocaleDateString(undefined, {
                           year: "numeric",
                           month: "short",
@@ -718,12 +912,12 @@ export default function EditItemScreen() {
                           );
                         }}
                       >
-                        <Ionicons name="trash-outline" size={18} color={Theme.colors.error} />
+                        <Ionicons name="trash-outline" size={18} color={theme.colors.error} />
                       </Pressable>
                     </View>
                   ))}
                 {wearDates.length > 10 && (
-                  <Text style={styles.wearDatesMoreText}>
+                  <Text style={[styles.wearDatesMoreText, { color: theme.colors.primary }]}>
                     View all {wearDates.length} dates
                   </Text>
                 )}
@@ -733,11 +927,14 @@ export default function EditItemScreen() {
         )}
 
         {/* Notes */}
-        <Text style={styles.sectionTitle}>Notes (optional)</Text>
+        <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Notes (optional)</Text>
         <TextInput
-          style={styles.notesInput}
+          style={[
+            styles.notesInput,
+            { backgroundColor: theme.colors.surface, color: theme.colors.text, borderColor: theme.colors.border },
+          ]}
           placeholder="Add any notes about this item..."
-          placeholderTextColor={Theme.colors.textLight}
+          placeholderTextColor={theme.colors.textLight}
           value={notes}
           onChangeText={setNotes}
           multiline
@@ -745,22 +942,25 @@ export default function EditItemScreen() {
           textAlignVertical="top"
         />
 
-        <Pressable style={styles.saveBtn} onPress={handleSave}>
+        <Pressable style={[styles.saveBtn, { backgroundColor: theme.colors.primary }]} onPress={handleSave}>
           <Text style={styles.saveBtnText}>Save Changes</Text>
         </Pressable>
 
         {/* Archive Button */}
         <Pressable
-          style={styles.archiveBtn}
+          style={[
+            styles.archiveBtn,
+            { borderColor: theme.colors.warning + "40", backgroundColor: theme.colors.warning + "08" },
+          ]}
           onPress={() => setShowArchiveModal(true)}
         >
-          <Ionicons name="archive-outline" size={18} color={Theme.colors.warning} />
-          <Text style={styles.archiveBtnText}>Archive Item</Text>
+          <Ionicons name="archive-outline" size={18} color={theme.colors.warning} />
+          <Text style={[styles.archiveBtnText, { color: theme.colors.warning }]}>Archive Item</Text>
         </Pressable>
 
         <Pressable style={styles.deleteBtn} onPress={handleDelete}>
-          <Ionicons name="trash-outline" size={18} color={Theme.colors.error} />
-          <Text style={styles.deleteBtnText}>Delete Item</Text>
+          <Ionicons name="trash-outline" size={18} color={theme.colors.error} />
+          <Text style={[styles.deleteBtnText, { color: theme.colors.error }]}>Delete Item</Text>
         </Pressable>
       </ScrollView>
 
@@ -771,11 +971,11 @@ export default function EditItemScreen() {
         presentationStyle="pageSheet"
         onRequestClose={() => setShowColorPicker(false)}
       >
-        <View style={styles.modalContainer}>
+        <View style={[styles.modalContainer, { backgroundColor: theme.colors.background }]}>
           <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Fine-tune Colour</Text>
+            <Text style={[styles.modalTitle, { color: theme.colors.text }]}>Fine-tune Colour</Text>
             <Pressable onPress={() => setShowColorPicker(false)}>
-              <Ionicons name="close" size={24} color={Theme.colors.text} />
+              <Ionicons name="close" size={24} color={theme.colors.text} />
             </Pressable>
           </View>
 
@@ -783,8 +983,8 @@ export default function EditItemScreen() {
             <View style={styles.pickerPreview}>
               <View style={[styles.pickerSwatch, { backgroundColor: finalColor }]} />
               <View>
-                <Text style={styles.pickerColorName}>{finalColorName}</Text>
-                <Text style={styles.pickerHex}>{finalColor}</Text>
+                <Text style={[styles.pickerColorName, { color: theme.colors.text }]}>{finalColorName}</Text>
+                <Text style={[styles.pickerHex, { color: theme.colors.textSecondary }]}>{finalColor}</Text>
               </View>
             </View>
 
@@ -799,16 +999,24 @@ export default function EditItemScreen() {
             </View>
 
             {hslAdjust && (
-              <View style={styles.hslSection}>
+              <View
+                style={[
+                  styles.hslSection,
+                  { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
+                ]}
+              >
                 <View style={styles.sliderRow}>
-                  <Text style={styles.sliderLabel}>Hue</Text>
+                  <Text style={[styles.sliderLabel, { color: theme.colors.textSecondary }]}>Hue</Text>
                   <Pressable
-                    style={styles.sliderBtn}
+                    style={[
+                      styles.sliderBtn,
+                      { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border },
+                    ]}
                     onPress={() => setHslAdjust({ ...hslAdjust, h: Math.max(0, hslAdjust.h - 10) })}
                   >
-                    <Ionicons name="remove" size={16} color={Theme.colors.text} />
+                    <Ionicons name="remove" size={16} color={theme.colors.text} />
                   </Pressable>
-                  <View style={styles.sliderTrack}>
+                  <View style={[styles.sliderTrack, { backgroundColor: theme.colors.surfaceAlt }]}>
                     <View
                       style={[
                         styles.sliderFill,
@@ -817,22 +1025,28 @@ export default function EditItemScreen() {
                     />
                   </View>
                   <Pressable
-                    style={styles.sliderBtn}
+                    style={[
+                      styles.sliderBtn,
+                      { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border },
+                    ]}
                     onPress={() => setHslAdjust({ ...hslAdjust, h: Math.min(360, hslAdjust.h + 10) })}
                   >
-                    <Ionicons name="add" size={16} color={Theme.colors.text} />
+                    <Ionicons name="add" size={16} color={theme.colors.text} />
                   </Pressable>
-                  <Text style={styles.sliderValue}>{hslAdjust.h}°</Text>
+                  <Text style={[styles.sliderValue, { color: theme.colors.textSecondary }]}>{hslAdjust.h}°</Text>
                 </View>
                 <View style={styles.sliderRow}>
-                  <Text style={styles.sliderLabel}>Sat</Text>
+                  <Text style={[styles.sliderLabel, { color: theme.colors.textSecondary }]}>Sat</Text>
                   <Pressable
-                    style={styles.sliderBtn}
+                    style={[
+                      styles.sliderBtn,
+                      { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border },
+                    ]}
                     onPress={() => setHslAdjust({ ...hslAdjust, s: Math.max(0, hslAdjust.s - 5) })}
                   >
-                    <Ionicons name="remove" size={16} color={Theme.colors.text} />
+                    <Ionicons name="remove" size={16} color={theme.colors.text} />
                   </Pressable>
-                  <View style={styles.sliderTrack}>
+                  <View style={[styles.sliderTrack, { backgroundColor: theme.colors.surfaceAlt }]}>
                     <View
                       style={[
                         styles.sliderFill,
@@ -841,22 +1055,28 @@ export default function EditItemScreen() {
                     />
                   </View>
                   <Pressable
-                    style={styles.sliderBtn}
+                    style={[
+                      styles.sliderBtn,
+                      { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border },
+                    ]}
                     onPress={() => setHslAdjust({ ...hslAdjust, s: Math.min(100, hslAdjust.s + 5) })}
                   >
-                    <Ionicons name="add" size={16} color={Theme.colors.text} />
+                    <Ionicons name="add" size={16} color={theme.colors.text} />
                   </Pressable>
-                  <Text style={styles.sliderValue}>{hslAdjust.s}%</Text>
+                  <Text style={[styles.sliderValue, { color: theme.colors.textSecondary }]}>{hslAdjust.s}%</Text>
                 </View>
                 <View style={styles.sliderRow}>
-                  <Text style={styles.sliderLabel}>Light</Text>
+                  <Text style={[styles.sliderLabel, { color: theme.colors.textSecondary }]}>Light</Text>
                   <Pressable
-                    style={styles.sliderBtn}
+                    style={[
+                      styles.sliderBtn,
+                      { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border },
+                    ]}
                     onPress={() => setHslAdjust({ ...hslAdjust, l: Math.max(0, hslAdjust.l - 5) })}
                   >
-                    <Ionicons name="remove" size={16} color={Theme.colors.text} />
+                    <Ionicons name="remove" size={16} color={theme.colors.text} />
                   </Pressable>
-                  <View style={styles.sliderTrack}>
+                  <View style={[styles.sliderTrack, { backgroundColor: theme.colors.surfaceAlt }]}>
                     <View
                       style={[
                         styles.sliderFill,
@@ -865,21 +1085,24 @@ export default function EditItemScreen() {
                     />
                   </View>
                   <Pressable
-                    style={styles.sliderBtn}
+                    style={[
+                      styles.sliderBtn,
+                      { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border },
+                    ]}
                     onPress={() => setHslAdjust({ ...hslAdjust, l: Math.min(100, hslAdjust.l + 5) })}
                   >
-                    <Ionicons name="add" size={16} color={Theme.colors.text} />
+                    <Ionicons name="add" size={16} color={theme.colors.text} />
                   </Pressable>
-                  <Text style={styles.sliderValue}>{hslAdjust.l}%</Text>
+                  <Text style={[styles.sliderValue, { color: theme.colors.textSecondary }]}>{hslAdjust.l}%</Text>
                 </View>
                 <Pressable style={styles.resetHslBtn} onPress={() => setHslAdjust(null)}>
-                  <Text style={styles.resetHslText}>Reset to preset</Text>
+                  <Text style={[styles.resetHslText, { color: theme.colors.primary }]}>Reset to preset</Text>
                 </Pressable>
               </View>
             )}
 
             <Pressable
-              style={styles.doneBtn}
+              style={[styles.doneBtn, { backgroundColor: theme.colors.primary }]}
               onPress={() => setShowColorPicker(false)}
             >
               <Text style={styles.doneBtnText}>Done</Text>
@@ -896,25 +1119,25 @@ export default function EditItemScreen() {
         onRequestClose={() => setShowArchiveModal(false)}
       >
         <Pressable style={styles.archiveOverlay} onPress={() => setShowArchiveModal(false)}>
-          <View style={styles.archiveSheet}>
-            <Text style={styles.archiveSheetTitle}>Archive Reason</Text>
+          <View style={[styles.archiveSheet, { backgroundColor: theme.colors.surface }]}>
+            <Text style={[styles.archiveSheetTitle, { color: theme.colors.text }]}>Archive Reason</Text>
             {ARCHIVE_REASONS.map((reason) => (
               <Pressable
                 key={reason}
-                style={styles.archiveOption}
+                style={[styles.archiveOption, { borderBottomColor: theme.colors.border }]}
                 onPress={() => handleArchive(reason)}
               >
-                <Text style={styles.archiveOptionText}>
+                <Text style={[styles.archiveOptionText, { color: theme.colors.text }]}>
                   {ARCHIVE_REASON_LABELS[reason]}
                 </Text>
-                <Ionicons name="chevron-forward" size={18} color={Theme.colors.textLight} />
+                <Ionicons name="chevron-forward" size={18} color={theme.colors.textLight} />
               </Pressable>
             ))}
             <Pressable
               style={styles.archiveCancelBtn}
               onPress={() => setShowArchiveModal(false)}
             >
-              <Text style={styles.archiveCancelText}>Cancel</Text>
+              <Text style={[styles.archiveCancelText, { color: theme.colors.textSecondary }]}>Cancel</Text>
             </Pressable>
           </View>
         </Pressable>
@@ -960,14 +1183,14 @@ export default function EditItemScreen() {
 
           <View style={styles.imageViewerActions}>
             <Pressable
-              style={styles.imageViewerBtn}
+              style={[styles.imageViewerBtn, { backgroundColor: theme.colors.surface }]}
               onPress={() => viewingImageIdx !== null && recropImage(viewingImageIdx)}
             >
-              <Ionicons name="crop-outline" size={20} color={Theme.colors.primary} />
-              <Text style={styles.imageViewerBtnText}>Crop</Text>
+              <Ionicons name="crop-outline" size={20} color={theme.colors.primary} />
+              <Text style={[styles.imageViewerBtnText, { color: theme.colors.primary }]}>Crop</Text>
             </Pressable>
             <Pressable
-              style={styles.imageViewerBtn}
+              style={[styles.imageViewerBtn, { backgroundColor: theme.colors.surface }]}
               onPress={() => {
                 if (viewingImageIdx !== null) {
                   removeImage(viewingImageIdx);
@@ -975,8 +1198,8 @@ export default function EditItemScreen() {
                 }
               }}
             >
-              <Ionicons name="trash-outline" size={20} color={Theme.colors.error} />
-              <Text style={[styles.imageViewerBtnText, { color: Theme.colors.error }]}>Delete</Text>
+              <Ionicons name="trash-outline" size={20} color={theme.colors.error} />
+              <Text style={[styles.imageViewerBtnText, { color: theme.colors.error }]}>Delete</Text>
             </Pressable>
           </View>
         </View>
@@ -996,17 +1219,17 @@ export default function EditItemScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Theme.colors.background },
-  content: { padding: Theme.spacing.md, paddingBottom: Theme.spacing.xxl },
+  container: { flex: 1 },
+  content: { padding: 16, paddingBottom: 48 },
   photoScroll: {
-    marginBottom: Theme.spacing.sm,
+    marginBottom: 8,
   },
   photoThumb: {
     width: 100,
     height: 130,
-    borderRadius: Theme.borderRadius.sm,
+    borderRadius: 8,
     overflow: "hidden",
-    marginRight: Theme.spacing.sm,
+    marginRight: 8,
     position: "relative",
   },
   photoThumbImage: {
@@ -1025,10 +1248,9 @@ const styles = StyleSheet.create({
     position: "absolute",
     bottom: 4,
     left: 4,
-    backgroundColor: Theme.colors.primary,
     paddingHorizontal: 6,
     paddingVertical: 2,
-    borderRadius: Theme.borderRadius.full,
+    borderRadius: 9999,
   },
   primaryBadgeText: {
     color: "#FFFFFF",
@@ -1038,94 +1260,78 @@ const styles = StyleSheet.create({
   addPhotoBtn: {
     width: 100,
     height: 130,
-    borderRadius: Theme.borderRadius.sm,
-    backgroundColor: Theme.colors.surfaceAlt,
+    borderRadius: 8,
     justifyContent: "center",
     alignItems: "center",
     borderWidth: 1,
-    borderColor: Theme.colors.border,
     borderStyle: "dashed",
   },
   addPhotoLabel: {
     marginTop: 4,
-    fontSize: Theme.fontSize.xs,
-    color: Theme.colors.textLight,
+    fontSize: 11,
   },
   sectionTitle: {
-    fontSize: Theme.fontSize.md,
+    fontSize: 15,
     fontWeight: "600",
-    color: Theme.colors.text,
-    marginBottom: Theme.spacing.sm,
-    marginTop: Theme.spacing.md,
+    marginBottom: 8,
+    marginTop: 16,
   },
   input: {
     height: 48,
-    backgroundColor: Theme.colors.surface,
-    borderRadius: Theme.borderRadius.sm,
-    paddingHorizontal: Theme.spacing.md,
-    fontSize: Theme.fontSize.md,
-    color: Theme.colors.text,
+    borderRadius: 8,
+    paddingHorizontal: 16,
+    fontSize: 15,
     borderWidth: 1,
-    borderColor: Theme.colors.border,
   },
   notesInput: {
     height: 90,
-    backgroundColor: Theme.colors.surface,
-    borderRadius: Theme.borderRadius.sm,
-    paddingHorizontal: Theme.spacing.md,
-    paddingTop: Theme.spacing.sm,
-    fontSize: Theme.fontSize.md,
-    color: Theme.colors.text,
+    borderRadius: 8,
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    fontSize: 15,
     borderWidth: 1,
-    borderColor: Theme.colors.border,
     textAlignVertical: "top",
   },
   revertBtn: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    marginTop: Theme.spacing.sm,
+    marginTop: 8,
     paddingVertical: 6,
   },
   revertBtnText: {
-    fontSize: Theme.fontSize.sm,
+    fontSize: 13,
     fontWeight: "600",
-    color: Theme.colors.primary,
   },
   chipRow: { flexDirection: "row", flexWrap: "wrap" },
   wearCountRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: Theme.spacing.md,
-    backgroundColor: Theme.colors.surface,
-    borderRadius: Theme.borderRadius.sm,
-    padding: Theme.spacing.sm,
+    gap: 16,
+    borderRadius: 8,
+    padding: 8,
     borderWidth: 1,
-    borderColor: Theme.colors.border,
   },
   wearCountBtn: {
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: Theme.colors.surfaceAlt,
     justifyContent: "center",
     alignItems: "center",
     borderWidth: 1,
-    borderColor: Theme.colors.border,
   },
   wearCountValue: {
     flex: 1,
     textAlign: "center",
-    fontSize: Theme.fontSize.lg,
+    fontSize: 18,
     fontWeight: "700",
-    color: Theme.colors.text,
   },
   colorHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginTop: Theme.spacing.md,
-    marginBottom: Theme.spacing.sm,
+    marginTop: 16,
+    marginBottom: 8,
   },
   colorPickerBtn: {
     flexDirection: "row",
@@ -1133,8 +1339,7 @@ const styles = StyleSheet.create({
     gap: 6,
     paddingHorizontal: 10,
     paddingVertical: 6,
-    borderRadius: Theme.borderRadius.full,
-    backgroundColor: Theme.colors.primary + "12",
+    borderRadius: 9999,
   },
   colorPickerSwatch: {
     width: 18,
@@ -1144,9 +1349,8 @@ const styles = StyleSheet.create({
     borderColor: "rgba(0,0,0,0.1)",
   },
   colorPickerBtnText: {
-    fontSize: Theme.fontSize.xs,
+    fontSize: 11,
     fontWeight: "600",
-    color: Theme.colors.primary,
   },
   colorGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   colorBtn: { padding: 2 },
@@ -1154,38 +1358,93 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    marginTop: Theme.spacing.md,
+    marginTop: 16,
     paddingVertical: 8,
   },
   secondaryToggleText: {
-    fontSize: Theme.fontSize.sm,
-    color: Theme.colors.primary,
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  openTopRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginTop: 16,
+  },
+  openTopToggle: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  openTopToggleActive: {},
+  openTopToggleText: {
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  openTopToggleTextActive: {
+    color: "#FFFFFF",
+  },
+  openTopHint: {
+    fontSize: 11,
+    marginTop: 4,
+  },
+  sustainableRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginTop: 16,
+  },
+  tagInputRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  tagInput: {
+    flex: 1,
+  },
+  tagAddBtn: {
+    width: 48,
+    height: 48,
+    borderRadius: 8,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  tagChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 9999,
+    borderWidth: 1,
+    marginRight: 6,
+    marginBottom: 6,
+  },
+  tagChipText: {
+    fontSize: 13,
     fontWeight: "600",
   },
   saveBtn: {
     height: 52,
-    backgroundColor: Theme.colors.primary,
-    borderRadius: Theme.borderRadius.md,
+    borderRadius: 12,
     justifyContent: "center",
     alignItems: "center",
-    marginTop: Theme.spacing.xl,
+    marginTop: 32,
   },
-  saveBtnText: { color: "#FFFFFF", fontSize: Theme.fontSize.lg, fontWeight: "700" },
+  saveBtnText: { color: "#FFFFFF", fontSize: 18, fontWeight: "700" },
   archiveBtn: {
     flexDirection: "row",
     justifyContent: "center",
     alignItems: "center",
     gap: 6,
-    marginTop: Theme.spacing.md,
-    padding: Theme.spacing.md,
+    marginTop: 16,
+    padding: 16,
     borderWidth: 1,
-    borderColor: Theme.colors.warning + "40",
-    borderRadius: Theme.borderRadius.md,
-    backgroundColor: Theme.colors.warning + "08",
+    borderRadius: 12,
   },
   archiveBtnText: {
-    color: Theme.colors.warning,
-    fontSize: Theme.fontSize.md,
+    fontSize: 15,
     fontWeight: "600",
   },
   deleteBtn: {
@@ -1193,34 +1452,31 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     gap: 6,
-    marginTop: Theme.spacing.sm,
-    padding: Theme.spacing.md,
+    marginTop: 8,
+    padding: 16,
   },
   deleteBtnText: {
-    color: Theme.colors.error,
-    fontSize: Theme.fontSize.md,
+    fontSize: 15,
     fontWeight: "600",
   },
   // Modal styles
   modalContainer: {
     flex: 1,
-    backgroundColor: Theme.colors.background,
-    paddingTop: Theme.spacing.md,
+    paddingTop: 16,
   },
   modalHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingHorizontal: Theme.spacing.md,
-    paddingBottom: Theme.spacing.sm,
+    paddingHorizontal: 16,
+    paddingBottom: 8,
   },
   modalTitle: {
-    fontSize: Theme.fontSize.xl,
+    fontSize: 22,
     fontWeight: "700",
-    color: Theme.colors.text,
   },
   colorPickerContent: {
-    padding: Theme.spacing.md,
+    padding: 16,
     alignItems: "center",
     paddingBottom: 60,
   },
@@ -1239,24 +1495,20 @@ const styles = StyleSheet.create({
     borderColor: "rgba(0,0,0,0.1)",
   },
   pickerColorName: {
-    fontSize: Theme.fontSize.lg,
+    fontSize: 18,
     fontWeight: "700",
-    color: Theme.colors.text,
   },
   pickerHex: {
-    fontSize: Theme.fontSize.sm,
-    color: Theme.colors.textSecondary,
+    fontSize: 13,
   },
   wheelWrap: {
     marginBottom: 20,
   },
   hslSection: {
     alignSelf: "stretch",
-    backgroundColor: Theme.colors.surface,
-    borderRadius: Theme.borderRadius.md,
-    padding: Theme.spacing.md,
+    borderRadius: 12,
+    padding: 16,
     borderWidth: 1,
-    borderColor: Theme.colors.border,
   },
   sliderRow: {
     flexDirection: "row",
@@ -1266,24 +1518,20 @@ const styles = StyleSheet.create({
   },
   sliderLabel: {
     width: 36,
-    fontSize: Theme.fontSize.xs,
-    color: Theme.colors.textSecondary,
+    fontSize: 11,
     fontWeight: "600",
   },
   sliderBtn: {
     width: 28,
     height: 28,
     borderRadius: 14,
-    backgroundColor: Theme.colors.surfaceAlt,
     justifyContent: "center",
     alignItems: "center",
     borderWidth: 1,
-    borderColor: Theme.colors.border,
   },
   sliderTrack: {
     flex: 1,
     height: 8,
-    backgroundColor: Theme.colors.surfaceAlt,
     borderRadius: 4,
     overflow: "hidden",
   },
@@ -1293,8 +1541,7 @@ const styles = StyleSheet.create({
   },
   sliderValue: {
     width: 36,
-    fontSize: Theme.fontSize.xs,
-    color: Theme.colors.textSecondary,
+    fontSize: 11,
     textAlign: "right",
   },
   resetHslBtn: {
@@ -1302,22 +1549,20 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   resetHslText: {
-    fontSize: Theme.fontSize.xs,
-    color: Theme.colors.primary,
+    fontSize: 11,
     fontWeight: "600",
   },
   doneBtn: {
     height: 48,
-    backgroundColor: Theme.colors.primary,
-    borderRadius: Theme.borderRadius.md,
+    borderRadius: 12,
     justifyContent: "center",
     alignItems: "center",
-    marginTop: Theme.spacing.lg,
+    marginTop: 24,
     alignSelf: "stretch",
   },
   doneBtnText: {
     color: "#FFFFFF",
-    fontSize: Theme.fontSize.lg,
+    fontSize: 18,
     fontWeight: "700",
   },
   // Archive modal
@@ -1327,40 +1572,35 @@ const styles = StyleSheet.create({
     justifyContent: "flex-end",
   },
   archiveSheet: {
-    backgroundColor: Theme.colors.surface,
-    borderTopLeftRadius: Theme.borderRadius.lg,
-    borderTopRightRadius: Theme.borderRadius.lg,
-    padding: Theme.spacing.lg,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    padding: 24,
     paddingBottom: 40,
   },
   archiveSheetTitle: {
-    fontSize: Theme.fontSize.lg,
+    fontSize: 18,
     fontWeight: "700",
-    color: Theme.colors.text,
-    marginBottom: Theme.spacing.md,
+    marginBottom: 16,
     textAlign: "center",
   },
   archiveOption: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingVertical: Theme.spacing.md,
+    paddingVertical: 16,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Theme.colors.border,
   },
   archiveOptionText: {
-    fontSize: Theme.fontSize.md,
-    color: Theme.colors.text,
+    fontSize: 15,
     fontWeight: "500",
   },
   archiveCancelBtn: {
-    marginTop: Theme.spacing.md,
-    paddingVertical: Theme.spacing.md,
+    marginTop: 16,
+    paddingVertical: 16,
     alignItems: "center",
   },
   archiveCancelText: {
-    fontSize: Theme.fontSize.md,
-    color: Theme.colors.textSecondary,
+    fontSize: 15,
     fontWeight: "600",
   },
   // Image viewer modal
@@ -1372,13 +1612,13 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: Theme.spacing.md,
+    paddingHorizontal: 16,
     paddingTop: 54,
-    paddingBottom: Theme.spacing.md,
+    paddingBottom: 16,
   },
   imageViewerTitle: {
     color: "#FFFFFF",
-    fontSize: Theme.fontSize.md,
+    fontSize: 15,
     fontWeight: "600",
   },
   imageViewerBody: {
@@ -1393,9 +1633,9 @@ const styles = StyleSheet.create({
   imageViewerActions: {
     flexDirection: "row",
     justifyContent: "center",
-    gap: Theme.spacing.lg,
-    paddingVertical: Theme.spacing.lg,
-    paddingBottom: Theme.spacing.xxl,
+    gap: 24,
+    paddingVertical: 24,
+    paddingBottom: 48,
   },
   imageViewerBtn: {
     flexDirection: "row",
@@ -1403,19 +1643,17 @@ const styles = StyleSheet.create({
     gap: 6,
     paddingVertical: 10,
     paddingHorizontal: 20,
-    borderRadius: Theme.borderRadius.md,
-    backgroundColor: Theme.colors.surface,
+    borderRadius: 12,
   },
   imageViewerBtnText: {
-    fontSize: Theme.fontSize.md,
+    fontSize: 15,
     fontWeight: "600",
-    color: Theme.colors.primary,
   },
   // URL refresh
   urlRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: Theme.spacing.sm,
+    gap: 8,
   },
   urlInput: {
     flex: 1,
@@ -1423,51 +1661,43 @@ const styles = StyleSheet.create({
   refreshUrlBtn: {
     width: 48,
     height: 48,
-    borderRadius: Theme.borderRadius.sm,
-    backgroundColor: Theme.colors.primary + "12",
+    borderRadius: 8,
     justifyContent: "center",
     alignItems: "center",
     borderWidth: 1,
-    borderColor: Theme.colors.primary + "30",
   },
   // Wear date history
   wearDatesToggle: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    marginTop: Theme.spacing.sm,
+    marginTop: 8,
     paddingVertical: 8,
   },
   wearDatesToggleText: {
-    fontSize: Theme.fontSize.sm,
-    color: Theme.colors.primary,
+    fontSize: 13,
     fontWeight: "600",
   },
   wearDatesContainer: {
-    backgroundColor: Theme.colors.surface,
-    borderRadius: Theme.borderRadius.sm,
+    borderRadius: 8,
     borderWidth: 1,
-    borderColor: Theme.colors.border,
     overflow: "hidden",
   },
   wearDateRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingVertical: Theme.spacing.sm,
-    paddingHorizontal: Theme.spacing.md,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Theme.colors.border,
   },
   wearDateText: {
-    fontSize: Theme.fontSize.sm,
-    color: Theme.colors.text,
+    fontSize: 13,
   },
   wearDatesMoreText: {
     textAlign: "center",
-    paddingVertical: Theme.spacing.sm,
-    fontSize: Theme.fontSize.sm,
-    color: Theme.colors.primary,
+    paddingVertical: 8,
+    fontSize: 13,
     fontWeight: "600",
   },
 });

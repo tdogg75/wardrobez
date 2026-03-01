@@ -2,7 +2,7 @@ import React from "react";
 import { View, Image, StyleSheet, Text } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import type { ClothingItem, ClothingCategory } from "@/models/types";
-import { Theme } from "@/constants/theme";
+import { useTheme } from "@/hooks/useTheme";
 
 interface MoodBoardProps {
   items: ClothingItem[];
@@ -44,30 +44,35 @@ function getLayout(count: number): CellPos[] {
   return LAYOUTS[count] ?? LAYOUTS[4];
 }
 
-const CATEGORY_ICONS: Record<ClothingCategory, string> = {
+const CATEGORY_ICONS: Partial<Record<ClothingCategory, string>> = {
   tops: "shirt-outline",
   bottoms: "walk-outline",
+  skirts_shorts: "resize-outline",
   dresses: "woman-outline",
-  outerwear: "cloudy-outline",
+  jumpsuits: "body-outline",
+  blazers: "business-outline",
+  jackets: "cloudy-outline",
   shoes: "footsteps-outline",
   accessories: "diamond-outline",
   swimwear: "water-outline",
+  jewelry: "sparkles-outline",
 };
 
 export function MoodBoard({ items, size = 280 }: MoodBoardProps) {
+  const { theme } = useTheme();
   const displayItems = items.slice(0, 5);
   const layout = getLayout(displayItems.length);
 
   if (displayItems.length === 0) {
     return (
-      <View style={[styles.board, { width: size, height: size }]}>
-        <Text style={styles.emptyText}>Add items to see your mood board</Text>
+      <View style={[styles.board, { width: size, height: size, backgroundColor: theme.colors.surfaceAlt }]}>
+        <Text style={[styles.emptyText, { color: theme.colors.textLight }]}>Add items to see your mood board</Text>
       </View>
     );
   }
 
   return (
-    <View style={[styles.board, { width: size, height: size }]}>
+    <View style={[styles.board, { width: size, height: size, backgroundColor: theme.colors.surfaceAlt }]}>
       {displayItems.map((item, idx) => {
         const pos = layout[idx];
         if (!pos) return null;
@@ -107,7 +112,7 @@ export function MoodBoard({ items, size = 280 }: MoodBoardProps) {
       })}
 
       {items.length > 5 && (
-        <View style={styles.overflowBadge}>
+        <View style={[styles.overflowBadge, { backgroundColor: theme.colors.primary }]}>
           <Text style={styles.overflowText}>+{items.length - 5}</Text>
         </View>
       )}
@@ -117,8 +122,7 @@ export function MoodBoard({ items, size = 280 }: MoodBoardProps) {
 
 const styles = StyleSheet.create({
   board: {
-    backgroundColor: "#F4F2EF",
-    borderRadius: Theme.borderRadius.lg,
+    borderRadius: 16,
     overflow: "hidden",
     position: "relative",
   },
@@ -128,13 +132,12 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     textAlign: "center",
-    fontSize: Theme.fontSize.sm,
-    color: Theme.colors.textLight,
-    paddingHorizontal: Theme.spacing.md,
+    fontSize: 13,
+    paddingHorizontal: 16,
   },
   cell: {
     position: "absolute",
-    borderRadius: Theme.borderRadius.sm,
+    borderRadius: 8,
     overflow: "hidden",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
@@ -179,10 +182,9 @@ const styles = StyleSheet.create({
     position: "absolute",
     bottom: 6,
     right: 6,
-    backgroundColor: Theme.colors.primary,
     paddingHorizontal: 8,
     paddingVertical: 3,
-    borderRadius: Theme.borderRadius.full,
+    borderRadius: 9999,
     zIndex: 10,
   },
   overflowText: {

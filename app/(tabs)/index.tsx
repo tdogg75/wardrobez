@@ -8,6 +8,8 @@ import {
   StyleSheet,
   ActivityIndicator,
   Alert,
+  Image,
+  Dimensions,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -16,7 +18,7 @@ import { useClothingItems } from "@/hooks/useClothingItems";
 import { ClothingCard } from "@/components/ClothingCard";
 import { Chip } from "@/components/Chip";
 import { EmptyState } from "@/components/EmptyState";
-import { Theme } from "@/constants/theme";
+import { useTheme } from "@/hooks/useTheme";
 import type { ClothingCategory, ClothingItem } from "@/models/types";
 import { CATEGORY_LABELS } from "@/models/types";
 
@@ -25,7 +27,9 @@ const ALL_CATEGORIES: (ClothingCategory | "all" | "favorites")[] = [
   "favorites",
   "tops",
   "bottoms",
+  "skirts_shorts",
   "dresses",
+  "jumpsuits",
   "blazers",
   "jackets",
   "shoes",
@@ -41,7 +45,9 @@ type ColumnCount = (typeof COLUMN_OPTIONS)[number];
 const SECTION_ORDER: ClothingCategory[] = [
   "tops",
   "bottoms",
+  "skirts_shorts",
   "dresses",
+  "jumpsuits",
   "blazers",
   "jackets",
   "shoes",
@@ -56,7 +62,9 @@ type SortOption =
   | "most_worn"
   | "least_worn"
   | "highest_cost"
-  | "lowest_cpw";
+  | "lowest_cpw"
+  | "purchase_date"
+  | "brand";
 
 const SORT_OPTIONS: { value: SortOption; label: string }[] = [
   { value: "newest", label: "Newest" },
@@ -65,6 +73,8 @@ const SORT_OPTIONS: { value: SortOption; label: string }[] = [
   { value: "least_worn", label: "Least Worn" },
   { value: "highest_cost", label: "Highest Cost" },
   { value: "lowest_cpw", label: "Lowest $/Wear" },
+  { value: "purchase_date", label: "Purchase Date" },
+  { value: "brand", label: "Brand" },
 ];
 
 function sortItems(items: ClothingItem[], sort: SortOption): ClothingItem[] {
@@ -87,12 +97,34 @@ function sortItems(items: ClothingItem[], sort: SortOption): ClothingItem[] {
       };
       return sorted.sort((a, b) => cpw(a) - cpw(b));
     }
+    case "purchase_date": {
+      const getTs = (item: ClothingItem) => {
+        if (item.purchaseDate) {
+          return new Date(item.purchaseDate).getTime();
+        }
+        return item.createdAt;
+      };
+      return sorted.sort((a, b) => getTs(b) - getTs(a));
+    }
+    case "brand": {
+      return sorted.sort((a, b) => {
+        const brandA = (a.brand ?? "").toLowerCase();
+        const brandB = (b.brand ?? "").toLowerCase();
+        if (brandA < brandB) return -1;
+        if (brandA > brandB) return 1;
+        return 0;
+      });
+    }
     default:
       return sorted;
   }
 }
 
+const PHOTO_GRID_COLUMNS = 3;
+const screenWidth = Dimensions.get("window").width;
+
 export default function WardrobeScreen() {
+  const { theme } = useTheme();
   const { items, loading, addOrUpdate, getFavorites, remove, archiveItem, logItemWorn } =
     useClothingItems();
   const [filter, setFilter] = useState<
@@ -101,6 +133,7 @@ export default function WardrobeScreen() {
   const [numColumns, setNumColumns] = useState<ColumnCount>(2);
   const [sortBy, setSortBy] = useState<SortOption>("newest");
   const [showSortMenu, setShowSortMenu] = useState(false);
+  const [photoOnlyMode, setPhotoOnlyMode] = useState(false);
 
   // Bulk selection state
   const [selectionMode, setSelectionMode] = useState(false);
@@ -234,6 +267,17 @@ export default function WardrobeScreen() {
   const compact = numColumns >= 4;
   const itemGap = numColumns === 2 ? 8 : 4;
 
+  // Photo grid tile size (3 columns with small gaps)
+  const photoTileGap = 2;
+  const photoTileSize =
+    (screenWidth - theme.spacing.md * 2 - photoTileGap * (PHOTO_GRID_COLUMNS - 1)) /
+    PHOTO_GRID_COLUMNS;
+
+  const styles = createStyles(theme);
+
+  const currentSortLabel =
+    SORT_OPTIONS.find((o) => o.value === sortBy)?.label ?? "Newest";
+
   const renderCard = (item: ClothingItem) => (
     <View style={{ width: cardWidthPct as any }}>
       <Pressable
@@ -290,7 +334,11 @@ export default function WardrobeScreen() {
               <View
                 style={[
                   styles.checkbox,
-                  selectedIds.has(item.id) && styles.checkboxSelected,
+                  { borderColor: theme.colors.primary },
+                  selectedIds.has(item.id) && {
+                    backgroundColor: theme.colors.primary,
+                    borderColor: theme.colors.primary,
+                  },
                 ]}
               >
                 {selectedIds.has(item.id) && (
@@ -302,6 +350,47 @@ export default function WardrobeScreen() {
         </View>
       </Pressable>
     </View>
+  );
+
+  const renderPhotoTile = ({ item }: { item: ClothingItem }) => (
+    <Pressable
+      onPress={() => {
+        router.push({
+          pathname: "/item-detail",
+          params: { id: item.id },
+        });
+      }}
+      style={{
+        width: photoTileSize,
+        height: photoTileSize,
+        marginBottom: photoTileGap,
+      }}
+    >
+      {item.imageUris?.length > 0 ? (
+        <Image
+          source={{ uri: item.imageUris[0] }}
+          style={{
+            width: "100%",
+            height: "100%",
+            borderRadius: theme.borderRadius.sm,
+          }}
+          resizeMode="cover"
+        />
+      ) : (
+        <View
+          style={{
+            width: "100%",
+            height: "100%",
+            borderRadius: theme.borderRadius.sm,
+            backgroundColor: item.color + "30",
+            justifyContent: "center",
+            alignItems: "center",
+          }}
+        >
+          <Ionicons name="shirt-outline" size={28} color={item.color} />
+        </View>
+      )}
+    </Pressable>
   );
 
   const renderSectionRow = ({ item: rowItems }: { item: ClothingItem[] }) => (
@@ -318,12 +407,11 @@ export default function WardrobeScreen() {
     section: { title: string };
   }) => (
     <View style={styles.sectionHeader}>
-      <Text style={styles.sectionHeaderText}>{section.title}</Text>
+      <Text style={[styles.sectionHeaderText, { color: theme.colors.text }]}>
+        {section.title}
+      </Text>
     </View>
   );
-
-  const currentSortLabel =
-    SORT_OPTIONS.find((o) => o.value === sortBy)?.label ?? "Newest";
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -341,7 +429,7 @@ export default function WardrobeScreen() {
               <Ionicons
                 name="archive-outline"
                 size={18}
-                color={Theme.colors.primary}
+                color={theme.colors.primary}
               />
               <Text style={styles.selectionBarBtnText}>Archive</Text>
             </Pressable>
@@ -352,12 +440,12 @@ export default function WardrobeScreen() {
               <Ionicons
                 name="trash-outline"
                 size={18}
-                color={Theme.colors.error}
+                color={theme.colors.error}
               />
               <Text
                 style={[
                   styles.selectionBarBtnText,
-                  { color: Theme.colors.error },
+                  { color: theme.colors.error },
                 ]}
               >
                 Delete
@@ -370,12 +458,12 @@ export default function WardrobeScreen() {
               <Ionicons
                 name="close"
                 size={18}
-                color={Theme.colors.textSecondary}
+                color={theme.colors.textSecondary}
               />
               <Text
                 style={[
                   styles.selectionBarBtnText,
-                  { color: Theme.colors.textSecondary },
+                  { color: theme.colors.textSecondary },
                 ]}
               >
                 Cancel
@@ -385,11 +473,27 @@ export default function WardrobeScreen() {
         </View>
       )}
 
-      {/* Custom header row: title left, sort + column toggle right */}
+      {/* Custom header row: title left, sort + view toggles right */}
       {!selectionMode && (
         <View style={styles.topRow}>
           <Text style={styles.headerTitle}>Wardrobe</Text>
           <View style={styles.topRowRight}>
+            {/* Photo-only browse mode toggle */}
+            <Pressable
+              style={[
+                styles.columnToggle,
+                photoOnlyMode && {
+                  backgroundColor: theme.colors.primary,
+                },
+              ]}
+              onPress={() => setPhotoOnlyMode((v) => !v)}
+            >
+              <Ionicons
+                name="images-outline"
+                size={18}
+                color={photoOnlyMode ? "#FFFFFF" : theme.colors.primary}
+              />
+            </Pressable>
             {/* Sort dropdown */}
             <Pressable
               style={styles.sortToggle}
@@ -398,24 +502,26 @@ export default function WardrobeScreen() {
               <Ionicons
                 name="swap-vertical-outline"
                 size={16}
-                color={Theme.colors.primary}
+                color={theme.colors.primary}
               />
               <Text style={styles.sortToggleText}>{currentSortLabel}</Text>
               <Ionicons
                 name={showSortMenu ? "chevron-up" : "chevron-down"}
                 size={12}
-                color={Theme.colors.primary}
+                color={theme.colors.primary}
               />
             </Pressable>
-            {/* Column toggle */}
-            <Pressable style={styles.columnToggle} onPress={cycleColumns}>
-              <Ionicons
-                name="grid-outline"
-                size={18}
-                color={Theme.colors.primary}
-              />
-              <Text style={styles.columnToggleText}>{numColumns} cols</Text>
-            </Pressable>
+            {/* Column toggle (only in card mode) */}
+            {!photoOnlyMode && (
+              <Pressable style={styles.columnToggle} onPress={cycleColumns}>
+                <Ionicons
+                  name="grid-outline"
+                  size={18}
+                  color={theme.colors.primary}
+                />
+                <Text style={styles.columnToggleText}>{numColumns} cols</Text>
+              </Pressable>
+            )}
           </View>
         </View>
       )}
@@ -447,7 +553,7 @@ export default function WardrobeScreen() {
                 <Ionicons
                   name="checkmark"
                   size={16}
-                  color={Theme.colors.primary}
+                  color={theme.colors.primary}
                 />
               )}
             </Pressable>
@@ -495,7 +601,7 @@ export default function WardrobeScreen() {
       {loading ? (
         <ActivityIndicator
           size="large"
-          color={Theme.colors.primary}
+          color={theme.colors.primary}
           style={styles.loader}
         />
       ) : filtered.length === 0 ? (
@@ -511,6 +617,19 @@ export default function WardrobeScreen() {
               ? "Tap the heart icon on items to add them to your favourites!"
               : "Add your first clothing item to get started with outfit suggestions!"
           }
+        />
+      ) : photoOnlyMode ? (
+        /* Photo-only grid view */
+        <FlatList
+          key="photo-grid"
+          data={filtered}
+          keyExtractor={(item) => item.id}
+          numColumns={PHOTO_GRID_COLUMNS}
+          columnWrapperStyle={{
+            gap: photoTileGap,
+          }}
+          contentContainerStyle={styles.list}
+          renderItem={renderPhotoTile}
         />
       ) : filter === "all" ? (
         <SectionList
@@ -558,207 +677,209 @@ function chunkArray<T>(arr: T[], size: number): T[][] {
   return result;
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Theme.colors.background,
-  },
-  // --- Selection bar ---
-  selectionBar: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: Theme.spacing.md,
-    paddingTop: Theme.spacing.sm,
-    paddingBottom: Theme.spacing.sm,
-    backgroundColor: Theme.colors.primary + "14",
-    borderBottomWidth: 1,
-    borderBottomColor: Theme.colors.primary + "30",
-  },
-  selectionBarText: {
-    fontSize: Theme.fontSize.md,
-    fontWeight: "700",
-    color: Theme.colors.primary,
-  },
-  selectionBarActions: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-  },
-  selectionBarBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: Theme.borderRadius.full,
-    backgroundColor: Theme.colors.surface,
-  },
-  selectionBarBtnText: {
-    fontSize: Theme.fontSize.xs,
-    fontWeight: "600",
-    color: Theme.colors.primary,
-  },
-  // --- Checkbox overlay ---
-  checkboxOverlay: {
-    position: "absolute",
-    top: 8,
-    left: 8,
-    zIndex: 10,
-  },
-  checkbox: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: Theme.colors.primary,
-    backgroundColor: "rgba(255,255,255,0.9)",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  checkboxSelected: {
-    backgroundColor: Theme.colors.primary,
-    borderColor: Theme.colors.primary,
-  },
-  // --- Top row ---
-  topRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: Theme.spacing.md,
-    paddingTop: Theme.spacing.sm,
-    paddingBottom: Theme.spacing.xs,
-  },
-  topRowRight: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  headerTitle: {
-    fontSize: Theme.fontSize.xxl,
-    fontWeight: "800",
-    color: Theme.colors.text,
-  },
-  // --- Sort ---
-  sortToggle: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: Theme.borderRadius.full,
-    backgroundColor: Theme.colors.primary + "12",
-  },
-  sortToggleText: {
-    fontSize: Theme.fontSize.xs,
-    fontWeight: "600",
-    color: Theme.colors.primary,
-  },
-  sortMenu: {
-    marginHorizontal: Theme.spacing.md,
-    backgroundColor: Theme.colors.surface,
-    borderRadius: Theme.borderRadius.md,
-    paddingVertical: 4,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.12,
-    shadowRadius: 12,
-    elevation: 8,
-    zIndex: 100,
-  },
-  sortMenuItem: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: Theme.spacing.md,
-    paddingVertical: 10,
-  },
-  sortMenuItemActive: {
-    backgroundColor: Theme.colors.primary + "10",
-  },
-  sortMenuItemText: {
-    fontSize: Theme.fontSize.sm,
-    color: Theme.colors.text,
-  },
-  sortMenuItemTextActive: {
-    color: Theme.colors.primary,
-    fontWeight: "600",
-  },
-  // --- Column toggle ---
-  columnToggle: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: Theme.borderRadius.full,
-    backgroundColor: Theme.colors.primary + "12",
-  },
-  columnToggleText: {
-    fontSize: Theme.fontSize.xs,
-    fontWeight: "600",
-    color: Theme.colors.primary,
-  },
-  // --- Filter ---
-  filterRow: {
-    paddingTop: Theme.spacing.sm,
-  },
-  filterList: {
-    paddingHorizontal: Theme.spacing.md,
-  },
-  // --- Summary Banner ---
-  summaryBanner: {
-    marginHorizontal: Theme.spacing.md,
-    marginTop: Theme.spacing.sm,
-    paddingHorizontal: Theme.spacing.md,
-    paddingVertical: Theme.spacing.sm,
-    backgroundColor: Theme.colors.primary + "10",
-    borderRadius: Theme.borderRadius.sm,
-    borderLeftWidth: 3,
-    borderLeftColor: Theme.colors.primary,
-  },
-  summaryText: {
-    fontSize: Theme.fontSize.xs,
-    fontWeight: "600",
-    color: Theme.colors.primary,
-  },
-  // --- Loader / List ---
-  loader: {
-    flex: 1,
-    justifyContent: "center",
-  },
-  list: {
-    padding: Theme.spacing.md,
-    paddingBottom: 100,
-  },
-  row: {
-    flexDirection: "row",
-    justifyContent: "flex-start",
-  },
-  sectionHeader: {
-    paddingTop: Theme.spacing.md,
-    paddingBottom: Theme.spacing.sm,
-  },
-  sectionHeaderText: {
-    fontSize: Theme.fontSize.lg,
-    fontWeight: "700",
-    color: Theme.colors.text,
-  },
-  // --- FAB ---
-  fab: {
-    position: "absolute",
-    right: 20,
-    bottom: 24,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: Theme.colors.primary,
-    justifyContent: "center",
-    alignItems: "center",
-    shadowColor: Theme.colors.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 6,
-  },
-});
+function createStyles(theme: ReturnType<typeof import("@/hooks/useTheme").useTheme>["theme"]) {
+  return StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: theme.colors.background,
+    },
+    // --- Selection bar ---
+    selectionBar: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      paddingHorizontal: theme.spacing.md,
+      paddingTop: theme.spacing.sm,
+      paddingBottom: theme.spacing.sm,
+      backgroundColor: theme.colors.primary + "14",
+      borderBottomWidth: 1,
+      borderBottomColor: theme.colors.primary + "30",
+    },
+    selectionBarText: {
+      fontSize: theme.fontSize.md,
+      fontWeight: "700",
+      color: theme.colors.primary,
+    },
+    selectionBarActions: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+    },
+    selectionBarBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderRadius: theme.borderRadius.full,
+      backgroundColor: theme.colors.surface,
+    },
+    selectionBarBtnText: {
+      fontSize: theme.fontSize.xs,
+      fontWeight: "600",
+      color: theme.colors.primary,
+    },
+    // --- Checkbox overlay ---
+    checkboxOverlay: {
+      position: "absolute",
+      top: 8,
+      left: 8,
+      zIndex: 10,
+    },
+    checkbox: {
+      width: 24,
+      height: 24,
+      borderRadius: 12,
+      borderWidth: 2,
+      borderColor: theme.colors.primary,
+      backgroundColor: "rgba(255,255,255,0.9)",
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    checkboxSelected: {
+      backgroundColor: theme.colors.primary,
+      borderColor: theme.colors.primary,
+    },
+    // --- Top row ---
+    topRow: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      paddingHorizontal: theme.spacing.md,
+      paddingTop: theme.spacing.sm,
+      paddingBottom: theme.spacing.xs,
+    },
+    topRowRight: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+    },
+    headerTitle: {
+      fontSize: theme.fontSize.xxl,
+      fontWeight: "800",
+      color: theme.colors.text,
+    },
+    // --- Sort ---
+    sortToggle: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderRadius: theme.borderRadius.full,
+      backgroundColor: theme.colors.primary + "12",
+    },
+    sortToggleText: {
+      fontSize: theme.fontSize.xs,
+      fontWeight: "600",
+      color: theme.colors.primary,
+    },
+    sortMenu: {
+      marginHorizontal: theme.spacing.md,
+      backgroundColor: theme.colors.surface,
+      borderRadius: theme.borderRadius.md,
+      paddingVertical: 4,
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.12,
+      shadowRadius: 12,
+      elevation: 8,
+      zIndex: 100,
+    },
+    sortMenuItem: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      paddingHorizontal: theme.spacing.md,
+      paddingVertical: 10,
+    },
+    sortMenuItemActive: {
+      backgroundColor: theme.colors.primary + "10",
+    },
+    sortMenuItemText: {
+      fontSize: theme.fontSize.sm,
+      color: theme.colors.text,
+    },
+    sortMenuItemTextActive: {
+      color: theme.colors.primary,
+      fontWeight: "600",
+    },
+    // --- Column toggle ---
+    columnToggle: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderRadius: theme.borderRadius.full,
+      backgroundColor: theme.colors.primary + "12",
+    },
+    columnToggleText: {
+      fontSize: theme.fontSize.xs,
+      fontWeight: "600",
+      color: theme.colors.primary,
+    },
+    // --- Filter ---
+    filterRow: {
+      paddingTop: theme.spacing.sm,
+    },
+    filterList: {
+      paddingHorizontal: theme.spacing.md,
+    },
+    // --- Summary Banner ---
+    summaryBanner: {
+      marginHorizontal: theme.spacing.md,
+      marginTop: theme.spacing.sm,
+      paddingHorizontal: theme.spacing.md,
+      paddingVertical: theme.spacing.sm,
+      backgroundColor: theme.colors.primary + "10",
+      borderRadius: theme.borderRadius.sm,
+      borderLeftWidth: 3,
+      borderLeftColor: theme.colors.primary,
+    },
+    summaryText: {
+      fontSize: theme.fontSize.xs,
+      fontWeight: "600",
+      color: theme.colors.primary,
+    },
+    // --- Loader / List ---
+    loader: {
+      flex: 1,
+      justifyContent: "center",
+    },
+    list: {
+      padding: theme.spacing.md,
+      paddingBottom: 100,
+    },
+    row: {
+      flexDirection: "row",
+      justifyContent: "flex-start",
+    },
+    sectionHeader: {
+      paddingTop: theme.spacing.md,
+      paddingBottom: theme.spacing.sm,
+    },
+    sectionHeaderText: {
+      fontSize: theme.fontSize.lg,
+      fontWeight: "700",
+      color: theme.colors.text,
+    },
+    // --- FAB ---
+    fab: {
+      position: "absolute",
+      right: 20,
+      bottom: 24,
+      width: 56,
+      height: 56,
+      borderRadius: 28,
+      backgroundColor: theme.colors.primary,
+      justifyContent: "center",
+      alignItems: "center",
+      shadowColor: theme.colors.primary,
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.3,
+      shadowRadius: 8,
+      elevation: 6,
+    },
+  });
+}

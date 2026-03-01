@@ -21,7 +21,7 @@ import { ColorDot } from "@/components/ColorDot";
 import { ColorWheelPicker } from "@/components/ColorWheelPicker";
 import { ImageColorDropper } from "@/components/ImageColorDropper";
 import { ImageCropper } from "@/components/ImageCropper";
-import { Theme } from "@/constants/theme";
+import { useTheme } from "@/hooks/useTheme";
 import {
   PRESET_COLORS,
   hexToHSL,
@@ -37,6 +37,7 @@ import type {
   FabricType,
   HardwareColour,
   ItemFlag,
+  CareInstruction,
 } from "@/models/types";
 import {
   CATEGORY_LABELS,
@@ -47,15 +48,37 @@ import {
   HARDWARE_SUBCATEGORIES,
   HARDWARE_CATEGORIES,
   ITEM_FLAG_LABELS,
+  CARE_INSTRUCTION_LABELS,
 } from "@/models/types";
 
 function generateId(): string {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 9);
 }
 
+/** Subcategories that should default isOpen to true */
+const DEFAULT_OPEN_SUBCATEGORIES = [
+  "casual_blazer", "formal_blazer",
+  "cardigan", "zip_up",
+];
+
+function getDefaultIsOpen(cat: ClothingCategory, sub?: string): boolean {
+  if (cat === "blazers") return true;
+  if (sub && DEFAULT_OPEN_SUBCATEGORIES.includes(sub)) return true;
+  return false;
+}
+
+function getTodayISO(): string {
+  const d = new Date();
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
 export default function AddItemScreen() {
   const router = useRouter();
   const { items, addOrUpdate } = useClothingItems();
+  const { theme } = useTheme();
 
   const [name, setName] = useState("");
   const [category, setCategory] = useState<ClothingCategory>("tops");
@@ -68,6 +91,9 @@ export default function AddItemScreen() {
   const [fetchingUrl, setFetchingUrl] = useState(false);
   const [cost, setCost] = useState("");
 
+  // Purchase date (ISO YYYY-MM-DD)
+  const [purchaseDate, setPurchaseDate] = useState(getTodayISO());
+
   // Open top detection
   const [isOpen, setIsOpen] = useState(false);
 
@@ -76,6 +102,16 @@ export default function AddItemScreen() {
 
   // Item flags
   const [itemFlags, setItemFlags] = useState<ItemFlag[]>([]);
+
+  // Care instructions
+  const [careInstructions, setCareInstructions] = useState<CareInstruction[]>([]);
+
+  // Sustainable
+  const [sustainable, setSustainable] = useState(false);
+
+  // Tags
+  const [tags, setTags] = useState<string[]>([]);
+  const [tagInput, setTagInput] = useState("");
 
   // Notes
   const [notes, setNotes] = useState("");
@@ -147,7 +183,8 @@ export default function AddItemScreen() {
 
   const recropImage = (index: number) => {
     setViewingImageIdx(null);
-    setCroppingIdx(index);
+    // Delay opening cropper to let the viewer modal fully close (avoids Android modal overlap bug)
+    setTimeout(() => setCroppingIdx(index), 350);
   };
 
   const handleCropDone = (croppedUri: string) => {
@@ -234,6 +271,18 @@ export default function AddItemScreen() {
     setHslAdjust({ h: hsl.h, s: hsl.s, l: hsl.l });
   };
 
+  const handleAddTag = () => {
+    const trimmed = tagInput.trim();
+    if (trimmed && !tags.includes(trimmed)) {
+      setTags((prev) => [...prev, trimmed]);
+    }
+    setTagInput("");
+  };
+
+  const handleRemoveTag = (tag: string) => {
+    setTags((prev) => prev.filter((t) => t !== tag));
+  };
+
   const handleSave = async () => {
     if (!name.trim()) {
       Alert.alert("Missing name", "Please enter a name for this item.");
@@ -256,6 +305,7 @@ export default function AddItemScreen() {
       brand: brand.trim() || undefined,
       productUrl: productUrl.trim() || undefined,
       cost: parsedCost && !isNaN(parsedCost) ? parsedCost : undefined,
+      purchaseDate: purchaseDate.trim() || undefined,
       favorite: false,
       wearCount: 0,
       archived: false,
@@ -265,6 +315,9 @@ export default function AddItemScreen() {
       notes: notes.trim() || undefined,
       originalAutoColor,
       itemFlags: itemFlags.length > 0 ? itemFlags : undefined,
+      careInstructions: careInstructions.length > 0 ? careInstructions : undefined,
+      sustainable: sustainable || undefined,
+      tags: tags.length > 0 ? tags : undefined,
     });
 
     router.back();
@@ -274,14 +327,17 @@ export default function AddItemScreen() {
 
   return (
     <>
-      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+      <ScrollView
+        style={[styles.container, { backgroundColor: theme.colors.background }]}
+        contentContainerStyle={[styles.content, { padding: theme.spacing.md, paddingBottom: theme.spacing.xxl }]}
+      >
         {/* Photos */}
-        <Text style={styles.sectionTitle}>Photos</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.photoScroll}>
+        <Text style={[styles.sectionTitle, { fontSize: theme.fontSize.md, color: theme.colors.text, marginBottom: theme.spacing.sm, marginTop: theme.spacing.md }]}>Photos</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: theme.spacing.sm }}>
           {imageUris.map((uri, index) => (
             <Pressable
               key={`${uri}-${index}`}
-              style={styles.photoThumb}
+              style={[styles.photoThumb, { borderRadius: theme.borderRadius.sm, marginRight: theme.spacing.sm }]}
               onPress={() => setViewingImageIdx(index)}
             >
               <Image source={{ uri }} style={styles.photoThumbImage} />
@@ -289,49 +345,52 @@ export default function AddItemScreen() {
                 style={styles.removePhotoBtn}
                 onPress={() => removeImage(index)}
               >
-                <Ionicons name="close-circle" size={22} color={Theme.colors.error} />
+                <Ionicons name="close-circle" size={22} color={theme.colors.error} />
               </Pressable>
               {index === 0 && (
-                <View style={styles.primaryBadge}>
+                <View style={[styles.primaryBadge, { backgroundColor: theme.colors.primary, borderRadius: theme.borderRadius.full }]}>
                   <Text style={styles.primaryBadgeText}>Main</Text>
                 </View>
               )}
             </Pressable>
           ))}
-          <Pressable style={styles.addPhotoBtn} onPress={pickImage}>
-            <Ionicons name="camera-outline" size={28} color={Theme.colors.textLight} />
-            <Text style={styles.addPhotoLabel}>Add Photo</Text>
+          <Pressable
+            style={[styles.addPhotoBtn, { borderRadius: theme.borderRadius.sm, backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border }]}
+            onPress={pickImage}
+          >
+            <Ionicons name="camera-outline" size={28} color={theme.colors.textLight} />
+            <Text style={[styles.addPhotoLabel, { fontSize: theme.fontSize.xs, color: theme.colors.textLight }]}>Add Photo</Text>
           </Pressable>
         </ScrollView>
 
         {/* Name */}
-        <Text style={styles.sectionTitle}>Name</Text>
+        <Text style={[styles.sectionTitle, { fontSize: theme.fontSize.md, color: theme.colors.text, marginBottom: theme.spacing.sm, marginTop: theme.spacing.md }]}>Name</Text>
         <TextInput
-          style={styles.input}
+          style={[styles.input, { backgroundColor: theme.colors.surface, borderRadius: theme.borderRadius.sm, paddingHorizontal: theme.spacing.md, fontSize: theme.fontSize.md, color: theme.colors.text, borderColor: theme.colors.border }]}
           placeholder="e.g. Blue Oxford Shirt"
-          placeholderTextColor={Theme.colors.textLight}
+          placeholderTextColor={theme.colors.textLight}
           value={name}
           onChangeText={setName}
         />
 
         {/* Brand */}
-        <Text style={styles.sectionTitle}>Brand (optional)</Text>
+        <Text style={[styles.sectionTitle, { fontSize: theme.fontSize.md, color: theme.colors.text, marginBottom: theme.spacing.sm, marginTop: theme.spacing.md }]}>Brand (optional)</Text>
         <TextInput
-          style={styles.input}
+          style={[styles.input, { backgroundColor: theme.colors.surface, borderRadius: theme.borderRadius.sm, paddingHorizontal: theme.spacing.md, fontSize: theme.fontSize.md, color: theme.colors.text, borderColor: theme.colors.border }]}
           placeholder="e.g. Uniqlo"
-          placeholderTextColor={Theme.colors.textLight}
+          placeholderTextColor={theme.colors.textLight}
           value={brand}
           onChangeText={setBrand}
         />
 
         {/* Product URL */}
-        <Text style={styles.sectionTitle}>Product URL (optional)</Text>
-        <Text style={styles.urlHint}>Paste a product link from your browser to auto-fill details</Text>
+        <Text style={[styles.sectionTitle, { fontSize: theme.fontSize.md, color: theme.colors.text, marginBottom: theme.spacing.sm, marginTop: theme.spacing.md }]}>Product URL (optional)</Text>
+        <Text style={[styles.urlHint, { fontSize: theme.fontSize.xs, color: theme.colors.textLight, marginBottom: theme.spacing.sm }]}>Paste a product link from your browser to auto-fill details</Text>
         <View style={styles.urlRow}>
           <TextInput
-            style={[styles.input, { flex: 1 }]}
+            style={[styles.input, { flex: 1, backgroundColor: theme.colors.surface, borderRadius: theme.borderRadius.sm, paddingHorizontal: theme.spacing.md, fontSize: theme.fontSize.md, color: theme.colors.text, borderColor: theme.colors.border }]}
             placeholder="https://..."
-            placeholderTextColor={Theme.colors.textLight}
+            placeholderTextColor={theme.colors.textLight}
             value={productUrl}
             onChangeText={setProductUrl}
             autoCapitalize="none"
@@ -342,11 +401,11 @@ export default function AddItemScreen() {
               style={styles.urlOpenBtn}
               onPress={() => Linking.openURL(productUrl.trim())}
             >
-              <Ionicons name="open-outline" size={18} color={Theme.colors.textSecondary} />
+              <Ionicons name="open-outline" size={18} color={theme.colors.textSecondary} />
             </Pressable>
           )}
           <Pressable
-            style={[styles.urlFetchBtn, fetchingUrl && styles.autoFillBtnDisabled]}
+            style={[styles.urlFetchBtn, { backgroundColor: theme.colors.primary, borderRadius: theme.borderRadius.sm }, fetchingUrl && styles.autoFillBtnDisabled]}
             onPress={handleFetchUrl}
             disabled={fetchingUrl}
           >
@@ -359,18 +418,28 @@ export default function AddItemScreen() {
         </View>
 
         {/* Cost */}
-        <Text style={styles.sectionTitle}>Cost (optional)</Text>
+        <Text style={[styles.sectionTitle, { fontSize: theme.fontSize.md, color: theme.colors.text, marginBottom: theme.spacing.sm, marginTop: theme.spacing.md }]}>Cost (optional)</Text>
         <TextInput
-          style={styles.input}
+          style={[styles.input, { backgroundColor: theme.colors.surface, borderRadius: theme.borderRadius.sm, paddingHorizontal: theme.spacing.md, fontSize: theme.fontSize.md, color: theme.colors.text, borderColor: theme.colors.border }]}
           placeholder="e.g. 49.99"
-          placeholderTextColor={Theme.colors.textLight}
+          placeholderTextColor={theme.colors.textLight}
           value={cost}
           onChangeText={setCost}
           keyboardType="decimal-pad"
         />
 
+        {/* Purchase Date */}
+        <Text style={[styles.sectionTitle, { fontSize: theme.fontSize.md, color: theme.colors.text, marginBottom: theme.spacing.sm, marginTop: theme.spacing.md }]}>Purchase Date (optional)</Text>
+        <TextInput
+          style={[styles.input, { backgroundColor: theme.colors.surface, borderRadius: theme.borderRadius.sm, paddingHorizontal: theme.spacing.md, fontSize: theme.fontSize.md, color: theme.colors.text, borderColor: theme.colors.border }]}
+          placeholder="YYYY-MM-DD"
+          placeholderTextColor={theme.colors.textLight}
+          value={purchaseDate}
+          onChangeText={setPurchaseDate}
+        />
+
         {/* Category */}
-        <Text style={styles.sectionTitle}>Category</Text>
+        <Text style={[styles.sectionTitle, { fontSize: theme.fontSize.md, color: theme.colors.text, marginBottom: theme.spacing.sm, marginTop: theme.spacing.md }]}>Category</Text>
         <View style={styles.chipRow}>
           {(Object.keys(CATEGORY_LABELS) as ClothingCategory[]).map((cat) => (
             <Chip
@@ -380,7 +449,7 @@ export default function AddItemScreen() {
               onPress={() => {
                 setCategory(cat);
                 setSubCategory(undefined);
-                setIsOpen(false);
+                setIsOpen(getDefaultIsOpen(cat, undefined));
               }}
             />
           ))}
@@ -389,7 +458,7 @@ export default function AddItemScreen() {
         {/* Subcategory */}
         {subcats.length > 0 && (
           <>
-            <Text style={styles.sectionTitle}>Type</Text>
+            <Text style={[styles.sectionTitle, { fontSize: theme.fontSize.md, color: theme.colors.text, marginBottom: theme.spacing.sm, marginTop: theme.spacing.md }]}>Type</Text>
             <View style={styles.chipRow}>
               {subcats.map((sc) => (
                 <Chip
@@ -399,11 +468,7 @@ export default function AddItemScreen() {
                   onPress={() => {
                     const newSub = subCategory === sc.value ? undefined : sc.value;
                     setSubCategory(newSub);
-                    if (newSub && ALWAYS_OPEN_SUBCATEGORIES.includes(newSub)) {
-                      setIsOpen(true);
-                    } else {
-                      setIsOpen(false);
-                    }
+                    setIsOpen(getDefaultIsOpen(category, newSub));
                   }}
                 />
               ))}
@@ -414,56 +479,56 @@ export default function AddItemScreen() {
         {/* Open Top Detection */}
         {(category === "tops" || category === "blazers") && subCategory && !ALWAYS_OPEN_SUBCATEGORIES.includes(subCategory) && (
           <Pressable
-            style={styles.openToggle}
+            style={[styles.openToggle, { marginTop: theme.spacing.sm }]}
             onPress={() => setIsOpen(!isOpen)}
           >
             <Ionicons
               name={isOpen ? "checkbox" : "square-outline"}
               size={22}
-              color={isOpen ? Theme.colors.primary : Theme.colors.textLight}
+              color={isOpen ? theme.colors.primary : theme.colors.textLight}
             />
-            <Text style={styles.openToggleText}>
+            <Text style={[styles.openToggleText, { fontSize: theme.fontSize.sm, color: theme.colors.text }]}>
               Does this top require a shirt underneath?
             </Text>
           </Pressable>
         )}
         {(category === "tops" || category === "blazers") && subCategory && ALWAYS_OPEN_SUBCATEGORIES.includes(subCategory) && (
-          <View style={styles.openToggle}>
-            <Ionicons name="checkbox" size={22} color={Theme.colors.primary} />
-            <Text style={styles.openToggleText}>
+          <View style={[styles.openToggle, { marginTop: theme.spacing.sm }]}>
+            <Ionicons name="checkbox" size={22} color={theme.colors.primary} />
+            <Text style={[styles.openToggleText, { fontSize: theme.fontSize.sm, color: theme.colors.text }]}>
               This item requires a shirt underneath (always open)
             </Text>
           </View>
         )}
 
         {/* Primary Colour */}
-        <View style={styles.colorHeader}>
-          <Text style={styles.sectionTitle}>
+        <View style={[styles.colorHeader, { marginTop: theme.spacing.md, marginBottom: theme.spacing.sm }]}>
+          <Text style={[styles.sectionTitle, { fontSize: theme.fontSize.md, color: theme.colors.text, marginBottom: 0, marginTop: 0 }]}>
             Colour — {finalColorName}
           </Text>
           <View style={{ flexDirection: "row", gap: 6 }}>
             {imageUris.length > 0 && (
               <Pressable
-                style={styles.colorPickerBtn}
+                style={[styles.colorPickerBtn, { borderRadius: theme.borderRadius.full, backgroundColor: theme.colors.primary + "12" }]}
                 onPress={() => {
                   setDropperTarget("primary");
                   setShowDropper(true);
                 }}
               >
-                <Ionicons name="eyedrop-outline" size={16} color={Theme.colors.primary} />
-                <Text style={styles.colorPickerBtnText}>Dropper</Text>
+                <Ionicons name="eyedrop-outline" size={16} color={theme.colors.primary} />
+                <Text style={[styles.colorPickerBtnText, { fontSize: theme.fontSize.xs, color: theme.colors.primary }]}>Dropper</Text>
               </Pressable>
             )}
             {originalAutoColor && (
-              <Pressable style={styles.colorPickerBtn} onPress={handleRevertToOriginalColor}>
-                <Ionicons name="refresh-outline" size={16} color={Theme.colors.primary} />
-                <Text style={styles.colorPickerBtnText}>Revert to original colour</Text>
+              <Pressable style={[styles.colorPickerBtn, { borderRadius: theme.borderRadius.full, backgroundColor: theme.colors.primary + "12" }]} onPress={handleRevertToOriginalColor}>
+                <Ionicons name="refresh-outline" size={16} color={theme.colors.primary} />
+                <Text style={[styles.colorPickerBtnText, { fontSize: theme.fontSize.xs, color: theme.colors.primary }]}>Revert to original colour</Text>
               </Pressable>
             )}
-            <Pressable style={styles.colorPickerBtn} onPress={openColorPicker}>
+            <Pressable style={[styles.colorPickerBtn, { borderRadius: theme.borderRadius.full, backgroundColor: theme.colors.primary + "12" }]} onPress={openColorPicker}>
               <View style={[styles.colorPickerSwatch, { backgroundColor: finalColor }]} />
-              <Ionicons name="color-palette-outline" size={18} color={Theme.colors.primary} />
-              <Text style={styles.colorPickerBtnText}>Fine-tune</Text>
+              <Ionicons name="color-palette-outline" size={18} color={theme.colors.primary} />
+              <Text style={[styles.colorPickerBtnText, { fontSize: theme.fontSize.xs, color: theme.colors.primary }]}>Fine-tune</Text>
             </Pressable>
           </View>
         </View>
@@ -477,9 +542,16 @@ export default function AddItemScreen() {
 
         {/* Similar Item Warning */}
         {similarItems.length > 0 && (
-          <View style={styles.similarWarning}>
-            <Ionicons name="alert-circle-outline" size={18} color={Theme.colors.warning} />
-            <Text style={styles.similarWarningText}>
+          <View style={[styles.similarWarning, {
+            marginTop: theme.spacing.sm,
+            paddingHorizontal: theme.spacing.md,
+            paddingVertical: theme.spacing.sm,
+            backgroundColor: theme.colors.warning + "14",
+            borderRadius: theme.borderRadius.sm,
+            borderColor: theme.colors.warning + "30",
+          }]}>
+            <Ionicons name="alert-circle-outline" size={18} color={theme.colors.warning} />
+            <Text style={[styles.similarWarningText, { fontSize: theme.fontSize.sm, color: theme.colors.warning }]}>
               You already have {similarItems.length} similar {CATEGORY_LABELS[category].toLowerCase()} item(s) in this color range.
             </Text>
           </View>
@@ -487,7 +559,7 @@ export default function AddItemScreen() {
 
         {/* Secondary Color */}
         <Pressable
-          style={styles.secondaryToggle}
+          style={[styles.secondaryToggle, { marginTop: theme.spacing.md }]}
           onPress={() => {
             setShowSecondaryColor(!showSecondaryColor);
             if (showSecondaryColor) setSecondaryColorIdx(null);
@@ -496,29 +568,29 @@ export default function AddItemScreen() {
           <Ionicons
             name={showSecondaryColor ? "chevron-up" : "chevron-down"}
             size={16}
-            color={Theme.colors.primary}
+            color={theme.colors.primary}
           />
-          <Text style={styles.secondaryToggleText}>
+          <Text style={[styles.secondaryToggleText, { fontSize: theme.fontSize.sm, color: theme.colors.primary }]}>
             {showSecondaryColor ? "Hide secondary colour" : "Add secondary colour (optional)"}
           </Text>
         </Pressable>
 
         {showSecondaryColor && (
           <>
-            <View style={styles.colorHeader}>
-              <Text style={styles.sectionTitle}>
+            <View style={[styles.colorHeader, { marginTop: theme.spacing.md, marginBottom: theme.spacing.sm }]}>
+              <Text style={[styles.sectionTitle, { fontSize: theme.fontSize.md, color: theme.colors.text, marginBottom: 0, marginTop: 0 }]}>
                 Secondary Colour{secondaryColorIdx !== null ? ` — ${PRESET_COLORS[secondaryColorIdx].name}` : ""}
               </Text>
               {imageUris.length > 0 && (
                 <Pressable
-                  style={styles.colorPickerBtn}
+                  style={[styles.colorPickerBtn, { borderRadius: theme.borderRadius.full, backgroundColor: theme.colors.primary + "12" }]}
                   onPress={() => {
                     setDropperTarget("secondary");
                     setShowDropper(true);
                   }}
                 >
-                  <Ionicons name="eyedrop-outline" size={16} color={Theme.colors.primary} />
-                  <Text style={styles.colorPickerBtnText}>Dropper</Text>
+                  <Ionicons name="eyedrop-outline" size={16} color={theme.colors.primary} />
+                  <Text style={[styles.colorPickerBtnText, { fontSize: theme.fontSize.xs, color: theme.colors.primary }]}>Dropper</Text>
                 </Pressable>
               )}
             </View>
@@ -537,7 +609,7 @@ export default function AddItemScreen() {
         )}
 
         {/* Fabric Type */}
-        <Text style={styles.sectionTitle}>Fabric Type</Text>
+        <Text style={[styles.sectionTitle, { fontSize: theme.fontSize.md, color: theme.colors.text, marginBottom: theme.spacing.sm, marginTop: theme.spacing.md }]}>Fabric Type</Text>
         <View style={styles.chipRow}>
           {(Object.keys(FABRIC_TYPE_LABELS) as FabricType[]).map((ft) => (
             <Chip
@@ -552,7 +624,7 @@ export default function AddItemScreen() {
         {/* Hardware Colour */}
         {(HARDWARE_CATEGORIES.includes(category) || (subCategory && HARDWARE_SUBCATEGORIES.includes(subCategory))) && (
           <>
-            <Text style={styles.sectionTitle}>Hardware Colour</Text>
+            <Text style={[styles.sectionTitle, { fontSize: theme.fontSize.md, color: theme.colors.text, marginBottom: theme.spacing.sm, marginTop: theme.spacing.md }]}>Hardware Colour</Text>
             <View style={styles.chipRow}>
               {(Object.keys(HARDWARE_COLOUR_LABELS) as HardwareColour[]).map((hc) => (
                 <Chip
@@ -566,8 +638,27 @@ export default function AddItemScreen() {
           </>
         )}
 
+        {/* Care Instructions */}
+        <Text style={[styles.sectionTitle, { fontSize: theme.fontSize.md, color: theme.colors.text, marginBottom: theme.spacing.sm, marginTop: theme.spacing.md }]}>Care Instructions (optional)</Text>
+        <View style={styles.chipRow}>
+          {(Object.keys(CARE_INSTRUCTION_LABELS) as CareInstruction[]).map((ci) => (
+            <Chip
+              key={ci}
+              label={CARE_INSTRUCTION_LABELS[ci]}
+              selected={careInstructions.includes(ci)}
+              onPress={() => {
+                setCareInstructions((prev) =>
+                  prev.includes(ci)
+                    ? prev.filter((c) => c !== ci)
+                    : [...prev, ci]
+                );
+              }}
+            />
+          ))}
+        </View>
+
         {/* Item Flags */}
-        <Text style={styles.sectionTitle}>Flags — Watch Out For</Text>
+        <Text style={[styles.sectionTitle, { fontSize: theme.fontSize.md, color: theme.colors.text, marginBottom: theme.spacing.sm, marginTop: theme.spacing.md }]}>Flags — Watch Out For</Text>
         <View style={styles.chipRow}>
           {(Object.keys(ITEM_FLAG_LABELS) as ItemFlag[]).map((flag) => (
             <Chip
@@ -585,12 +676,68 @@ export default function AddItemScreen() {
           ))}
         </View>
 
+        {/* Sustainable */}
+        <Text style={[styles.sectionTitle, { fontSize: theme.fontSize.md, color: theme.colors.text, marginBottom: theme.spacing.sm, marginTop: theme.spacing.md }]}>Sustainability</Text>
+        <Pressable
+          style={[
+            styles.sustainableChip,
+            {
+              borderRadius: theme.borderRadius.full,
+              backgroundColor: sustainable ? theme.colors.primary : theme.colors.surfaceAlt,
+            },
+          ]}
+          onPress={() => setSustainable(!sustainable)}
+        >
+          <Ionicons
+            name={sustainable ? "leaf" : "leaf-outline"}
+            size={16}
+            color={sustainable ? "#FFFFFF" : theme.colors.textSecondary}
+          />
+          <Text style={[styles.sustainableChipText, { fontSize: theme.fontSize.sm, color: sustainable ? "#FFFFFF" : theme.colors.textSecondary }]}>
+            Sustainable / Ethical
+          </Text>
+        </Pressable>
+
+        {/* Tags */}
+        <Text style={[styles.sectionTitle, { fontSize: theme.fontSize.md, color: theme.colors.text, marginBottom: theme.spacing.sm, marginTop: theme.spacing.md }]}>Tags (optional)</Text>
+        <View style={styles.tagInputRow}>
+          <TextInput
+            style={[styles.input, { flex: 1, backgroundColor: theme.colors.surface, borderRadius: theme.borderRadius.sm, paddingHorizontal: theme.spacing.md, fontSize: theme.fontSize.md, color: theme.colors.text, borderColor: theme.colors.border }]}
+            placeholder="Add a tag..."
+            placeholderTextColor={theme.colors.textLight}
+            value={tagInput}
+            onChangeText={setTagInput}
+            onSubmitEditing={handleAddTag}
+            returnKeyType="done"
+          />
+          <Pressable
+            style={[styles.tagAddBtn, { backgroundColor: theme.colors.primary, borderRadius: theme.borderRadius.sm }]}
+            onPress={handleAddTag}
+          >
+            <Ionicons name="add" size={22} color="#FFFFFF" />
+          </Pressable>
+        </View>
+        {tags.length > 0 && (
+          <View style={[styles.chipRow, { marginTop: theme.spacing.sm }]}>
+            {tags.map((tag) => (
+              <Pressable
+                key={tag}
+                style={[styles.tagChip, { backgroundColor: theme.colors.primary + "18", borderRadius: theme.borderRadius.full }]}
+                onPress={() => handleRemoveTag(tag)}
+              >
+                <Text style={[styles.tagChipText, { fontSize: theme.fontSize.sm, color: theme.colors.primary }]}>{tag}</Text>
+                <Ionicons name="close-circle" size={14} color={theme.colors.primary} />
+              </Pressable>
+            ))}
+          </View>
+        )}
+
         {/* Notes */}
-        <Text style={styles.sectionTitle}>Notes (optional)</Text>
+        <Text style={[styles.sectionTitle, { fontSize: theme.fontSize.md, color: theme.colors.text, marginBottom: theme.spacing.sm, marginTop: theme.spacing.md }]}>Notes (optional)</Text>
         <TextInput
-          style={[styles.input, styles.notesInput]}
+          style={[styles.input, styles.notesInput, { backgroundColor: theme.colors.surface, borderRadius: theme.borderRadius.sm, paddingHorizontal: theme.spacing.md, fontSize: theme.fontSize.md, color: theme.colors.text, borderColor: theme.colors.border }]}
           placeholder="Any additional notes about this item..."
-          placeholderTextColor={Theme.colors.textLight}
+          placeholderTextColor={theme.colors.textLight}
           value={notes}
           onChangeText={setNotes}
           multiline
@@ -599,8 +746,11 @@ export default function AddItemScreen() {
         />
 
         {/* Save Button */}
-        <Pressable style={styles.saveBtn} onPress={handleSave}>
-          <Text style={styles.saveBtnText}>Add to Wardrobe</Text>
+        <Pressable
+          style={[styles.saveBtn, { backgroundColor: theme.colors.primary, borderRadius: theme.borderRadius.md, marginTop: theme.spacing.xl }]}
+          onPress={handleSave}
+        >
+          <Text style={[styles.saveBtnText, { fontSize: theme.fontSize.lg }]}>Add to Wardrobe</Text>
         </Pressable>
       </ScrollView>
 
@@ -611,21 +761,21 @@ export default function AddItemScreen() {
         presentationStyle="pageSheet"
         onRequestClose={() => setShowColorPicker(false)}
       >
-        <View style={styles.modalContainer}>
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Fine-tune Colour</Text>
+        <View style={[styles.modalContainer, { backgroundColor: theme.colors.background, paddingTop: theme.spacing.md }]}>
+          <View style={[styles.modalHeader, { paddingHorizontal: theme.spacing.md, paddingBottom: theme.spacing.sm }]}>
+            <Text style={[styles.modalTitle, { fontSize: theme.fontSize.xl, color: theme.colors.text }]}>Fine-tune Colour</Text>
             <Pressable onPress={() => setShowColorPicker(false)}>
-              <Ionicons name="close" size={24} color={Theme.colors.text} />
+              <Ionicons name="close" size={24} color={theme.colors.text} />
             </Pressable>
           </View>
 
-          <ScrollView contentContainerStyle={styles.colorPickerContent}>
+          <ScrollView contentContainerStyle={[styles.colorPickerContent, { padding: theme.spacing.md }]}>
             {/* Preview swatch */}
             <View style={styles.pickerPreview}>
               <View style={[styles.pickerSwatch, { backgroundColor: finalColor }]} />
               <View>
-                <Text style={styles.pickerColorName}>{finalColorName}</Text>
-                <Text style={styles.pickerHex}>{finalColor}</Text>
+                <Text style={[styles.pickerColorName, { fontSize: theme.fontSize.lg, color: theme.colors.text }]}>{finalColorName}</Text>
+                <Text style={[styles.pickerHex, { fontSize: theme.fontSize.sm, color: theme.colors.textSecondary }]}>{finalColor}</Text>
               </View>
             </View>
 
@@ -642,16 +792,16 @@ export default function AddItemScreen() {
 
             {/* HSL Sliders */}
             {hslAdjust && (
-              <View style={styles.hslSection}>
+              <View style={[styles.hslSection, { backgroundColor: theme.colors.surface, borderRadius: theme.borderRadius.md, padding: theme.spacing.md, borderColor: theme.colors.border }]}>
                 <View style={styles.sliderRow}>
-                  <Text style={styles.sliderLabel}>Hue</Text>
+                  <Text style={[styles.sliderLabel, { fontSize: theme.fontSize.xs, color: theme.colors.textSecondary }]}>Hue</Text>
                   <Pressable
-                    style={styles.sliderBtn}
+                    style={[styles.sliderBtn, { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border }]}
                     onPress={() => setHslAdjust({ ...hslAdjust, h: Math.max(0, hslAdjust.h - 10) })}
                   >
-                    <Ionicons name="remove" size={16} color={Theme.colors.text} />
+                    <Ionicons name="remove" size={16} color={theme.colors.text} />
                   </Pressable>
-                  <View style={styles.sliderTrack}>
+                  <View style={[styles.sliderTrack, { backgroundColor: theme.colors.surfaceAlt }]}>
                     <View
                       style={[
                         styles.sliderFill,
@@ -660,22 +810,22 @@ export default function AddItemScreen() {
                     />
                   </View>
                   <Pressable
-                    style={styles.sliderBtn}
+                    style={[styles.sliderBtn, { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border }]}
                     onPress={() => setHslAdjust({ ...hslAdjust, h: Math.min(360, hslAdjust.h + 10) })}
                   >
-                    <Ionicons name="add" size={16} color={Theme.colors.text} />
+                    <Ionicons name="add" size={16} color={theme.colors.text} />
                   </Pressable>
-                  <Text style={styles.sliderValue}>{hslAdjust.h}°</Text>
+                  <Text style={[styles.sliderValue, { fontSize: theme.fontSize.xs, color: theme.colors.textSecondary }]}>{hslAdjust.h}°</Text>
                 </View>
                 <View style={styles.sliderRow}>
-                  <Text style={styles.sliderLabel}>Sat</Text>
+                  <Text style={[styles.sliderLabel, { fontSize: theme.fontSize.xs, color: theme.colors.textSecondary }]}>Sat</Text>
                   <Pressable
-                    style={styles.sliderBtn}
+                    style={[styles.sliderBtn, { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border }]}
                     onPress={() => setHslAdjust({ ...hslAdjust, s: Math.max(0, hslAdjust.s - 5) })}
                   >
-                    <Ionicons name="remove" size={16} color={Theme.colors.text} />
+                    <Ionicons name="remove" size={16} color={theme.colors.text} />
                   </Pressable>
-                  <View style={styles.sliderTrack}>
+                  <View style={[styles.sliderTrack, { backgroundColor: theme.colors.surfaceAlt }]}>
                     <View
                       style={[
                         styles.sliderFill,
@@ -684,22 +834,22 @@ export default function AddItemScreen() {
                     />
                   </View>
                   <Pressable
-                    style={styles.sliderBtn}
+                    style={[styles.sliderBtn, { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border }]}
                     onPress={() => setHslAdjust({ ...hslAdjust, s: Math.min(100, hslAdjust.s + 5) })}
                   >
-                    <Ionicons name="add" size={16} color={Theme.colors.text} />
+                    <Ionicons name="add" size={16} color={theme.colors.text} />
                   </Pressable>
-                  <Text style={styles.sliderValue}>{hslAdjust.s}%</Text>
+                  <Text style={[styles.sliderValue, { fontSize: theme.fontSize.xs, color: theme.colors.textSecondary }]}>{hslAdjust.s}%</Text>
                 </View>
                 <View style={styles.sliderRow}>
-                  <Text style={styles.sliderLabel}>Light</Text>
+                  <Text style={[styles.sliderLabel, { fontSize: theme.fontSize.xs, color: theme.colors.textSecondary }]}>Light</Text>
                   <Pressable
-                    style={styles.sliderBtn}
+                    style={[styles.sliderBtn, { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border }]}
                     onPress={() => setHslAdjust({ ...hslAdjust, l: Math.max(0, hslAdjust.l - 5) })}
                   >
-                    <Ionicons name="remove" size={16} color={Theme.colors.text} />
+                    <Ionicons name="remove" size={16} color={theme.colors.text} />
                   </Pressable>
-                  <View style={styles.sliderTrack}>
+                  <View style={[styles.sliderTrack, { backgroundColor: theme.colors.surfaceAlt }]}>
                     <View
                       style={[
                         styles.sliderFill,
@@ -708,25 +858,25 @@ export default function AddItemScreen() {
                     />
                   </View>
                   <Pressable
-                    style={styles.sliderBtn}
+                    style={[styles.sliderBtn, { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border }]}
                     onPress={() => setHslAdjust({ ...hslAdjust, l: Math.min(100, hslAdjust.l + 5) })}
                   >
-                    <Ionicons name="add" size={16} color={Theme.colors.text} />
+                    <Ionicons name="add" size={16} color={theme.colors.text} />
                   </Pressable>
-                  <Text style={styles.sliderValue}>{hslAdjust.l}%</Text>
+                  <Text style={[styles.sliderValue, { fontSize: theme.fontSize.xs, color: theme.colors.textSecondary }]}>{hslAdjust.l}%</Text>
                 </View>
                 <Pressable style={styles.resetHslBtn} onPress={() => setHslAdjust(null)}>
-                  <Text style={styles.resetHslText}>Reset to preset</Text>
+                  <Text style={[styles.resetHslText, { fontSize: theme.fontSize.xs, color: theme.colors.primary }]}>Reset to preset</Text>
                 </Pressable>
               </View>
             )}
 
             {/* Done button */}
             <Pressable
-              style={styles.doneBtn}
+              style={[styles.doneBtn, { backgroundColor: theme.colors.primary, borderRadius: theme.borderRadius.md, marginTop: theme.spacing.lg }]}
               onPress={() => setShowColorPicker(false)}
             >
-              <Text style={styles.doneBtnText}>Done</Text>
+              <Text style={[styles.doneBtnText, { fontSize: theme.fontSize.lg }]}>Done</Text>
             </Pressable>
           </ScrollView>
         </View>
@@ -750,11 +900,11 @@ export default function AddItemScreen() {
         onRequestClose={() => setViewingImageIdx(null)}
       >
         <View style={styles.imageViewerContainer}>
-          <View style={styles.imageViewerHeader}>
+          <View style={[styles.imageViewerHeader, { paddingHorizontal: theme.spacing.md, paddingBottom: theme.spacing.md }]}>
             <Pressable onPress={() => setViewingImageIdx(null)} hitSlop={12}>
               <Ionicons name="close" size={28} color="#FFFFFF" />
             </Pressable>
-            <Text style={styles.imageViewerTitle}>
+            <Text style={[styles.imageViewerTitle, { fontSize: theme.fontSize.md }]}>
               Photo {viewingImageIdx !== null ? viewingImageIdx + 1 : ""} of {imageUris.length}
             </Text>
             <View style={{ width: 28 }} />
@@ -770,16 +920,16 @@ export default function AddItemScreen() {
             </View>
           )}
 
-          <View style={styles.imageViewerActions}>
+          <View style={[styles.imageViewerActions, { gap: theme.spacing.lg, paddingVertical: theme.spacing.lg, paddingBottom: theme.spacing.xxl }]}>
             <Pressable
-              style={styles.imageViewerBtn}
+              style={[styles.imageViewerBtn, { borderRadius: theme.borderRadius.md, backgroundColor: theme.colors.surface }]}
               onPress={() => viewingImageIdx !== null && recropImage(viewingImageIdx)}
             >
-              <Ionicons name="crop-outline" size={20} color={Theme.colors.primary} />
-              <Text style={styles.imageViewerBtnText}>Crop</Text>
+              <Ionicons name="crop-outline" size={20} color={theme.colors.primary} />
+              <Text style={[styles.imageViewerBtnText, { fontSize: theme.fontSize.md, color: theme.colors.primary }]}>Crop</Text>
             </Pressable>
             <Pressable
-              style={styles.imageViewerBtn}
+              style={[styles.imageViewerBtn, { borderRadius: theme.borderRadius.md, backgroundColor: theme.colors.surface }]}
               onPress={() => {
                 if (viewingImageIdx !== null) {
                   removeImage(viewingImageIdx);
@@ -787,8 +937,8 @@ export default function AddItemScreen() {
                 }
               }}
             >
-              <Ionicons name="trash-outline" size={20} color={Theme.colors.error} />
-              <Text style={[styles.imageViewerBtnText, { color: Theme.colors.error }]}>Delete</Text>
+              <Ionicons name="trash-outline" size={20} color={theme.colors.error} />
+              <Text style={[styles.imageViewerBtnText, { fontSize: theme.fontSize.md, color: theme.colors.error }]}>Delete</Text>
             </Pressable>
           </View>
         </View>
@@ -810,21 +960,12 @@ export default function AddItemScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Theme.colors.background,
   },
-  content: {
-    padding: Theme.spacing.md,
-    paddingBottom: Theme.spacing.xxl,
-  },
-  photoScroll: {
-    marginBottom: Theme.spacing.sm,
-  },
+  content: {},
   photoThumb: {
     width: 100,
     height: 130,
-    borderRadius: Theme.borderRadius.sm,
     overflow: "hidden",
-    marginRight: Theme.spacing.sm,
     position: "relative",
   },
   photoThumbImage: {
@@ -843,10 +984,8 @@ const styles = StyleSheet.create({
     position: "absolute",
     bottom: 4,
     left: 4,
-    backgroundColor: Theme.colors.primary,
     paddingHorizontal: 6,
     paddingVertical: 2,
-    borderRadius: Theme.borderRadius.full,
   },
   primaryBadgeText: {
     color: "#FFFFFF",
@@ -856,35 +995,20 @@ const styles = StyleSheet.create({
   addPhotoBtn: {
     width: 100,
     height: 130,
-    borderRadius: Theme.borderRadius.sm,
-    backgroundColor: Theme.colors.surfaceAlt,
     justifyContent: "center",
     alignItems: "center",
     borderWidth: 1,
-    borderColor: Theme.colors.border,
     borderStyle: "dashed",
   },
   addPhotoLabel: {
     marginTop: 4,
-    fontSize: Theme.fontSize.xs,
-    color: Theme.colors.textLight,
   },
   sectionTitle: {
-    fontSize: Theme.fontSize.md,
     fontWeight: "600",
-    color: Theme.colors.text,
-    marginBottom: Theme.spacing.sm,
-    marginTop: Theme.spacing.md,
   },
   input: {
     height: 48,
-    backgroundColor: Theme.colors.surface,
-    borderRadius: Theme.borderRadius.sm,
-    paddingHorizontal: Theme.spacing.md,
-    fontSize: Theme.fontSize.md,
-    color: Theme.colors.text,
     borderWidth: 1,
-    borderColor: Theme.colors.border,
   },
   urlRow: {
     flexDirection: "row",
@@ -900,15 +1024,10 @@ const styles = StyleSheet.create({
   urlFetchBtn: {
     width: 48,
     height: 48,
-    backgroundColor: Theme.colors.primary,
-    borderRadius: Theme.borderRadius.sm,
     justifyContent: "center",
     alignItems: "center",
   },
   urlHint: {
-    fontSize: Theme.fontSize.xs,
-    color: Theme.colors.textLight,
-    marginBottom: Theme.spacing.sm,
     fontStyle: "italic",
   },
   autoFillBtnDisabled: {
@@ -922,8 +1041,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginTop: Theme.spacing.md,
-    marginBottom: Theme.spacing.sm,
   },
   colorPickerBtn: {
     flexDirection: "row",
@@ -931,8 +1048,6 @@ const styles = StyleSheet.create({
     gap: 6,
     paddingHorizontal: 10,
     paddingVertical: 6,
-    borderRadius: Theme.borderRadius.full,
-    backgroundColor: Theme.colors.primary + "12",
   },
   colorPickerSwatch: {
     width: 18,
@@ -942,9 +1057,7 @@ const styles = StyleSheet.create({
     borderColor: "rgba(0,0,0,0.1)",
   },
   colorPickerBtnText: {
-    fontSize: Theme.fontSize.xs,
     fontWeight: "600",
-    color: Theme.colors.primary,
   },
   colorGrid: {
     flexDirection: "row",
@@ -954,72 +1067,96 @@ const styles = StyleSheet.create({
   colorBtn: {
     padding: 2,
   },
-  // Similar item warning
   similarWarning: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    marginTop: Theme.spacing.sm,
-    paddingHorizontal: Theme.spacing.md,
-    paddingVertical: Theme.spacing.sm,
-    backgroundColor: Theme.colors.warning + "14",
-    borderRadius: Theme.borderRadius.sm,
     borderWidth: 1,
-    borderColor: Theme.colors.warning + "30",
   },
   similarWarningText: {
     flex: 1,
-    fontSize: Theme.fontSize.sm,
-    color: Theme.colors.warning,
     fontWeight: "500",
   },
-  // Secondary Colour
   secondaryToggle: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    marginTop: Theme.spacing.md,
     paddingVertical: 8,
   },
   secondaryToggleText: {
-    fontSize: Theme.fontSize.sm,
-    color: Theme.colors.primary,
     fontWeight: "600",
+  },
+  openToggle: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingVertical: 8,
+  },
+  openToggleText: {
+    flex: 1,
   },
   saveBtn: {
     height: 52,
-    backgroundColor: Theme.colors.primary,
-    borderRadius: Theme.borderRadius.md,
     justifyContent: "center",
     alignItems: "center",
-    marginTop: Theme.spacing.xl,
   },
   saveBtnText: {
     color: "#FFFFFF",
-    fontSize: Theme.fontSize.lg,
     fontWeight: "700",
+  },
+  // Sustainable chip
+  sustainableChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    alignSelf: "flex-start",
+  },
+  sustainableChipText: {
+    fontWeight: "500",
+  },
+  // Tags
+  tagInputRow: {
+    flexDirection: "row",
+    gap: 8,
+    alignItems: "center",
+  },
+  tagAddBtn: {
+    width: 48,
+    height: 48,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  tagChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  tagChipText: {
+    fontWeight: "500",
+  },
+  // Notes
+  notesInput: {
+    height: 80,
+    paddingTop: 12,
   },
   // Modal styles
   modalContainer: {
     flex: 1,
-    backgroundColor: Theme.colors.background,
-    paddingTop: Theme.spacing.md,
   },
   modalHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingHorizontal: Theme.spacing.md,
-    paddingBottom: Theme.spacing.sm,
   },
   modalTitle: {
-    fontSize: Theme.fontSize.xl,
     fontWeight: "700",
-    color: Theme.colors.text,
   },
   // Colour Picker Modal
   colorPickerContent: {
-    padding: Theme.spacing.md,
     alignItems: "center",
     paddingBottom: 60,
   },
@@ -1038,24 +1175,15 @@ const styles = StyleSheet.create({
     borderColor: "rgba(0,0,0,0.1)",
   },
   pickerColorName: {
-    fontSize: Theme.fontSize.lg,
     fontWeight: "700",
-    color: Theme.colors.text,
   },
-  pickerHex: {
-    fontSize: Theme.fontSize.sm,
-    color: Theme.colors.textSecondary,
-  },
+  pickerHex: {},
   wheelWrap: {
     marginBottom: 20,
   },
   hslSection: {
     alignSelf: "stretch",
-    backgroundColor: Theme.colors.surface,
-    borderRadius: Theme.borderRadius.md,
-    padding: Theme.spacing.md,
     borderWidth: 1,
-    borderColor: Theme.colors.border,
   },
   sliderRow: {
     flexDirection: "row",
@@ -1065,24 +1193,19 @@ const styles = StyleSheet.create({
   },
   sliderLabel: {
     width: 36,
-    fontSize: Theme.fontSize.xs,
-    color: Theme.colors.textSecondary,
     fontWeight: "600",
   },
   sliderBtn: {
     width: 28,
     height: 28,
     borderRadius: 14,
-    backgroundColor: Theme.colors.surfaceAlt,
     justifyContent: "center",
     alignItems: "center",
     borderWidth: 1,
-    borderColor: Theme.colors.border,
   },
   sliderTrack: {
     flex: 1,
     height: 8,
-    backgroundColor: Theme.colors.surfaceAlt,
     borderRadius: 4,
     overflow: "hidden",
   },
@@ -1092,8 +1215,6 @@ const styles = StyleSheet.create({
   },
   sliderValue: {
     width: 36,
-    fontSize: Theme.fontSize.xs,
-    color: Theme.colors.textSecondary,
     textAlign: "right",
   },
   resetHslBtn: {
@@ -1101,22 +1222,16 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   resetHslText: {
-    fontSize: Theme.fontSize.xs,
-    color: Theme.colors.primary,
     fontWeight: "600",
   },
   doneBtn: {
     height: 48,
-    backgroundColor: Theme.colors.primary,
-    borderRadius: Theme.borderRadius.md,
     justifyContent: "center",
     alignItems: "center",
-    marginTop: Theme.spacing.lg,
     alignSelf: "stretch",
   },
   doneBtnText: {
     color: "#FFFFFF",
-    fontSize: Theme.fontSize.lg,
     fontWeight: "700",
   },
   // Image viewer modal
@@ -1128,13 +1243,10 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: Theme.spacing.md,
     paddingTop: 54,
-    paddingBottom: Theme.spacing.md,
   },
   imageViewerTitle: {
     color: "#FFFFFF",
-    fontSize: Theme.fontSize.md,
     fontWeight: "600",
   },
   imageViewerBody: {
@@ -1149,9 +1261,6 @@ const styles = StyleSheet.create({
   imageViewerActions: {
     flexDirection: "row",
     justifyContent: "center",
-    gap: Theme.spacing.lg,
-    paddingVertical: Theme.spacing.lg,
-    paddingBottom: Theme.spacing.xxl,
   },
   imageViewerBtn: {
     flexDirection: "row",
@@ -1159,12 +1268,8 @@ const styles = StyleSheet.create({
     gap: 6,
     paddingVertical: 10,
     paddingHorizontal: 20,
-    borderRadius: Theme.borderRadius.md,
-    backgroundColor: Theme.colors.surface,
   },
   imageViewerBtnText: {
-    fontSize: Theme.fontSize.md,
     fontWeight: "600",
-    color: Theme.colors.primary,
   },
 });

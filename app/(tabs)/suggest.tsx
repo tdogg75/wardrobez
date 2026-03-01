@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from "react";
+import React, { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import {
   View,
   Text,
@@ -7,6 +7,8 @@ import {
   StyleSheet,
   Alert,
   ActivityIndicator,
+  Animated,
+  Dimensions,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useClothingItems } from "@/hooks/useClothingItems";
@@ -22,24 +24,42 @@ import { Chip } from "@/components/Chip";
 import { ColorDot } from "@/components/ColorDot";
 import { MoodBoard } from "@/components/MoodBoard";
 import { EmptyState } from "@/components/EmptyState";
-import { Theme } from "@/constants/theme";
-import type { Season } from "@/models/types";
-import { SEASON_LABELS, CATEGORY_LABELS } from "@/models/types";
+import { useTheme } from "@/hooks/useTheme";
+import type { Season, Occasion } from "@/models/types";
+import { SEASON_LABELS, CATEGORY_LABELS, OCCASION_LABELS } from "@/models/types";
+
+const SCREEN_WIDTH = Dimensions.get("window").width;
+const QUICK_PICK_CARD_WIDTH = SCREEN_WIDTH - 64;
+
+const OCCASIONS: Occasion[] = ["casual", "work", "fancy", "party", "vacation"];
 
 function generateId(): string {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 9);
 }
 
 export default function SuggestScreen() {
+  const { theme } = useTheme();
   const { items } = useClothingItems();
   const { addOrUpdate: saveOutfit } = useOutfits();
 
   const [season, setSeason] = useState<Season | undefined>(undefined);
+  const [selectedOccasion, setSelectedOccasion] = useState<Occasion | undefined>(undefined);
   const [suggestions, setSuggestions] = useState<SuggestionResult[]>([]);
   const [generated, setGenerated] = useState(false);
   const [weather, setWeather] = useState<WeatherData | null>(null);
   const [loadingWeather, setLoadingWeather] = useState(false);
   const [weatherTips, setWeatherTips] = useState<string[]>([]);
+  const [quickPickMode, setQuickPickMode] = useState(false);
+  const [quickPicks, setQuickPicks] = useState<SuggestionResult[]>([]);
+  const [activeQuickPick, setActiveQuickPick] = useState(0);
+  const quickPickScrollRef = useRef<ScrollView>(null);
+  const quickPickFadeAnim = useRef(new Animated.Value(0)).current;
+
+  // Track custom names per suggestion index
+  const [customNames, setCustomNames] = useState<Record<number, string>>({});
+
+  // Track locked names per suggestion index (generated names locked on first generation)
+  const [lockedNames, setLockedNames] = useState<Record<number, string>>({});
 
   // Fetch weather on mount
   useEffect(() => {
@@ -60,40 +80,40 @@ export default function SuggestScreen() {
     };
   }, []);
 
-  const handleGenerate = useCallback(() => {
-    if (items.length < 2) {
-      Alert.alert(
-        "Not enough items",
-        "Add at least 2 clothing items to your wardrobe to get outfit suggestions."
-      );
-      return;
-    }
-    const results = suggestOutfits(items, { season, maxResults: 6 });
-    setSuggestions(results);
-    setGenerated(true);
-  }, [items, season]);
+  /**
+   * Filter items by occasion when an occasion chip is selected.
+   * Bias toward items tagged with the selected occasion, but also
+   * include untagged items so we still get results.
+   */
+  const occasionFilteredItems = useMemo(() => {
+    if (!selectedOccasion) return items;
 
-  const handleSurpriseMe = useCallback(() => {
-    if (items.length < 2) {
-      Alert.alert("Not enough items", "Add at least 2 items first.");
-      return;
-    }
-    const results = suggestOutfits(items, { season, maxResults: 10 });
-    if (results.length === 0) {
-      Alert.alert("No luck!", "Couldn't assemble an outfit. Try adding more items.");
-      return;
-    }
-    const pick = results[Math.floor(Math.random() * results.length)];
-    setSuggestions([pick]);
-    setGenerated(true);
-  }, [items, season]);
+    const tagged: typeof items = [];
+    const untagged: typeof items = [];
 
-  // Track custom names per suggestion index
-  const [customNames, setCustomNames] = useState<Record<number, string>>({});
+    for (const item of items) {
+      if (item.occasions && item.occasions.includes(selectedOccasion)) {
+        tagged.push(item);
+      } else if (!item.occasions || item.occasions.length === 0) {
+        untagged.push(item);
+      }
+    }
+
+    // If we have enough tagged items, prefer them but mix in untagged for variety
+    if (tagged.length >= 4) {
+      return [...tagged, ...untagged];
+    }
+    // Otherwise include all items so the engine has enough to work with
+    return items;
+  }, [items, selectedOccasion]);
 
   const getSuggestedName = (suggestion: SuggestionResult, idx: number): string => {
     if (customNames[idx] !== undefined) return customNames[idx];
-    return generateOutfitName(suggestion.items);
+    if (lockedNames[idx] !== undefined) return lockedNames[idx];
+    // Generate and lock the name on first access
+    const name = generateOutfitName(suggestion.items);
+    setLockedNames((prev) => ({ ...prev, [idx]: name }));
+    return name;
   };
 
   const handleResetName = (idx: number) => {
@@ -102,14 +122,106 @@ export default function SuggestScreen() {
       next[idx] = `Outfit #${Date.now().toString(36).slice(-4).toUpperCase()}`;
       return next;
     });
+    // Clear the locked name so custom takes precedence
+    setLockedNames((prev) => {
+      const next = { ...prev };
+      delete next[idx];
+      return next;
+    });
   };
 
   const handleRegenerateName = (suggestion: SuggestionResult, idx: number) => {
+    const newName = generateOutfitName(suggestion.items);
     setCustomNames((prev) => {
       const next = { ...prev };
-      next[idx] = generateOutfitName(suggestion.items);
+      delete next[idx];
       return next;
     });
+    setLockedNames((prev) => ({ ...prev, [idx]: newName }));
+  };
+
+  const handleGenerate = useCallback(() => {
+    if (occasionFilteredItems.length < 2) {
+      Alert.alert(
+        "Not enough items",
+        "Add at least 2 clothing items to your wardrobe to get outfit suggestions."
+      );
+      return;
+    }
+    const results = suggestOutfits(occasionFilteredItems, { season, maxResults: 6 });
+    setSuggestions(results);
+    setGenerated(true);
+    setQuickPickMode(false);
+    setCustomNames({});
+    setLockedNames({});
+  }, [occasionFilteredItems, season]);
+
+  const handleSurpriseMe = useCallback(() => {
+    if (occasionFilteredItems.length < 2) {
+      Alert.alert("Not enough items", "Add at least 2 items first.");
+      return;
+    }
+    const results = suggestOutfits(occasionFilteredItems, { season, maxResults: 10 });
+    if (results.length === 0) {
+      Alert.alert("No luck!", "Couldn't assemble an outfit. Try adding more items.");
+      return;
+    }
+    const pick = results[Math.floor(Math.random() * results.length)];
+    setSuggestions([pick]);
+    setGenerated(true);
+    setQuickPickMode(false);
+    setCustomNames({});
+    setLockedNames({});
+  }, [occasionFilteredItems, season]);
+
+  const handleQuickPick = useCallback(() => {
+    if (occasionFilteredItems.length < 2) {
+      Alert.alert("Not enough items", "Add at least 2 items first.");
+      return;
+    }
+    const results = suggestOutfits(occasionFilteredItems, { season, maxResults: 10 });
+    if (results.length === 0) {
+      Alert.alert("No luck!", "Couldn't assemble an outfit. Try adding more items.");
+      return;
+    }
+    // Pick up to 3 from the top results
+    const picks = results.slice(0, Math.min(3, results.length));
+    setQuickPicks(picks);
+    setQuickPickMode(true);
+    setActiveQuickPick(0);
+    setGenerated(false);
+    setSuggestions([]);
+    setCustomNames({});
+    setLockedNames({});
+
+    // Animate in
+    quickPickFadeAnim.setValue(0);
+    Animated.timing(quickPickFadeAnim, {
+      toValue: 1,
+      duration: 300,
+      useNativeDriver: true,
+    }).start();
+  }, [occasionFilteredItems, season, quickPickFadeAnim]);
+
+  const handleQuickPickSelect = async (suggestion: SuggestionResult, idx: number) => {
+    const name = getSuggestedName(suggestion, idx);
+
+    await saveOutfit({
+      id: generateId(),
+      name,
+      nameLocked: true,
+      itemIds: suggestion.items.map((i) => i.id),
+      occasions: selectedOccasion ? [selectedOccasion] : [],
+      seasons: season ? [season] : [],
+      rating: Math.min(5, Math.max(1, Math.round(suggestion.score / 20))),
+      createdAt: Date.now(),
+      suggested: true,
+      wornDates: [],
+    });
+
+    Alert.alert("Saved!", `"${name}" has been saved. Time to get dressed!`);
+    setQuickPickMode(false);
+    setQuickPicks([]);
   };
 
   const handleSave = async (suggestion: SuggestionResult, idx: number) => {
@@ -118,8 +230,9 @@ export default function SuggestScreen() {
     await saveOutfit({
       id: generateId(),
       name,
+      nameLocked: true,
       itemIds: suggestion.items.map((i) => i.id),
-      occasions: [],
+      occasions: selectedOccasion ? [selectedOccasion] : [],
       seasons: season ? [season] : [],
       rating: Math.min(5, Math.max(1, Math.round(suggestion.score / 20))),
       createdAt: Date.now(),
@@ -130,9 +243,354 @@ export default function SuggestScreen() {
     Alert.alert("Saved!", `"${name}" has been added to your outfits.`);
   };
 
+  const handleQuickPickScroll = (event: any) => {
+    const offsetX = event.nativeEvent.contentOffset.x;
+    const index = Math.round(offsetX / (QUICK_PICK_CARD_WIDTH + 16));
+    setActiveQuickPick(Math.max(0, Math.min(index, quickPicks.length - 1)));
+  };
+
+  // Dynamic styles that depend on theme
+  const dynamicStyles = useMemo(
+    () =>
+      StyleSheet.create({
+        container: { flex: 1, backgroundColor: theme.colors.background },
+        content: { padding: theme.spacing.md, paddingBottom: 60 },
+        heading: {
+          fontSize: theme.fontSize.xxl,
+          fontWeight: "800",
+          color: theme.colors.text,
+          marginBottom: 4,
+        },
+        subtitle: {
+          fontSize: theme.fontSize.md,
+          color: theme.colors.textSecondary,
+          lineHeight: 22,
+          marginBottom: theme.spacing.md,
+        },
+        weatherCard: {
+          backgroundColor: theme.colors.surface,
+          borderRadius: theme.borderRadius.md,
+          padding: theme.spacing.md,
+          marginBottom: theme.spacing.md,
+          borderWidth: 1,
+          borderColor: theme.colors.primary + "20",
+        },
+        weatherHeader: {
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 12,
+        },
+        weatherInfo: { flex: 1 },
+        weatherTemp: {
+          fontSize: theme.fontSize.lg,
+          fontWeight: "700",
+          color: theme.colors.text,
+        },
+        weatherDesc: {
+          fontSize: theme.fontSize.md,
+          fontWeight: "400",
+          color: theme.colors.textSecondary,
+        },
+        weatherCity: {
+          fontSize: theme.fontSize.xs,
+          color: theme.colors.textLight,
+          marginTop: 2,
+        },
+        feelsLike: {
+          fontSize: theme.fontSize.xs,
+          color: theme.colors.textSecondary,
+          fontWeight: "500",
+        },
+        weatherLoadingText: {
+          fontSize: theme.fontSize.sm,
+          color: theme.colors.textSecondary,
+          marginLeft: 8,
+        },
+        weatherTips: {
+          marginTop: theme.spacing.sm,
+          gap: 4,
+        },
+        tipRow: {
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 6,
+        },
+        tipText: {
+          fontSize: theme.fontSize.xs,
+          color: theme.colors.textSecondary,
+          flex: 1,
+        },
+        sectionTitle: {
+          fontSize: theme.fontSize.md,
+          fontWeight: "600",
+          color: theme.colors.text,
+          marginBottom: theme.spacing.sm,
+          marginTop: theme.spacing.sm,
+        },
+        chipRow: { flexDirection: "row", flexWrap: "wrap" },
+        buttonRow: {
+          flexDirection: "row",
+          gap: theme.spacing.sm,
+          marginTop: theme.spacing.lg,
+          marginBottom: theme.spacing.lg,
+        },
+        generateBtn: {
+          flex: 2,
+          flexDirection: "row",
+          height: 52,
+          backgroundColor: theme.colors.primary,
+          borderRadius: theme.borderRadius.md,
+          justifyContent: "center",
+          alignItems: "center",
+          gap: 8,
+        },
+        generateBtnText: {
+          color: "#FFFFFF",
+          fontSize: theme.fontSize.lg,
+          fontWeight: "700",
+        },
+        surpriseBtn: {
+          flex: 1,
+          flexDirection: "row",
+          height: 52,
+          borderRadius: theme.borderRadius.md,
+          justifyContent: "center",
+          alignItems: "center",
+          gap: 6,
+          borderWidth: 1.5,
+          borderColor: theme.colors.primary,
+          backgroundColor: theme.colors.primary + "08",
+        },
+        surpriseBtnText: {
+          color: theme.colors.primary,
+          fontSize: theme.fontSize.md,
+          fontWeight: "700",
+        },
+        quickPickBtn: {
+          flexDirection: "row",
+          height: 48,
+          borderRadius: theme.borderRadius.md,
+          justifyContent: "center",
+          alignItems: "center",
+          gap: 8,
+          backgroundColor: theme.colors.accent + "18",
+          borderWidth: 1.5,
+          borderColor: theme.colors.accent,
+          marginBottom: theme.spacing.md,
+        },
+        quickPickBtnText: {
+          color: theme.colors.accent,
+          fontSize: theme.fontSize.md,
+          fontWeight: "700",
+        },
+        noResults: {
+          padding: theme.spacing.xl,
+          alignItems: "center",
+        },
+        noResultsText: {
+          fontSize: theme.fontSize.md,
+          color: theme.colors.textSecondary,
+          textAlign: "center",
+        },
+        suggestionCard: {
+          backgroundColor: theme.colors.surface,
+          borderRadius: theme.borderRadius.lg,
+          padding: theme.spacing.md,
+          marginBottom: theme.spacing.md,
+          shadowColor: "#000",
+          shadowOffset: { width: 0, height: 2 },
+          shadowOpacity: 0.06,
+          shadowRadius: 8,
+          elevation: 3,
+        },
+        suggestionHeader: {
+          flexDirection: "row",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: 4,
+        },
+        suggestionTitle: {
+          fontSize: theme.fontSize.lg,
+          fontWeight: "700",
+          color: theme.colors.text,
+          flex: 1,
+          marginRight: 8,
+        },
+        nameActions: {
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 10,
+        },
+        scoreText: {
+          fontSize: theme.fontSize.sm,
+          fontWeight: "600",
+          color: theme.colors.primary,
+          marginBottom: 8,
+        },
+        moodBoardWrap: {
+          alignItems: "center",
+          marginBottom: 12,
+        },
+        palette: { flexDirection: "row", gap: 6, marginBottom: 12 },
+        itemRow: {
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 10,
+          paddingVertical: 6,
+          borderBottomWidth: 1,
+          borderBottomColor: theme.colors.border,
+        },
+        itemDot: { width: 10, height: 10, borderRadius: 5 },
+        itemInfo: { flex: 1 },
+        itemName: {
+          fontSize: theme.fontSize.md,
+          fontWeight: "600",
+          color: theme.colors.text,
+        },
+        itemMeta: {
+          fontSize: theme.fontSize.xs,
+          color: theme.colors.textSecondary,
+        },
+        reasons: { marginTop: 10, gap: 4 },
+        reasonRow: { flexDirection: "row", alignItems: "center", gap: 6 },
+        reasonText: {
+          fontSize: theme.fontSize.sm,
+          color: theme.colors.textSecondary,
+        },
+        saveOutfitBtn: {
+          flexDirection: "row",
+          justifyContent: "center",
+          alignItems: "center",
+          gap: 6,
+          marginTop: 12,
+          paddingVertical: 10,
+          borderRadius: theme.borderRadius.sm,
+          backgroundColor: theme.colors.primary + "12",
+        },
+        saveOutfitText: {
+          fontSize: theme.fontSize.md,
+          fontWeight: "600",
+          color: theme.colors.primary,
+        },
+        // Quick Pick styles
+        quickPickContainer: {
+          marginBottom: theme.spacing.lg,
+        },
+        quickPickTitle: {
+          fontSize: theme.fontSize.xl,
+          fontWeight: "800",
+          color: theme.colors.text,
+          textAlign: "center",
+          marginBottom: 4,
+        },
+        quickPickSubtitle: {
+          fontSize: theme.fontSize.sm,
+          color: theme.colors.textSecondary,
+          textAlign: "center",
+          marginBottom: theme.spacing.md,
+        },
+        quickPickScroll: {
+          paddingHorizontal: 16,
+        },
+        quickPickCard: {
+          width: QUICK_PICK_CARD_WIDTH,
+          backgroundColor: theme.colors.surface,
+          borderRadius: theme.borderRadius.lg,
+          padding: theme.spacing.md,
+          marginRight: 16,
+          shadowColor: "#000",
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: 0.1,
+          shadowRadius: 12,
+          elevation: 5,
+          borderWidth: 2,
+          borderColor: "transparent",
+        },
+        quickPickCardActive: {
+          borderColor: theme.colors.primary,
+        },
+        quickPickCardName: {
+          fontSize: theme.fontSize.lg,
+          fontWeight: "700",
+          color: theme.colors.text,
+          textAlign: "center",
+          marginBottom: 8,
+        },
+        quickPickCardScore: {
+          fontSize: theme.fontSize.sm,
+          fontWeight: "600",
+          color: theme.colors.primary,
+          textAlign: "center",
+          marginBottom: 12,
+        },
+        quickPickItemRow: {
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 8,
+          paddingVertical: 4,
+        },
+        quickPickItemName: {
+          fontSize: theme.fontSize.sm,
+          color: theme.colors.text,
+          fontWeight: "500",
+        },
+        quickPickItemMeta: {
+          fontSize: theme.fontSize.xs,
+          color: theme.colors.textSecondary,
+        },
+        quickPickSelectBtn: {
+          flexDirection: "row",
+          justifyContent: "center",
+          alignItems: "center",
+          gap: 8,
+          marginTop: 16,
+          paddingVertical: 12,
+          borderRadius: theme.borderRadius.md,
+          backgroundColor: theme.colors.primary,
+        },
+        quickPickSelectText: {
+          fontSize: theme.fontSize.md,
+          fontWeight: "700",
+          color: "#FFFFFF",
+        },
+        quickPickDots: {
+          flexDirection: "row",
+          justifyContent: "center",
+          gap: 8,
+          marginTop: theme.spacing.md,
+        },
+        quickPickDot: {
+          width: 8,
+          height: 8,
+          borderRadius: 4,
+          backgroundColor: theme.colors.border,
+        },
+        quickPickDotActive: {
+          backgroundColor: theme.colors.primary,
+          width: 24,
+        },
+        quickPickDismiss: {
+          alignItems: "center",
+          marginTop: theme.spacing.sm,
+          paddingVertical: 8,
+        },
+        quickPickDismissText: {
+          fontSize: theme.fontSize.sm,
+          color: theme.colors.textLight,
+          fontWeight: "500",
+        },
+        occasionLabel: {
+          fontSize: theme.fontSize.xs,
+          color: theme.colors.textSecondary,
+          marginTop: 2,
+        },
+      }),
+    [theme]
+  );
+
   if (items.length < 2) {
     return (
-      <View style={styles.container}>
+      <View style={dynamicStyles.container}>
         <EmptyState
           icon="sparkles-outline"
           title="Add more items"
@@ -143,52 +601,52 @@ export default function SuggestScreen() {
   }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.heading}>Get Outfit Ideas</Text>
-      <Text style={styles.subtitle}>
+    <ScrollView style={dynamicStyles.container} contentContainerStyle={dynamicStyles.content}>
+      <Text style={dynamicStyles.heading}>Get Outfit Ideas</Text>
+      <Text style={dynamicStyles.subtitle}>
         Our engine analyses colour harmony, fabric compatibility, and seasonal
         fit to suggest your best looks.
       </Text>
 
       {/* Weather Card */}
       {loadingWeather ? (
-        <View style={styles.weatherCard}>
-          <ActivityIndicator size="small" color={Theme.colors.primary} />
-          <Text style={styles.weatherLoadingText}>Checking weather...</Text>
+        <View style={dynamicStyles.weatherCard}>
+          <ActivityIndicator size="small" color={theme.colors.primary} />
+          <Text style={dynamicStyles.weatherLoadingText}>Checking weather...</Text>
         </View>
       ) : weather ? (
-        <View style={styles.weatherCard}>
-          <View style={styles.weatherHeader}>
+        <View style={dynamicStyles.weatherCard}>
+          <View style={dynamicStyles.weatherHeader}>
             <Ionicons
               name={weather.icon as any}
               size={28}
-              color={Theme.colors.primary}
+              color={theme.colors.primary}
             />
-            <View style={styles.weatherInfo}>
-              <Text style={styles.weatherTemp}>
+            <View style={dynamicStyles.weatherInfo}>
+              <Text style={dynamicStyles.weatherTemp}>
                 {weather.temp}°C{" "}
-                <Text style={styles.weatherDesc}>{weather.description}</Text>
+                <Text style={dynamicStyles.weatherDesc}>{weather.description}</Text>
               </Text>
               {weather.city ? (
-                <Text style={styles.weatherCity}>{weather.city}</Text>
+                <Text style={dynamicStyles.weatherCity}>{weather.city}</Text>
               ) : null}
             </View>
             {weather.feelsLike !== weather.temp && (
-              <Text style={styles.feelsLike}>
+              <Text style={dynamicStyles.feelsLike}>
                 Feels {weather.feelsLike}°
               </Text>
             )}
           </View>
           {weatherTips.length > 0 && (
-            <View style={styles.weatherTips}>
+            <View style={dynamicStyles.weatherTips}>
               {weatherTips.map((tip, i) => (
-                <View key={i} style={styles.tipRow}>
+                <View key={i} style={dynamicStyles.tipRow}>
                   <Ionicons
                     name="information-circle-outline"
                     size={14}
-                    color={Theme.colors.primary}
+                    color={theme.colors.primary}
                   />
-                  <Text style={styles.tipText}>{tip}</Text>
+                  <Text style={dynamicStyles.tipText}>{tip}</Text>
                 </View>
               ))}
             </View>
@@ -196,8 +654,9 @@ export default function SuggestScreen() {
         </View>
       ) : null}
 
-      <Text style={styles.sectionTitle}>Season (optional)</Text>
-      <View style={styles.chipRow}>
+      {/* Season Chips */}
+      <Text style={dynamicStyles.sectionTitle}>Season (optional)</Text>
+      <View style={dynamicStyles.chipRow}>
         {(Object.keys(SEASON_LABELS) as Season[]).map((s) => (
           <Chip
             key={s}
@@ -208,63 +667,187 @@ export default function SuggestScreen() {
         ))}
       </View>
 
+      {/* Occasion Chips (#13) */}
+      <Text style={dynamicStyles.sectionTitle}>Occasion (optional)</Text>
+      <View style={dynamicStyles.chipRow}>
+        {OCCASIONS.map((occ) => (
+          <Chip
+            key={occ}
+            label={OCCASION_LABELS[occ]}
+            selected={selectedOccasion === occ}
+            onPress={() =>
+              setSelectedOccasion(selectedOccasion === occ ? undefined : occ)
+            }
+          />
+        ))}
+      </View>
+
+      {/* Morning Routine Quick Pick (#16) */}
+      <Pressable style={dynamicStyles.quickPickBtn} onPress={handleQuickPick}>
+        <Ionicons name="flash" size={20} color={theme.colors.accent} />
+        <Text style={dynamicStyles.quickPickBtnText}>Quick Pick</Text>
+      </Pressable>
+
+      {/* Quick Pick Carousel */}
+      {quickPickMode && quickPicks.length > 0 && (
+        <Animated.View
+          style={[dynamicStyles.quickPickContainer, { opacity: quickPickFadeAnim }]}
+        >
+          <Text style={dynamicStyles.quickPickTitle}>Your Morning Picks</Text>
+          <Text style={dynamicStyles.quickPickSubtitle}>
+            Swipe to browse, tap to save your pick
+          </Text>
+
+          <ScrollView
+            ref={quickPickScrollRef}
+            horizontal
+            pagingEnabled={false}
+            snapToInterval={QUICK_PICK_CARD_WIDTH + 16}
+            snapToAlignment="start"
+            decelerationRate="fast"
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={dynamicStyles.quickPickScroll}
+            onMomentumScrollEnd={handleQuickPickScroll}
+          >
+            {quickPicks.map((pick, idx) => {
+              const isActive = idx === activeQuickPick;
+              return (
+                <View
+                  key={idx}
+                  style={[
+                    dynamicStyles.quickPickCard,
+                    isActive && dynamicStyles.quickPickCardActive,
+                  ]}
+                >
+                  <Text style={dynamicStyles.quickPickCardName}>
+                    {getSuggestedName(pick, idx + 1000)}
+                  </Text>
+                  <Text style={dynamicStyles.quickPickCardScore}>
+                    Score: {Math.round(pick.score)}
+                  </Text>
+
+                  <View style={dynamicStyles.moodBoardWrap}>
+                    <MoodBoard items={pick.items} size={200} />
+                  </View>
+
+                  <View style={dynamicStyles.palette}>
+                    {pick.items.map((item) => (
+                      <ColorDot key={item.id} color={item.color} size={24} />
+                    ))}
+                  </View>
+
+                  {pick.items.map((item) => (
+                    <View key={item.id} style={dynamicStyles.quickPickItemRow}>
+                      <View
+                        style={[dynamicStyles.itemDot, { backgroundColor: item.color }]}
+                      />
+                      <View style={dynamicStyles.itemInfo}>
+                        <Text style={dynamicStyles.quickPickItemName}>
+                          {item.name}
+                        </Text>
+                        <Text style={dynamicStyles.quickPickItemMeta}>
+                          {CATEGORY_LABELS[item.category]} · {item.colorName}
+                        </Text>
+                      </View>
+                    </View>
+                  ))}
+
+                  <Pressable
+                    style={dynamicStyles.quickPickSelectBtn}
+                    onPress={() => handleQuickPickSelect(pick, idx + 1000)}
+                  >
+                    <Ionicons name="checkmark-circle" size={20} color="#FFFFFF" />
+                    <Text style={dynamicStyles.quickPickSelectText}>
+                      Pick This One
+                    </Text>
+                  </Pressable>
+                </View>
+              );
+            })}
+          </ScrollView>
+
+          {/* Pagination Dots */}
+          <View style={dynamicStyles.quickPickDots}>
+            {quickPicks.map((_, idx) => (
+              <View
+                key={idx}
+                style={[
+                  dynamicStyles.quickPickDot,
+                  idx === activeQuickPick && dynamicStyles.quickPickDotActive,
+                ]}
+              />
+            ))}
+          </View>
+
+          <Pressable
+            style={dynamicStyles.quickPickDismiss}
+            onPress={() => {
+              setQuickPickMode(false);
+              setQuickPicks([]);
+            }}
+          >
+            <Text style={dynamicStyles.quickPickDismissText}>Dismiss</Text>
+          </Pressable>
+        </Animated.View>
+      )}
+
       {/* Action Buttons */}
-      <View style={styles.buttonRow}>
-        <Pressable style={styles.generateBtn} onPress={handleGenerate}>
+      <View style={dynamicStyles.buttonRow}>
+        <Pressable style={dynamicStyles.generateBtn} onPress={handleGenerate}>
           <Ionicons name="sparkles" size={20} color="#FFFFFF" />
-          <Text style={styles.generateBtnText}>Generate</Text>
+          <Text style={dynamicStyles.generateBtnText}>Generate</Text>
         </Pressable>
-        <Pressable style={styles.surpriseBtn} onPress={handleSurpriseMe}>
-          <Ionicons name="shuffle" size={20} color={Theme.colors.primary} />
-          <Text style={styles.surpriseBtnText}>Surprise Me</Text>
+        <Pressable style={dynamicStyles.surpriseBtn} onPress={handleSurpriseMe}>
+          <Ionicons name="shuffle" size={20} color={theme.colors.primary} />
+          <Text style={dynamicStyles.surpriseBtnText}>Surprise Me</Text>
         </Pressable>
       </View>
 
       {generated && suggestions.length === 0 && (
-        <View style={styles.noResults}>
-          <Text style={styles.noResultsText}>
+        <View style={dynamicStyles.noResults}>
+          <Text style={dynamicStyles.noResultsText}>
             No matching outfits found. Try a different season or add more items!
           </Text>
         </View>
       )}
 
       {suggestions.map((suggestion, idx) => (
-        <View key={idx} style={styles.suggestionCard}>
-          <View style={styles.suggestionHeader}>
-            <Text style={styles.suggestionTitle} numberOfLines={1}>
+        <View key={idx} style={dynamicStyles.suggestionCard}>
+          <View style={dynamicStyles.suggestionHeader}>
+            <Text style={dynamicStyles.suggestionTitle} numberOfLines={1}>
               {getSuggestedName(suggestion, idx)}
             </Text>
-            <View style={styles.nameActions}>
+            <View style={dynamicStyles.nameActions}>
               <Pressable hitSlop={8} onPress={() => handleRegenerateName(suggestion, idx)}>
-                <Ionicons name="refresh-outline" size={16} color={Theme.colors.primary} />
+                <Ionicons name="refresh-outline" size={16} color={theme.colors.primary} />
               </Pressable>
               <Pressable hitSlop={8} onPress={() => handleResetName(idx)}>
-                <Ionicons name="text-outline" size={14} color={Theme.colors.textLight} />
+                <Ionicons name="text-outline" size={14} color={theme.colors.textLight} />
               </Pressable>
             </View>
           </View>
-          <Text style={styles.scoreText}>
+          <Text style={dynamicStyles.scoreText}>
             Score: {Math.round(suggestion.score)}
           </Text>
 
-          <View style={styles.moodBoardWrap}>
+          <View style={dynamicStyles.moodBoardWrap}>
             <MoodBoard items={suggestion.items} size={260} />
           </View>
 
-          <View style={styles.palette}>
+          <View style={dynamicStyles.palette}>
             {suggestion.items.map((item) => (
               <ColorDot key={item.id} color={item.color} size={28} />
             ))}
           </View>
 
           {suggestion.items.map((item) => (
-            <View key={item.id} style={styles.itemRow}>
+            <View key={item.id} style={dynamicStyles.itemRow}>
               <View
-                style={[styles.itemDot, { backgroundColor: item.color }]}
+                style={[dynamicStyles.itemDot, { backgroundColor: item.color }]}
               />
-              <View style={styles.itemInfo}>
-                <Text style={styles.itemName}>{item.name}</Text>
-                <Text style={styles.itemMeta}>
+              <View style={dynamicStyles.itemInfo}>
+                <Text style={dynamicStyles.itemName}>{item.name}</Text>
+                <Text style={dynamicStyles.itemMeta}>
                   {CATEGORY_LABELS[item.category]} · {item.colorName}
                 </Text>
               </View>
@@ -272,239 +855,33 @@ export default function SuggestScreen() {
           ))}
 
           {suggestion.reasons.length > 0 && (
-            <View style={styles.reasons}>
+            <View style={dynamicStyles.reasons}>
               {suggestion.reasons.map((r, ri) => (
-                <View key={ri} style={styles.reasonRow}>
+                <View key={ri} style={dynamicStyles.reasonRow}>
                   <Ionicons
                     name="checkmark-circle"
                     size={14}
-                    color={Theme.colors.success}
+                    color={theme.colors.success}
                   />
-                  <Text style={styles.reasonText}>{r}</Text>
+                  <Text style={dynamicStyles.reasonText}>{r}</Text>
                 </View>
               ))}
             </View>
           )}
 
           <Pressable
-            style={styles.saveOutfitBtn}
+            style={dynamicStyles.saveOutfitBtn}
             onPress={() => handleSave(suggestion, idx)}
           >
             <Ionicons
               name="bookmark-outline"
               size={16}
-              color={Theme.colors.primary}
+              color={theme.colors.primary}
             />
-            <Text style={styles.saveOutfitText}>Save Outfit</Text>
+            <Text style={dynamicStyles.saveOutfitText}>Save Outfit</Text>
           </Pressable>
         </View>
       ))}
     </ScrollView>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Theme.colors.background },
-  content: { padding: Theme.spacing.md, paddingBottom: 60 },
-  heading: {
-    fontSize: Theme.fontSize.xxl,
-    fontWeight: "800",
-    color: Theme.colors.text,
-    marginBottom: 4,
-  },
-  subtitle: {
-    fontSize: Theme.fontSize.md,
-    color: Theme.colors.textSecondary,
-    lineHeight: 22,
-    marginBottom: Theme.spacing.md,
-  },
-  // Weather
-  weatherCard: {
-    backgroundColor: Theme.colors.surface,
-    borderRadius: Theme.borderRadius.md,
-    padding: Theme.spacing.md,
-    marginBottom: Theme.spacing.md,
-    borderWidth: 1,
-    borderColor: Theme.colors.primary + "20",
-  },
-  weatherHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-  },
-  weatherInfo: { flex: 1 },
-  weatherTemp: {
-    fontSize: Theme.fontSize.lg,
-    fontWeight: "700",
-    color: Theme.colors.text,
-  },
-  weatherDesc: {
-    fontSize: Theme.fontSize.md,
-    fontWeight: "400",
-    color: Theme.colors.textSecondary,
-  },
-  weatherCity: {
-    fontSize: Theme.fontSize.xs,
-    color: Theme.colors.textLight,
-    marginTop: 2,
-  },
-  feelsLike: {
-    fontSize: Theme.fontSize.xs,
-    color: Theme.colors.textSecondary,
-    fontWeight: "500",
-  },
-  weatherLoadingText: {
-    fontSize: Theme.fontSize.sm,
-    color: Theme.colors.textSecondary,
-    marginLeft: 8,
-  },
-  weatherTips: {
-    marginTop: Theme.spacing.sm,
-    gap: 4,
-  },
-  tipRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-  tipText: {
-    fontSize: Theme.fontSize.xs,
-    color: Theme.colors.textSecondary,
-    flex: 1,
-  },
-  sectionTitle: {
-    fontSize: Theme.fontSize.md,
-    fontWeight: "600",
-    color: Theme.colors.text,
-    marginBottom: Theme.spacing.sm,
-    marginTop: Theme.spacing.sm,
-  },
-  chipRow: { flexDirection: "row", flexWrap: "wrap" },
-  buttonRow: {
-    flexDirection: "row",
-    gap: Theme.spacing.sm,
-    marginTop: Theme.spacing.lg,
-    marginBottom: Theme.spacing.lg,
-  },
-  generateBtn: {
-    flex: 2,
-    flexDirection: "row",
-    height: 52,
-    backgroundColor: Theme.colors.primary,
-    borderRadius: Theme.borderRadius.md,
-    justifyContent: "center",
-    alignItems: "center",
-    gap: 8,
-  },
-  generateBtnText: {
-    color: "#FFFFFF",
-    fontSize: Theme.fontSize.lg,
-    fontWeight: "700",
-  },
-  surpriseBtn: {
-    flex: 1,
-    flexDirection: "row",
-    height: 52,
-    borderRadius: Theme.borderRadius.md,
-    justifyContent: "center",
-    alignItems: "center",
-    gap: 6,
-    borderWidth: 1.5,
-    borderColor: Theme.colors.primary,
-    backgroundColor: Theme.colors.primary + "08",
-  },
-  surpriseBtnText: {
-    color: Theme.colors.primary,
-    fontSize: Theme.fontSize.md,
-    fontWeight: "700",
-  },
-  noResults: {
-    padding: Theme.spacing.xl,
-    alignItems: "center",
-  },
-  noResultsText: {
-    fontSize: Theme.fontSize.md,
-    color: Theme.colors.textSecondary,
-    textAlign: "center",
-  },
-  suggestionCard: {
-    backgroundColor: Theme.colors.surface,
-    borderRadius: Theme.borderRadius.lg,
-    padding: Theme.spacing.md,
-    marginBottom: Theme.spacing.md,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-  suggestionHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 4,
-  },
-  suggestionTitle: {
-    fontSize: Theme.fontSize.lg,
-    fontWeight: "700",
-    color: Theme.colors.text,
-    flex: 1,
-    marginRight: 8,
-  },
-  nameActions: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-  },
-  scoreText: {
-    fontSize: Theme.fontSize.sm,
-    fontWeight: "600",
-    color: Theme.colors.primary,
-    marginBottom: 8,
-  },
-  moodBoardWrap: {
-    alignItems: "center",
-    marginBottom: 12,
-  },
-  palette: { flexDirection: "row", gap: 6, marginBottom: 12 },
-  itemRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    paddingVertical: 6,
-    borderBottomWidth: 1,
-    borderBottomColor: Theme.colors.border,
-  },
-  itemDot: { width: 10, height: 10, borderRadius: 5 },
-  itemInfo: { flex: 1 },
-  itemName: {
-    fontSize: Theme.fontSize.md,
-    fontWeight: "600",
-    color: Theme.colors.text,
-  },
-  itemMeta: {
-    fontSize: Theme.fontSize.xs,
-    color: Theme.colors.textSecondary,
-  },
-  reasons: { marginTop: 10, gap: 4 },
-  reasonRow: { flexDirection: "row", alignItems: "center", gap: 6 },
-  reasonText: {
-    fontSize: Theme.fontSize.sm,
-    color: Theme.colors.textSecondary,
-  },
-  saveOutfitBtn: {
-    flexDirection: "row",
-    justifyContent: "center",
-    alignItems: "center",
-    gap: 6,
-    marginTop: 12,
-    paddingVertical: 10,
-    borderRadius: Theme.borderRadius.sm,
-    backgroundColor: Theme.colors.primary + "12",
-  },
-  saveOutfitText: {
-    fontSize: Theme.fontSize.md,
-    fontWeight: "600",
-    color: Theme.colors.primary,
-  },
-});

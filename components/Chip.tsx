@@ -1,6 +1,6 @@
 import React from "react";
 import { Pressable, Text, StyleSheet } from "react-native";
-import { Theme } from "@/constants/theme";
+import { useTheme } from "@/hooks/useTheme";
 
 interface ChipProps {
   label: string;
@@ -9,12 +9,16 @@ interface ChipProps {
 }
 
 export function Chip({ label, selected = false, onPress }: ChipProps) {
+  const { theme } = useTheme();
   return (
     <Pressable
-      style={[styles.chip, selected && styles.chipSelected]}
+      style={[
+        styles.chip,
+        { backgroundColor: selected ? theme.colors.primary : theme.colors.surfaceAlt },
+      ]}
       onPress={onPress}
     >
-      <Text style={[styles.label, selected && styles.labelSelected]}>
+      <Text style={[styles.label, { color: selected ? "#FFFFFF" : theme.colors.textSecondary }]}>
         {label}
       </Text>
     </Pressable>
@@ -25,20 +29,12 @@ const styles = StyleSheet.create({
   chip: {
     paddingHorizontal: 14,
     paddingVertical: 7,
-    borderRadius: Theme.borderRadius.full,
-    backgroundColor: Theme.colors.surfaceAlt,
-    marginRight: Theme.spacing.sm,
-    marginBottom: Theme.spacing.sm,
-  },
-  chipSelected: {
-    backgroundColor: Theme.colors.primary,
+    borderRadius: 9999,
+    marginRight: 8,
+    marginBottom: 8,
   },
   label: {
-    fontSize: Theme.fontSize.sm,
-    color: Theme.colors.textSecondary,
+    fontSize: 13,
     fontWeight: "500",
-  },
-  labelSelected: {
-    color: "#FFFFFF",
   },
 });

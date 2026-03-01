@@ -181,23 +181,35 @@ function getItemSeasonalFit(item: ClothingItem, season: Season): number {
 
   // --- BOTTOMS ---
   if (cat === "bottoms") {
-    // Shorts: summer only
-    if (sub === "shorts") {
-      return season === "summer" ? 1.0 : 0.0;
-    }
-    // Stockings/tights: fall and winter primarily, any season except summer
-    if (sub === "stockings") {
-      if (season === "summer") return 0.2;
-      if (season === "winter" || season === "fall") return 1.0;
-      return 0.7; // spring
-    }
-    // Skirts: any season
-    if (sub === "skirt") return 0.9;
     // White pants in winter is a faux pas
     if (season === "winter") {
       const { l } = hexToHSL(item.color);
       if (l > 90) return 0.3;
     }
+    return 0.9;
+  }
+
+  // --- SKIRTS & SHORTS ---
+  if (cat === "skirts_shorts") {
+    // Shorts: summer only
+    if (sub === "casual_shorts" || sub === "athletic_shorts" || sub === "dressy_shorts") {
+      return season === "summer" ? 1.0 : 0.0;
+    }
+    // Skorts: spring/summer
+    if (sub === "skort") {
+      return (season === "summer" || season === "spring") ? 1.0 : 0.0;
+    }
+    // Mini skirts: spring/summer/fall
+    if (sub === "mini_skirt") {
+      return season === "winter" ? 0.3 : 0.9;
+    }
+    // Midi/maxi skirts: year-round
+    return 0.9;
+  }
+
+  // --- JUMPSUITS ---
+  if (cat === "jumpsuits") {
+    if (season === "winter") return 0.5;
     return 0.9;
   }
 
@@ -312,26 +324,39 @@ function isSwimBottom(item: ClothingItem): boolean {
 }
 
 function isStocking(item: ClothingItem): boolean {
-  return item.category === "bottoms" && item.subCategory === "stockings";
+  return item.category === "accessories" && item.subCategory === "stockings";
+}
+
+function isJumpsuit(item: ClothingItem): boolean {
+  return item.category === "jumpsuits";
+}
+
+function isSkirtOrShorts(item: ClothingItem): boolean {
+  return item.category === "skirts_shorts";
 }
 
 function isValidCombo(combo: ClothingItem[]): boolean {
   const hasDress = combo.some(isDress);
-  const hasBottoms = combo.some((i) => i.category === "bottoms" && !isStocking(i));
+  const hasJumpsuit = combo.some(isJumpsuit);
+  const hasBottoms = combo.some((i) => i.category === "bottoms");
+  const hasSkirtShorts = combo.some(isSkirtOrShorts);
   const hasNonOpenTop = combo.some((i) => isShirtLike(i));
   const hasAnyOpenTop = combo.some((i) => isOpenTop(i));
   const hasTops = combo.some((i) => i.category === "tops");
+  const hasLowerBody = hasBottoms || hasSkirtShorts;
 
-  // Dress + regular bottoms conflict (stockings are OK with a dress)
-  if (hasDress && hasBottoms) return false;
+  // Dress/jumpsuit + regular bottoms conflict
+  if ((hasDress || hasJumpsuit) && hasLowerBody) return false;
+  // Jumpsuit + dress conflict
+  if (hasDress && hasJumpsuit) return false;
 
-  // Open tops need a non-open top underneath
-  if (hasAnyOpenTop && !hasNonOpenTop && !hasDress) return false;
+  // Open tops need a non-open top underneath (unless dress/jumpsuit)
+  if (hasAnyOpenTop && !hasNonOpenTop && !hasDress && !hasJumpsuit) return false;
 
-  // Regular outfits need at minimum a top + bottoms
+  // Regular outfits need at minimum a top + bottoms/skirt
   const hasSwimwear = combo.some((i) => i.category === "swimwear");
-  if (!hasDress && !hasSwimwear) {
-    if (!hasTops || !hasBottoms) return false;
+  if (!hasDress && !hasSwimwear && !hasJumpsuit) {
+    if (!hasTops || !hasLowerBody) return false;
   }
 
   // Swimwear rules
@@ -343,7 +368,7 @@ function isValidCombo(combo: ClothingItem[]): boolean {
   if (hasSwimTop && !hasSwimBottom) return false;
   if (hasSwimBottom && !hasSwimTop) return false;
   if (hasSwimwear && hasTops) return false;
-  if (hasSwimwear && hasBottoms) return false;
+  if (hasSwimwear && (hasBottoms || hasSkirtShorts)) return false;
 
   return true;
 }
@@ -354,7 +379,7 @@ type OutfitCombo = ClothingItem[];
 
 function getCategoryCombinations(): ClothingCategory[][] {
   return [
-    // Traditional outfits
+    // Traditional outfits with pants
     ["tops", "bottoms"],
     ["tops", "bottoms", "shoes"],
     ["tops", "bottoms", "jackets"],
@@ -363,10 +388,22 @@ function getCategoryCombinations(): ClothingCategory[][] {
     ["tops", "bottoms", "shoes", "accessories"],
     ["tops", "bottoms", "jackets", "shoes", "accessories"],
 
-    // With blazer
+    // With skirts/shorts
+    ["tops", "skirts_shorts"],
+    ["tops", "skirts_shorts", "shoes"],
+    ["tops", "skirts_shorts", "jackets"],
+    ["tops", "skirts_shorts", "jackets", "shoes"],
+    ["tops", "skirts_shorts", "shoes", "accessories"],
+
+    // With blazer + bottoms
     ["tops", "bottoms", "blazers"],
     ["tops", "bottoms", "blazers", "shoes"],
     ["tops", "bottoms", "blazers", "shoes", "accessories"],
+
+    // With blazer + skirts/shorts
+    ["tops", "skirts_shorts", "blazers"],
+    ["tops", "skirts_shorts", "blazers", "shoes"],
+    ["tops", "skirts_shorts", "blazers", "shoes", "accessories"],
 
     // Blazer + jacket (layering)
     ["tops", "bottoms", "blazers", "jackets", "shoes"],
@@ -382,7 +419,16 @@ function getCategoryCombinations(): ClothingCategory[][] {
     ["dresses", "blazers"],
     ["dresses", "blazers", "shoes"],
 
-    // Swimwear — one-piece (single pick) or swim top + swim bottom (double pick)
+    // Jumpsuit-based outfits
+    ["jumpsuits"],
+    ["jumpsuits", "shoes"],
+    ["jumpsuits", "jackets"],
+    ["jumpsuits", "shoes", "jackets"],
+    ["jumpsuits", "blazers"],
+    ["jumpsuits", "blazers", "shoes"],
+    ["jumpsuits", "shoes", "accessories"],
+
+    // Swimwear
     ["swimwear"],
     ["swimwear", "shoes"],
     ["swimwear", "accessories"],
@@ -466,7 +512,7 @@ function enrichWithAccessories(
   const isFormalish = hasBlazer;
   const hasSwimwear = combo.some((i) => i.category === "swimwear");
   const hasDress = combo.some(isDress);
-  const hasSkirt = combo.some((i) => i.subCategory === "skirt");
+  const hasSkirt = combo.some((i) => i.category === "skirts_shorts" && (i.subCategory?.includes("skirt") || i.subCategory === "skort"));
 
   const extras: ClothingItem[] = [];
   const usedSubs = new Set<string>();
@@ -657,7 +703,7 @@ export function suggestOutfits(
     // Winter stockings with dress/skirt bonus
     if (season === "winter") {
       const hasDressOrSkirt = combo.some(
-        (i) => isDress(i) || i.subCategory === "skirt"
+        (i) => isDress(i) || isSkirtOrShorts(i)
       );
       const hasStockings = combo.some(isStocking);
       if (hasDressOrSkirt && hasStockings) {
@@ -696,14 +742,19 @@ export function suggestOutfits(
 export function validateOutfit(items: ClothingItem[]): string[] {
   const warnings: string[] = [];
   const hasDress = items.some(isDress);
-  const hasBottoms = items.some((i) => i.category === "bottoms" && !isStocking(i));
+  const hasJumpsuit = items.some(isJumpsuit);
+  const hasBottoms = items.some((i) => i.category === "bottoms");
+  const hasSkirtShorts = items.some(isSkirtOrShorts);
   const hasAnyOpenTop = items.some(isOpenTop);
   const hasNonOpenTop = items.some(isShirtLike);
 
-  if (hasDress && hasBottoms) {
-    warnings.push("A dress typically doesn't pair with pants or bottoms");
+  if ((hasDress || hasJumpsuit) && (hasBottoms || hasSkirtShorts)) {
+    warnings.push("A dress or jumpsuit typically doesn't pair with separate bottoms");
   }
-  if (hasAnyOpenTop && !hasNonOpenTop && !hasDress) {
+  if (hasDress && hasJumpsuit) {
+    warnings.push("A dress and jumpsuit don't typically go together");
+  }
+  if (hasAnyOpenTop && !hasNonOpenTop && !hasDress && !hasJumpsuit) {
     warnings.push("Open layers (blazers, cardigans, zip-ups) usually need a shirt or top underneath");
   }
   if (items.length === 0) {
@@ -720,7 +771,7 @@ export function validateOutfit(items: ClothingItem[]): string[] {
   if (hasSwimwear && items.some((i) => i.category === "tops")) {
     warnings.push("Swimwear doesn't typically pair with regular tops");
   }
-  if (hasSwimwear && hasBottoms) {
+  if (hasSwimwear && (hasBottoms || hasSkirtShorts)) {
     warnings.push("Swimwear doesn't typically pair with regular bottoms");
   }
 
@@ -728,94 +779,100 @@ export function validateOutfit(items: ClothingItem[]): string[] {
 }
 
 /* ------------------------------------------------------------------ */
-/*  Creative Outfit Name Generator                                      */
+/*  Outfit Name Generator — grounded, descriptive names                 */
 /* ------------------------------------------------------------------ */
 
-const STYLE_ADJECTIVES = [
-  "Chic", "Sleek", "Bold", "Classic", "Effortless", "Polished", "Fresh",
-  "Sharp", "Cozy", "Elegant", "Refined", "Sporty", "Casual", "Smart",
-  "Luxe", "Modern", "Breezy", "Crisp", "Dapper", "Radiant",
-];
-
-const MOOD_WORDS = [
-  "Vibe", "Look", "Ensemble", "Combo", "Style", "Mix",
-  "Moment", "Edit", "Statement", "Fit",
-];
-
-const COLOR_THEMES: Record<string, string[]> = {
-  dark: ["Midnight", "Shadow", "Noir", "Eclipse", "Obsidian"],
-  light: ["Cloud", "Pearl", "Ivory", "Frost", "Snow"],
-  warm: ["Sunset", "Ember", "Autumn", "Honey", "Spice"],
-  cool: ["Ocean", "Sky", "Arctic", "Glacier", "Breeze"],
-  earth: ["Terra", "Olive", "Sage", "Moss", "Stone"],
-  bold: ["Poppy", "Flame", "Ruby", "Electric", "Neon"],
-};
-
-function getColorTheme(items: ClothingItem[]): string {
+function getColorMood(items: ClothingItem[]): string {
   const colors = items.map((i) => hexToHSL(i.color));
   const avgL = colors.reduce((s, c) => s + c.l, 0) / colors.length;
   const avgS = colors.reduce((s, c) => s + c.s, 0) / colors.length;
   const avgH = colors.reduce((s, c) => s + c.h, 0) / colors.length;
 
   if (avgL < 25) return "dark";
-  if (avgL > 80) return "light";
-  if (avgS < 15) return "earth";
-  if (avgS > 60 && (avgH < 30 || avgH > 330)) return "bold";
-  if (avgH >= 30 && avgH < 80) return "warm";
-  if (avgH >= 180 && avgH < 270) return "cool";
-  if (avgH >= 80 && avgH < 180) return "earth";
+  if (avgL > 80 && avgS < 20) return "light_neutral";
+  if (avgL > 75) return "light";
+  if (avgS < 15) return "neutral";
+  if (avgH >= 0 && avgH < 40) return "warm";
+  if (avgH >= 40 && avgH < 80) return "autumn";
+  if (avgH >= 80 && avgH < 160) return "earthy";
+  if (avgH >= 160 && avgH < 220) return "cool";
+  if (avgH >= 220 && avgH < 280) return "blue";
+  if (avgH >= 280 && avgH < 330) return "jewel";
   return "warm";
 }
 
-function getCategoryVibe(items: ClothingItem[]): string {
+const COLOR_MOOD_DESCRIPTORS: Record<string, string[]> = {
+  dark: ["Dark & Polished", "All Black", "Midnight", "Evening Edge"],
+  light_neutral: ["Light and Bright", "Fresh Neutrals", "Soft & Clean", "Airy"],
+  light: ["Bright Day", "Light & Easy", "Sun-Kissed", "Pastel Pop"],
+  neutral: ["Classic Neutrals", "Earth Tones", "Understated", "Minimal Mix"],
+  warm: ["Warm Glow", "Sunset Tones", "Rich & Warm", "Golden Hour"],
+  autumn: ["Fall Vibes", "Autumn Palette", "Harvest Tones", "Cozy Warm"],
+  earthy: ["Natural Tones", "Down to Earth", "Olive & Sage", "Green Scene"],
+  cool: ["Cool Tones", "Ocean Breeze", "Blue-Green", "Minted"],
+  blue: ["Blue Hour", "Denim Days", "Sky High", "Navy & Nice"],
+  jewel: ["Jewel Tones", "Rich Hues", "Berry Beautiful", "Deep Purple"],
+};
+
+function getCategoryDescriptor(items: ClothingItem[]): string {
   const cats = new Set(items.map((i) => i.category));
-  if (cats.has("blazers") || cats.has("jewelry")) return "Power";
+  const subs = new Set(items.map((i) => i.subCategory).filter(Boolean));
+
+  if (cats.has("blazers")) return "Blazer";
+  if (cats.has("jumpsuits")) return "Jumpsuit";
   if (cats.has("swimwear")) return "Beach";
+  if (cats.has("dresses")) return "Dress";
+  if (subs.has("jeans")) return "Denim";
+  if (subs.has("heels")) return "Heels";
+  if (subs.has("trousers")) return "Trouser";
+  if (subs.has("leggings")) return "Athleisure";
   if (cats.has("jackets")) return "Layered";
-  if (cats.has("dresses")) return "Statement";
-  if (items.some((i) => i.subCategory === "jeans")) return "Denim";
-  if (items.some((i) => i.subCategory === "sneakers" || i.subCategory === "running_shoes")) return "Street";
-  if (items.some((i) => i.subCategory === "heels")) return "Night Out";
   return "";
 }
 
-function getFabricVibe(items: ClothingItem[]): string {
+function getFabricDescriptor(items: ClothingItem[]): string {
   const fabrics = new Set(items.map((i) => i.fabricType));
-  if (fabrics.has("cashmere") || fabrics.has("silk")) return "Luxe";
-  if (fabrics.has("denim")) return "Casual";
-  if (fabrics.has("leather")) return "Edge";
-  if (fabrics.has("linen")) return "Breezy";
+  if (fabrics.has("linen")) return "Linen";
+  if (fabrics.has("cashmere")) return "Cashmere";
+  if (fabrics.has("silk")) return "Silk";
+  if (fabrics.has("leather")) return "Leather";
+  if (fabrics.has("denim")) return "Denim";
   if (fabrics.has("wool") || fabrics.has("fleece")) return "Cozy";
   return "";
 }
 
-/** Generate a creative outfit name based on the items in the outfit */
+/** Generate a descriptive, grounded outfit name based on items */
 export function generateOutfitName(items: ClothingItem[]): string {
   if (items.length === 0) return "New Outfit";
 
-  const theme = getColorTheme(items);
-  const themeWords = COLOR_THEMES[theme] ?? COLOR_THEMES.warm;
-  const themeWord = themeWords[Math.floor(Math.random() * themeWords.length)];
+  const mood = getColorMood(items);
+  const moodOptions = COLOR_MOOD_DESCRIPTORS[mood] ?? COLOR_MOOD_DESCRIPTORS.neutral;
+  const catDesc = getCategoryDescriptor(items);
+  const fabDesc = getFabricDescriptor(items);
 
-  const catVibe = getCategoryVibe(items);
-  const fabVibe = getFabricVibe(items);
+  const candidates: string[] = [];
 
-  const styleAdj = STYLE_ADJECTIVES[Math.floor(Math.random() * STYLE_ADJECTIVES.length)];
-  const moodWord = MOOD_WORDS[Math.floor(Math.random() * MOOD_WORDS.length)];
+  // Combine mood with category: "Fall Vibes Blazer", "Light and Bright Denim"
+  if (catDesc) {
+    const moodPick = moodOptions[Math.floor(Math.random() * moodOptions.length)];
+    candidates.push(`${moodPick} ${catDesc}`);
+  }
 
-  // Pick a pattern
-  const patterns = [
-    `The ${themeWord} ${moodWord}`,
-    `${styleAdj} ${themeWord}`,
-    `${catVibe || styleAdj} ${moodWord}`,
-    `${themeWord} ${catVibe || fabVibe || styleAdj}`,
-    `${fabVibe || styleAdj} ${themeWord} ${moodWord}`,
-  ];
+  // Fabric + mood: "Linen Light & Easy"
+  if (fabDesc && fabDesc !== catDesc) {
+    const moodPick = moodOptions[Math.floor(Math.random() * moodOptions.length)];
+    candidates.push(`${fabDesc} ${moodPick}`);
+  }
 
-  // Filter patterns that have double spaces or empty parts
-  const valid = patterns
-    .map((p) => p.replace(/\s+/g, " ").trim())
-    .filter((p) => p.split(" ").every((w) => w.length > 0));
+  // Standalone mood descriptor
+  candidates.push(moodOptions[Math.floor(Math.random() * moodOptions.length)]);
 
-  return valid[Math.floor(Math.random() * valid.length)] || `${styleAdj} ${moodWord}`;
+  // Category + simple descriptor
+  if (catDesc) {
+    const simple = ["Day", "Look", "Style", "Outfit"];
+    candidates.push(`${catDesc} ${simple[Math.floor(Math.random() * simple.length)]}`);
+  }
+
+  const pick = candidates[Math.floor(Math.random() * candidates.length)];
+  return pick.replace(/\s+/g, " ").trim();
 }
