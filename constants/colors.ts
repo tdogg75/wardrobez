@@ -106,7 +106,220 @@ export function findClosestPresetIndex(hex: string): number {
   return bestIdx;
 }
 
+// ---------------------------------------------------------------------------
+// Comprehensive fashion-relevant named colors for accurate color-name mapping.
+// NAMED_COLORS is used exclusively by getColorName() – the PRESET_COLORS array
+// above is left untouched because it drives the color-picker UI.
+// ---------------------------------------------------------------------------
+
+interface NamedColor {
+  hex: string;
+  name: string;
+  h: number; // hue 0-360
+  s: number; // saturation 0-100
+  l: number; // lightness 0-100
+}
+
+export const NAMED_COLORS: NamedColor[] = [
+  // ── Neutrals ──────────────────────────────────────────────────────────────
+  { hex: "#000000", name: "Black",       h: 0,   s: 0,   l: 0   },
+  { hex: "#FFFFFF", name: "White",       h: 0,   s: 0,   l: 100 },
+  { hex: "#FFFFF0", name: "Ivory",       h: 60,  s: 100, l: 97  },
+  { hex: "#FFFDD0", name: "Cream",       h: 54,  s: 100, l: 91  },
+  { hex: "#F0EAD6", name: "Eggshell",    h: 42,  s: 46,  l: 89  },
+  { hex: "#FFFAFA", name: "Snow",        h: 0,   s: 100, l: 99  },
+  { hex: "#FAF9F6", name: "Off-White",   h: 40,  s: 33,  l: 97  },
+  { hex: "#36454F", name: "Charcoal",    h: 206, s: 19,  l: 26  },
+  { hex: "#708090", name: "Slate",       h: 210, s: 13,  l: 50  },
+  { hex: "#C0C0C0", name: "Silver",      h: 0,   s: 0,   l: 75  },
+  { hex: "#B2BEB5", name: "Ash",         h: 144, s: 8,   l: 72  },
+  { hex: "#8A9A5B", name: "Pewter",      h: 86,  s: 26,  l: 48  },
+  { hex: "#2C3539", name: "Gunmetal",    h: 197, s: 14,  l: 20  },
+  { hex: "#928E85", name: "Stone",       h: 39,  s: 6,   l: 55  },
+  { hex: "#483C32", name: "Taupe",       h: 27,  s: 19,  l: 24  },
+  { hex: "#C9B99A", name: "Mushroom",    h: 39,  s: 31,  l: 70  },
+  { hex: "#C3B091", name: "Khaki",       h: 37,  s: 33,  l: 67  },
+  { hex: "#C2B280", name: "Sand",        h: 46,  s: 30,  l: 63  },
+  { hex: "#C19A6B", name: "Camel",       h: 33,  s: 38,  l: 59  },
+  { hex: "#D2B48C", name: "Tan",         h: 34,  s: 44,  l: 69  },
+  { hex: "#F5F5DC", name: "Beige",       h: 60,  s: 56,  l: 91  },
+  { hex: "#E8DCCA", name: "Oatmeal",     h: 36,  s: 37,  l: 85  },
+  { hex: "#3C1414", name: "Espresso",    h: 0,   s: 50,  l: 16  },
+  { hex: "#7B3F00", name: "Chocolate",   h: 31,  s: 100, l: 24  },
+  { hex: "#967969", name: "Mocha",       h: 20,  s: 18,  l: 50  },
+  { hex: "#6F4E37", name: "Coffee",      h: 25,  s: 31,  l: 33  },
+  { hex: "#9A463D", name: "Cognac",      h: 5,   s: 43,  l: 42  },
+  { hex: "#954535", name: "Chestnut",    h: 10,  s: 47,  l: 40  },
+  { hex: "#5B3A29", name: "Walnut",      h: 21,  s: 35,  l: 26  },
+  { hex: "#A0522D", name: "Sienna",      h: 19,  s: 56,  l: 40  },
+  { hex: "#635147", name: "Umber",       h: 21,  s: 16,  l: 33  },
+
+  // ── Reds ──────────────────────────────────────────────────────────────────
+  { hex: "#FF2400", name: "Scarlet",     h: 9,   s: 100, l: 50  },
+  { hex: "#DC143C", name: "Crimson",     h: 348, s: 83,  l: 47  },
+  { hex: "#E0115F", name: "Ruby",        h: 337, s: 87,  l: 47  },
+  { hex: "#DE3163", name: "Cherry",      h: 342, s: 72,  l: 53  },
+  { hex: "#733635", name: "Garnet",      h: 1,   s: 36,  l: 33  },
+  { hex: "#800020", name: "Burgundy",    h: 345, s: 100, l: 25  },
+  { hex: "#800000", name: "Maroon",      h: 0,   s: 100, l: 25  },
+  { hex: "#722F37", name: "Wine",        h: 352, s: 39,  l: 32  },
+  { hex: "#4A0000", name: "Oxblood",     h: 0,   s: 100, l: 15  },
+  { hex: "#CB4154", name: "Brick Red",   h: 352, s: 53,  l: 53  },
+  { hex: "#B7410E", name: "Rust",        h: 18,  s: 84,  l: 39  },
+  { hex: "#E2725B", name: "Terracotta",  h: 11,  s: 67,  l: 62  },
+  { hex: "#FF6347", name: "Tomato",      h: 9,   s: 100, l: 64  },
+  { hex: "#E34234", name: "Vermillion",  h: 5,   s: 76,  l: 55  },
+  { hex: "#C41E3A", name: "Cardinal",    h: 348, s: 74,  l: 44  },
+
+  // ── Pinks ─────────────────────────────────────────────────────────────────
+  { hex: "#DE5D83", name: "Blush",       h: 343, s: 65,  l: 62  },
+  { hex: "#FF007F", name: "Rose",        h: 330, s: 100, l: 50  },
+  { hex: "#C4767A", name: "Dusty Rose",  h: 357, s: 38,  l: 62  },
+  { hex: "#FF7F50", name: "Coral",       h: 16,  s: 100, l: 66  },
+  { hex: "#FA8072", name: "Salmon",      h: 6,   s: 93,  l: 71  },
+  { hex: "#FF00FF", name: "Fuchsia",     h: 300, s: 100, l: 50  },
+  { hex: "#FF69B4", name: "Hot Pink",    h: 330, s: 100, l: 71  },
+  { hex: "#FF0090", name: "Magenta",     h: 326, s: 100, l: 50  },
+  { hex: "#E0B0FF", name: "Mauve",       h: 280, s: 100, l: 84  },
+  { hex: "#FFDAB9", name: "Peach",       h: 28,  s: 100, l: 86  },
+  { hex: "#FC8EAC", name: "Flamingo",    h: 343, s: 96,  l: 77  },
+
+  // ── Blues ──────────────────────────────────────────────────────────────────
+  { hex: "#000080", name: "Navy",            h: 240, s: 100, l: 25  },
+  { hex: "#191970", name: "Midnight Blue",   h: 240, s: 64,  l: 27  },
+  { hex: "#4169E1", name: "Royal Blue",      h: 225, s: 73,  l: 57  },
+  { hex: "#0047AB", name: "Cobalt",          h: 215, s: 100, l: 34  },
+  { hex: "#0F52BA", name: "Sapphire",        h: 219, s: 85,  l: 39  },
+  { hex: "#007BA7", name: "Cerulean",        h: 196, s: 100, l: 33  },
+  { hex: "#87CEEB", name: "Sky Blue",        h: 197, s: 71,  l: 73  },
+  { hex: "#B0E0E6", name: "Powder Blue",     h: 187, s: 52,  l: 80  },
+  { hex: "#89CFF0", name: "Baby Blue",       h: 207, s: 79,  l: 75  },
+  { hex: "#4682B4", name: "Steel Blue",      h: 207, s: 44,  l: 49  },
+  { hex: "#5B7FA5", name: "Denim Blue",      h: 212, s: 30,  l: 50  },
+  { hex: "#CCCCFF", name: "Periwinkle",      h: 240, s: 100, l: 90  },
+  { hex: "#6495ED", name: "Cornflower",      h: 219, s: 79,  l: 66  },
+  { hex: "#4B0082", name: "Indigo",          h: 275, s: 100, l: 25  },
+  { hex: "#007FFF", name: "Azure",           h: 210, s: 100, l: 50  },
+  { hex: "#6A5ACD", name: "Slate Blue",      h: 248, s: 53,  l: 58  },
+  { hex: "#008080", name: "Teal",            h: 180, s: 100, l: 25  },
+  { hex: "#1B3D4F", name: "Petrol",          h: 200, s: 49,  l: 21  },
+
+  // ── Greens ────────────────────────────────────────────────────────────────
+  { hex: "#228B22", name: "Forest",          h: 120, s: 61,  l: 34  },
+  { hex: "#355E3B", name: "Hunter Green",    h: 140, s: 26,  l: 29  },
+  { hex: "#50C878", name: "Emerald",         h: 140, s: 52,  l: 55  },
+  { hex: "#00A86B", name: "Jade",            h: 160, s: 100, l: 33  },
+  { hex: "#B2AC88", name: "Sage",            h: 69,  s: 18,  l: 62  },
+  { hex: "#808000", name: "Olive",           h: 60,  s: 100, l: 25  },
+  { hex: "#4B5320", name: "Army Green",      h: 72,  s: 46,  l: 23  },
+  { hex: "#8A9A5B", name: "Moss",            h: 86,  s: 26,  l: 48  },
+  { hex: "#93E9BE", name: "Seafoam",         h: 152, s: 66,  l: 75  },
+  { hex: "#98FF98", name: "Mint",            h: 120, s: 100, l: 80  },
+  { hex: "#32CD32", name: "Lime",            h: 120, s: 61,  l: 50  },
+  { hex: "#7FFF00", name: "Chartreuse",      h: 90,  s: 100, l: 50  },
+  { hex: "#93C572", name: "Pistachio",       h: 96,  s: 42,  l: 61  },
+  { hex: "#01796F", name: "Pine",            h: 175, s: 99,  l: 24  },
+  { hex: "#4F7942", name: "Fern",            h: 108, s: 30,  l: 37  },
+
+  // ── Yellows & Oranges ─────────────────────────────────────────────────────
+  { hex: "#FFD700", name: "Gold",            h: 51,  s: 100, l: 50  },
+  { hex: "#FFDB58", name: "Mustard",         h: 48,  s: 100, l: 67  },
+  { hex: "#F4C430", name: "Saffron",         h: 45,  s: 90,  l: 57  },
+  { hex: "#FFBF00", name: "Amber",           h: 45,  s: 100, l: 50  },
+  { hex: "#EB9605", name: "Honey",           h: 38,  s: 95,  l: 47  },
+  { hex: "#FFF44F", name: "Lemon",           h: 57,  s: 100, l: 65  },
+  { hex: "#FFFACD", name: "Butter",          h: 54,  s: 100, l: 90  },
+  { hex: "#FFEF00", name: "Canary",          h: 56,  s: 100, l: 50  },
+  { hex: "#EAA221", name: "Marigold",        h: 38,  s: 83,  l: 53  },
+  { hex: "#FF9966", name: "Tangerine",       h: 20,  s: 100, l: 70  },
+  { hex: "#FBCEB1", name: "Apricot",         h: 28,  s: 93,  l: 84  },
+  { hex: "#FF7518", name: "Pumpkin",         h: 24,  s: 100, l: 55  },
+  { hex: "#B06500", name: "Ginger",          h: 34,  s: 100, l: 35  },
+  { hex: "#B87333", name: "Copper",          h: 28,  s: 56,  l: 46  },
+  { hex: "#CD7F32", name: "Bronze",          h: 34,  s: 60,  l: 50  },
+  { hex: "#D2691E", name: "Cinnamon",        h: 25,  s: 75,  l: 47  },
+
+  // ── Purples ───────────────────────────────────────────────────────────────
+  { hex: "#8E4585", name: "Plum",            h: 307, s: 33,  l: 40  },
+  { hex: "#614051", name: "Eggplant",        h: 326, s: 21,  l: 32  },
+  { hex: "#693B58", name: "Aubergine",       h: 318, s: 29,  l: 32  },
+  { hex: "#6F2DA8", name: "Grape",           h: 274, s: 58,  l: 42  },
+  { hex: "#7F00FF", name: "Violet",          h: 270, s: 100, l: 50  },
+  { hex: "#9966CC", name: "Amethyst",        h: 270, s: 50,  l: 60  },
+  { hex: "#DA70D6", name: "Orchid",          h: 302, s: 59,  l: 65  },
+  { hex: "#C8A2C8", name: "Lilac",           h: 300, s: 28,  l: 77  },
+  { hex: "#E6E6FA", name: "Lavender",        h: 240, s: 67,  l: 94  },
+  { hex: "#C9A0DC", name: "Wisteria",        h: 280, s: 46,  l: 75  },
+  { hex: "#C54B8C", name: "Mulberry",        h: 327, s: 50,  l: 54  },
+  { hex: "#7851A9", name: "Royal Purple",    h: 264, s: 36,  l: 49  },
+
+  // ── Denim washes (fashion-specific) ───────────────────────────────────────
+  { hex: "#1B3A5C", name: "Dark Wash",       h: 212, s: 53,  l: 23  },
+  { hex: "#4A6FA5", name: "Medium Wash",     h: 215, s: 39,  l: 47  },
+  { hex: "#8AADCE", name: "Light Wash",      h: 210, s: 40,  l: 67  },
+  { hex: "#2C3E50", name: "Raw Indigo",      h: 210, s: 29,  l: 24  },
+
+  // ── Additional fashion grays ──────────────────────────────────────────────
+  { hex: "#A9A9A9", name: "Dark Gray",       h: 0,   s: 0,   l: 66  },
+  { hex: "#D3D3D3", name: "Light Gray",      h: 0,   s: 0,   l: 83  },
+  { hex: "#808080", name: "Gray",            h: 0,   s: 0,   l: 50  },
+  { hex: "#F5F0EB", name: "Champagne",       h: 30,  s: 36,  l: 94  },
+];
+
+/**
+ * Return the closest fashion-relevant color name for an arbitrary hex value.
+ *
+ * Uses a weighted HSL distance metric:
+ *   • For very low-saturation colours (grays / whites / blacks) lightness is
+ *     heavily prioritised so "Charcoal" won't be confused with "Silver".
+ *   • For chromatic colours, hue carries extra weight so neighbouring shades
+ *     map to the most intuitive name.
+ */
 export function getColorName(hex: string): string {
-  const idx = findClosestPresetIndex(hex);
-  return PRESET_COLORS[idx].name;
+  const { h, s, l } = hexToHSL(hex);
+
+  let bestName = NAMED_COLORS[0].name;
+  let bestDist = Infinity;
+
+  for (const nc of NAMED_COLORS) {
+    // Hue is circular – compute the shortest angular distance
+    const hueDiff = Math.min(Math.abs(h - nc.h), 360 - Math.abs(h - nc.h));
+    const satDiff = Math.abs(s - nc.s);
+    const lightDiff = Math.abs(l - nc.l);
+
+    // Determine whether the *input* colour is essentially achromatic.
+    // When saturation is very low, hue is meaningless – weight lightness
+    // much more heavily so blacks, grays, whites, and off-whites separate
+    // cleanly.
+    let dist: number;
+    if (s < 10) {
+      // Near-gray: lightness dominates, hue almost irrelevant
+      dist = Math.sqrt(
+        0.1 * hueDiff * hueDiff +
+        1.0 * satDiff * satDiff +
+        6.0 * lightDiff * lightDiff
+      );
+    } else if (s < 25) {
+      // Low-saturation / muted tones (taupe, mushroom, stone, etc.)
+      dist = Math.sqrt(
+        0.6 * hueDiff * hueDiff +
+        1.2 * satDiff * satDiff +
+        4.0 * lightDiff * lightDiff
+      );
+    } else {
+      // Chromatic colours – hue matters most
+      dist = Math.sqrt(
+        4.0 * hueDiff * hueDiff +
+        1.5 * satDiff * satDiff +
+        2.0 * lightDiff * lightDiff
+      );
+    }
+
+    if (dist < bestDist) {
+      bestDist = dist;
+      bestName = nc.name;
+    }
+  }
+
+  return bestName;
 }

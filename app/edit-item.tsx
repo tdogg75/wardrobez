@@ -374,7 +374,7 @@ export default function EditItemScreen() {
     setTags((prev) => prev.filter((t) => t !== tag));
   };
 
-  const handleSave = async () => {
+  const handleSave = useCallback(async () => {
     if (!name.trim() || !id) return;
     const parsedCost = cost.trim() ? parseFloat(cost.trim()) : undefined;
 
@@ -410,9 +410,12 @@ export default function EditItemScreen() {
       tags: tags.length > 0 ? tags : undefined,
     });
     router.back();
-  };
+  }, [id, name, category, subCategory, finalColor, finalColorName, secondaryColor, secondaryColorName,
+      fabricType, imageUris, brand, productUrl, cost, favorite, wearCount, createdAt, isOpen,
+      hardwareColour, itemFlags, notes, originalAutoColor, purchaseDate, careInstructions,
+      sustainable, pattern, occasions, size, tags, addOrUpdate, router]);
 
-  const handleDelete = () => {
+  const handleDelete = useCallback(() => {
     Alert.alert("Delete Item", "Are you sure you want to remove this item?", [
       { text: "Cancel", style: "cancel" },
       {
@@ -424,29 +427,29 @@ export default function EditItemScreen() {
         },
       },
     ]);
-  };
+  }, [id, remove, router]);
 
-  const handleArchive = async (reason: ArchiveReason) => {
+  const handleArchive = useCallback(async (reason: ArchiveReason) => {
     if (!id) return;
     setShowArchiveModal(false);
     await archiveItem(id, reason);
     Alert.alert("Archived", "Item has been archived and affected outfits have been flagged.");
     router.back();
-  };
+  }, [id, archiveItem, router]);
 
   // Set header right icons: save, archive, delete
   useLayoutEffect(() => {
     navigation.setOptions({
       headerRight: () => (
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 12, marginRight: 4 }}>
-          <Pressable onPress={handleSave} hitSlop={10}>
-            <Ionicons name="checkmark-circle" size={26} color={theme.colors.primary} />
-          </Pressable>
-          <Pressable onPress={() => setShowArchiveModal(true)} hitSlop={10}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 14, marginRight: 8 }}>
+          <Pressable onPress={() => setShowArchiveModal(true)} hitSlop={12}>
             <Ionicons name="archive-outline" size={22} color={theme.colors.warning} />
           </Pressable>
-          <Pressable onPress={handleDelete} hitSlop={10}>
+          <Pressable onPress={handleDelete} hitSlop={12}>
             <Ionicons name="trash-outline" size={22} color={theme.colors.error} />
+          </Pressable>
+          <Pressable onPress={handleSave} hitSlop={12}>
+            <Ionicons name="save-outline" size={24} color={theme.colors.primary} />
           </Pressable>
         </View>
       ),

@@ -17,6 +17,7 @@ import { useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useClothingItems } from "@/hooks/useClothingItems";
 import { useOutfits } from "@/hooks/useOutfits";
+import { Chip } from "@/components/Chip";
 import {
   exportAllData,
   importAllData,
@@ -999,32 +1000,6 @@ export default function ProfileScreen() {
       {/* -------- Header -------- */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Profile</Text>
-        <Pressable
-          hitSlop={12}
-          onPress={() => {
-            Alert.alert("Settings", "Wardrobez v1.0.0", [
-              {
-                text: "Export Backup",
-                onPress: handleExport,
-              },
-              {
-                text: "Import Backup",
-                onPress: () => handleImport(),
-              },
-              {
-                text: "Import from Gmail",
-                onPress: () => router.push("/gmail-purchases"),
-              },
-              { text: "Close", style: "cancel" },
-            ]);
-          }}
-        >
-          <Ionicons
-            name="settings-outline"
-            size={24}
-            color={theme.colors.text}
-          />
-        </Pressable>
       </View>
 
       {/* -------- Quick Stats (items, outfits, utilization) -------- */}
@@ -1099,9 +1074,25 @@ export default function ProfileScreen() {
         {spendingOpen && (
           <View style={styles.sectionBody}>
             <View style={styles.spendTotalRow}>
+              <Text style={styles.spendTotalLabel}>Total Items</Text>
+              <Text style={styles.spendTotalValue}>{allActive.length}</Text>
+            </View>
+            <View style={styles.spendTotalRow}>
               <Text style={styles.spendTotalLabel}>Total Spent</Text>
               <Text style={styles.spendTotalValue}>{fmt(totalSpent)}</Text>
             </View>
+            {(() => {
+              const itemsWithCpw = allActive.filter((i) => i.cost != null && i.cost > 0 && i.wearCount > 0);
+              const avgCpw = itemsWithCpw.length > 0
+                ? itemsWithCpw.reduce((sum, i) => sum + i.cost! / i.wearCount, 0) / itemsWithCpw.length
+                : 0;
+              return avgCpw > 0 ? (
+                <View style={styles.spendTotalRow}>
+                  <Text style={styles.spendTotalLabel}>Avg $/Wear</Text>
+                  <Text style={styles.spendTotalValue}>{fmt(avgCpw)}</Text>
+                </View>
+              ) : null;
+            })()}
 
             <Divider />
 
@@ -2509,6 +2500,37 @@ export default function ProfileScreen() {
         )}
       </View>
       )}
+
+      {/* ============================================================ */}
+      {/*  DATA & BACKUP                                                */}
+      {/* ============================================================ */}
+      <View style={[styles.card, { marginTop: theme.spacing.lg }]}>
+        <Text style={[styles.barLabel, { marginBottom: theme.spacing.sm, fontSize: theme.fontSize.md, fontWeight: "700" }]}>Data & Backup</Text>
+        <View style={{ gap: 8 }}>
+          <Pressable
+            style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 10 }}
+            onPress={handleExport}
+          >
+            <Ionicons name="download-outline" size={20} color={theme.colors.primary} />
+            <Text style={{ fontSize: theme.fontSize.md, color: theme.colors.text }}>Export Backup</Text>
+          </Pressable>
+          <Pressable
+            style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 10 }}
+            onPress={() => handleImport()}
+          >
+            <Ionicons name="cloud-upload-outline" size={20} color={theme.colors.primary} />
+            <Text style={{ fontSize: theme.fontSize.md, color: theme.colors.text }}>Import Backup</Text>
+          </Pressable>
+          <Pressable
+            style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 10 }}
+            onPress={() => router.push("/gmail-purchases")}
+          >
+            <Ionicons name="mail-outline" size={20} color={theme.colors.primary} />
+            <Text style={{ fontSize: theme.fontSize.md, color: theme.colors.text }}>Import from Gmail</Text>
+          </Pressable>
+        </View>
+        <Text style={{ fontSize: theme.fontSize.xs, color: theme.colors.textLight, marginTop: theme.spacing.sm }}>Wardrobez v1.0.0</Text>
+      </View>
 
     </ScrollView>
   );
