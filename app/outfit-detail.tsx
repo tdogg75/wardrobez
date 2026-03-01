@@ -10,11 +10,13 @@ import {
   TextInput,
   Modal,
   FlatList,
+  Share,
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import * as Sharing from "expo-sharing";
+import * as FileSystem from "expo-file-system";
 import { useOutfits } from "@/hooks/useOutfits";
 import { useClothingItems } from "@/hooks/useClothingItems";
 import { useTheme } from "@/hooks/useTheme";
@@ -719,13 +721,38 @@ export default function OutfitDetailScreen() {
       <Pressable
         style={styles.shareBtn}
         onPress={async () => {
-          // Create a text representation of the outfit to share
-          const itemNames = outfitItems.map((i) => `  - ${i.name} (${CATEGORY_LABELS[i.category]})`).join("\n");
-          const text = `${outfit.name}\n\nItems:\n${itemNames}\n\nTotal: ${fmt(totalCost)}`;
           try {
-            if (await Sharing.isAvailableAsync()) {
-              // Share as text via the system share sheet
-              Alert.alert("Share Outfit", text, [{ text: "OK" }]);
+            // Build outfit text description
+            const itemNames = outfitItems.map((i) => `  - ${i.name} (${CATEGORY_LABELS[i.category]})`).join("\n");
+            const text = `${outfit.name}\n\nItems:\n${itemNames}\n\nTotal: ${fmt(totalCost)}`;
+
+            // Find the best image to share: selfie > first item image
+            const latestSelfie = (outfit.wornEntries ?? []).find((e) => e.selfieUri)?.selfieUri;
+            const firstItemImage = outfitItems.find((i) => i.imageUris?.length > 0)?.imageUris[0];
+            const imageUri = latestSelfie ?? firstItemImage;
+
+            if (imageUri && (await Sharing.isAvailableAsync())) {
+              // Copy to a sharable location if it's a local file
+              const ext = imageUri.match(/\.(jpg|jpeg|png|webp)/i)?.[1] ?? "jpg";
+              const shareFile = `${FileSystem.cacheDirectory}outfit-share.${ext}`;
+              try {
+                if (imageUri.startsWith("file://") || imageUri.startsWith("/")) {
+                  await FileSystem.copyAsync({ from: imageUri, to: shareFile });
+                } else {
+                  const dl = await FileSystem.downloadAsync(imageUri, shareFile);
+                  if (dl.status !== 200) throw new Error("download failed");
+                }
+                await Sharing.shareAsync(shareFile, {
+                  mimeType: `image/${ext === "jpg" ? "jpeg" : ext}`,
+                  dialogTitle: outfit.name,
+                });
+              } catch {
+                // Fall back to text share
+                await Share.share({ message: text, title: outfit.name });
+              }
+            } else {
+              // No image available — share as text
+              await Share.share({ message: text, title: outfit.name });
             }
           } catch {}
         }}

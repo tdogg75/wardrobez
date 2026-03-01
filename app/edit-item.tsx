@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo, useLayoutEffect, useCallback } from "react";
+import React, { useEffect, useState, useMemo, useCallback } from "react";
 import {
   View,
   Text,
@@ -54,9 +54,15 @@ import {
   CARE_INSTRUCTION_LABELS,
   PATTERN_LABELS,
   OCCASION_LABELS,
-  COMMON_SIZES,
+  LETTER_SIZES,
+  WAIST_SIZES,
+  US_SIZES,
+  UK_SIZES,
   SHOE_SIZES,
+  NO_SIZE_CATEGORIES,
+  SIZE_SYSTEM_LABELS,
 } from "@/models/types";
+import type { SizeSystem } from "@/models/types";
 
 const ARCHIVE_REASONS: ArchiveReason[] = ["donated", "sold", "worn_out", "given_away"];
 
@@ -84,13 +90,15 @@ export default function EditItemScreen() {
   const [hslAdjust, setHslAdjust] = useState<{ h: number; s: number; l: number } | null>(null);
   const [showColorPicker, setShowColorPicker] = useState(false);
 
-  // Secondary color
+  // Secondary color - store actual hex + HSL, not just preset index
   const [secondaryColorIdx, setSecondaryColorIdx] = useState<number | null>(null);
+  const [secondaryHsl, setSecondaryHsl] = useState<{ h: number; s: number; l: number } | null>(null);
   const [showSecondaryColor, setShowSecondaryColor] = useState(false);
 
   // Color dropper
   const [showDropper, setShowDropper] = useState(false);
   const [dropperTarget, setDropperTarget] = useState<"primary" | "secondary">("primary");
+  const [dropperColor, setDropperColor] = useState<string | null>(null);
 
   // Open top detection
   const [isOpen, setIsOpen] = useState(false);
@@ -100,15 +108,20 @@ export default function EditItemScreen() {
 
   // Item flags
   const [itemFlags, setItemFlags] = useState<ItemFlag[]>([]);
+  const [showFlags, setShowFlags] = useState(false);
 
-  // Pattern
+  // Pattern + custom patterns
   const [pattern, setPattern] = useState<Pattern>("solid");
+  const [customPatterns, setCustomPatterns] = useState<string[]>([]);
+  const [showPatternAdd, setShowPatternAdd] = useState(false);
+  const [patternInput, setPatternInput] = useState("");
 
   // Occasions (#76)
   const [occasions, setOccasions] = useState<Occasion[]>([]);
 
   // Size (#65)
   const [size, setSize] = useState("");
+  const [sizeSystem, setSizeSystem] = useState<SizeSystem | null>(null);
 
   // Notes
   const [notes, setNotes] = useState("");
@@ -141,6 +154,9 @@ export default function EditItemScreen() {
   const [tags, setTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState("");
 
+  // Track if user has made changes (for back-button prompt)
+  const [hasChanges, setHasChanges] = useState(false);
+
   useEffect(() => {
     const item = items.find((i) => i.id === id);
     if (!item) return;
@@ -163,6 +179,8 @@ export default function EditItemScreen() {
     if (item.secondaryColor) {
       const secIdx = findClosestPresetIndex(item.secondaryColor);
       setSecondaryColorIdx(secIdx);
+      const secHsl = hexToHSL(item.secondaryColor);
+      setSecondaryHsl({ h: secHsl.h, s: secHsl.s, l: secHsl.l });
       setShowSecondaryColor(true);
     }
 
@@ -177,8 +195,18 @@ export default function EditItemScreen() {
     setSustainable(item.sustainable ?? false);
     setPattern(item.pattern ?? "solid");
     setOccasions(item.occasions ?? []);
-    setSize(item.size ?? "");
+    const itemSize = item.size ?? "";
+    setSize(itemSize);
+    // Auto-detect size system from stored value
+    if (itemSize) {
+      if (itemSize.startsWith("US ")) setSizeSystem("us");
+      else if (itemSize.startsWith("UK ")) setSizeSystem("uk");
+      else if (["XS", "S", "M", "L", "XL"].includes(itemSize)) setSizeSystem("letter");
+      else if (/^\d{2}$/.test(itemSize) && parseInt(itemSize) >= 24 && parseInt(itemSize) <= 38) setSizeSystem("waist");
+    }
     setTags(item.tags ?? []);
+    // Show flags section if item has flags
+    if (item.itemFlags && item.itemFlags.length > 0) setShowFlags(true);
   }, [id, items]);
 
   const finalColor = useMemo(() => {
@@ -191,8 +219,30 @@ export default function EditItemScreen() {
     return PRESET_COLORS[colorIdx].name;
   }, [finalColor, hslAdjust, colorIdx]);
 
-  const secondaryColor = secondaryColorIdx !== null ? PRESET_COLORS[secondaryColorIdx].hex : undefined;
-  const secondaryColorName = secondaryColorIdx !== null ? PRESET_COLORS[secondaryColorIdx].name : undefined;
+  const secondaryColor = useMemo(() => {
+    if (secondaryHsl) return hslToHex(secondaryHsl.h, secondaryHsl.s, secondaryHsl.l);
+    if (secondaryColorIdx !== null) return PRESET_COLORS[secondaryColorIdx].hex;
+    return undefined;
+  }, [secondaryHsl, secondaryColorIdx]);
+  const secondaryColorName = useMemo(() => {
+    if (secondaryColor) return getColorName(secondaryColor);
+    return undefined;
+  }, [secondaryColor]);
+
+  // Compute the 15 most-used colours in the wardrobe + dropper slot
+  const topColors = useMemo(() => {
+    const freq = new Map<number, number>();
+    for (const item of items) {
+      const idx = findClosestPresetIndex(item.color);
+      freq.set(idx, (freq.get(idx) ?? 0) + 1);
+    }
+    const sorted = [...freq.entries()].sort((a, b) => b[1] - a[1]);
+    const top15 = sorted.slice(0, 15).map(([idx]) => idx);
+    // If current primary/secondary index not in top, add it
+    if (!top15.includes(colorIdx)) top15.push(colorIdx);
+    if (secondaryColorIdx !== null && !top15.includes(secondaryColorIdx)) top15.push(secondaryColorIdx);
+    return top15;
+  }, [items, colorIdx, secondaryColorIdx]);
 
   const pickImage = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -261,9 +311,11 @@ export default function EditItemScreen() {
       setColorIdx(idx);
       setHslAdjust({ h: hsl.h, s: hsl.s, l: hsl.l });
       setOriginalAutoColor(hex);
+      setDropperColor(hex);
     } else {
       const idx = findClosestPresetIndex(hex);
       setSecondaryColorIdx(idx);
+      setSecondaryHsl({ h: hsl.h, s: hsl.s, l: hsl.l });
       setShowSecondaryColor(true);
     }
   };
@@ -376,6 +428,7 @@ export default function EditItemScreen() {
 
   const handleSave = useCallback(async () => {
     if (!name.trim() || !id) return;
+    setHasChanges(false);
     const parsedCost = cost.trim() ? parseFloat(cost.trim()) : undefined;
 
     await addOrUpdate({
@@ -437,24 +490,20 @@ export default function EditItemScreen() {
     router.back();
   }, [id, archiveItem, router]);
 
-  // Set header right icons: save, archive, delete
-  useLayoutEffect(() => {
-    navigation.setOptions({
-      headerRight: () => (
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 14, marginRight: 8 }}>
-          <Pressable onPress={() => setShowArchiveModal(true)} hitSlop={12}>
-            <Ionicons name="archive-outline" size={22} color={theme.colors.warning} />
-          </Pressable>
-          <Pressable onPress={handleDelete} hitSlop={12}>
-            <Ionicons name="trash-outline" size={22} color={theme.colors.error} />
-          </Pressable>
-          <Pressable onPress={handleSave} hitSlop={12}>
-            <Ionicons name="save-outline" size={24} color={theme.colors.primary} />
-          </Pressable>
-        </View>
-      ),
+  const markChanged = useCallback(() => setHasChanges(true), []);
+
+  // Intercept back navigation to prompt save
+  useEffect(() => {
+    const unsubscribe = navigation.addListener("beforeRemove", (e: any) => {
+      if (!hasChanges) return;
+      e.preventDefault();
+      Alert.alert("Unsaved Changes", "Do you want to save your changes?", [
+        { text: "Discard", style: "destructive", onPress: () => navigation.dispatch(e.data.action) },
+        { text: "Save", onPress: async () => { await handleSave(); } },
+      ]);
     });
-  }, [navigation, handleSave, handleDelete, theme]);
+    return unsubscribe;
+  }, [navigation, hasChanges, handleSave]);
 
   const subcats = SUBCATEGORIES[category];
 
@@ -630,14 +679,15 @@ export default function EditItemScreen() {
           <>
             <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Type</Text>
             <View style={styles.chipRow}>
-              {[...subcats].sort((a, b) => a.label.localeCompare(b.label)).map((sc) => (
+              {subcats.map((sc) => (
                 <Chip
                   key={sc.value}
                   label={sc.label}
                   selected={subCategory === sc.value}
-                  onPress={() =>
-                    setSubCategory(subCategory === sc.value ? undefined : sc.value)
-                  }
+                  onPress={() => {
+                    setSubCategory(subCategory === sc.value ? undefined : sc.value);
+                    markChanged();
+                  }}
                 />
               ))}
             </View>
@@ -710,16 +760,25 @@ export default function EditItemScreen() {
           </View>
         </View>
         <View style={styles.colorGrid}>
-          {PRESET_COLORS.map((c, i) => (
-            <Pressable key={c.hex + i} onPress={() => handleSelectPresetColor(i)} style={styles.colorBtn}>
-              <ColorDot color={c.hex} size={36} selected={colorIdx === i && !hslAdjust} />
+          {topColors.map((i) => (
+            <Pressable key={PRESET_COLORS[i].hex + i} onPress={() => { handleSelectPresetColor(i); markChanged(); }} style={styles.colorBtn}>
+              <ColorDot color={PRESET_COLORS[i].hex} size={36} selected={colorIdx === i && !hslAdjust} />
             </Pressable>
           ))}
+          {/* Dropper result colour circle (16th slot) */}
+          {dropperColor && (
+            <Pressable
+              onPress={() => { const hsl = hexToHSL(dropperColor); setHslAdjust({ h: hsl.h, s: hsl.s, l: hsl.l }); markChanged(); }}
+              style={styles.colorBtn}
+            >
+              <ColorDot color={dropperColor} size={36} selected={hslAdjust !== null && hslToHex(hslAdjust.h, hslAdjust.s, hslAdjust.l) === dropperColor} />
+            </Pressable>
+          )}
         </View>
 
         {/* Revert to original colour */}
         {originalAutoColor && (
-          <Pressable style={styles.revertBtn} onPress={handleRevertToOriginalColor}>
+          <Pressable style={styles.revertBtn} onPress={() => { handleRevertToOriginalColor(); markChanged(); }}>
             <Ionicons name="refresh-outline" size={16} color={theme.colors.primary} />
             <Text style={[styles.revertBtnText, { color: theme.colors.primary }]}>Revert to original colour</Text>
           </Pressable>
@@ -730,7 +789,7 @@ export default function EditItemScreen() {
           style={styles.secondaryToggle}
           onPress={() => {
             setShowSecondaryColor(!showSecondaryColor);
-            if (showSecondaryColor) setSecondaryColorIdx(null);
+            if (showSecondaryColor) { setSecondaryColorIdx(null); setSecondaryHsl(null); }
           }}
         >
           <Ionicons
@@ -747,7 +806,7 @@ export default function EditItemScreen() {
           <>
             <View style={styles.colorHeader}>
               <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
-                Secondary Colour{secondaryColorIdx !== null ? ` — ${PRESET_COLORS[secondaryColorIdx].name}` : ""}
+                Secondary Colour{secondaryColor ? ` — ${secondaryColorName}` : ""}
               </Text>
               {imageUris.length > 0 && (
                 <Pressable
@@ -763,13 +822,13 @@ export default function EditItemScreen() {
               )}
             </View>
             <View style={styles.colorGrid}>
-              {PRESET_COLORS.map((c, i) => (
+              {topColors.map((i) => (
                 <Pressable
-                  key={`sec-${c.hex}-${i}`}
-                  onPress={() => setSecondaryColorIdx(secondaryColorIdx === i ? null : i)}
+                  key={`sec-${PRESET_COLORS[i].hex}-${i}`}
+                  onPress={() => { setSecondaryColorIdx(secondaryColorIdx === i ? null : i); setSecondaryHsl(null); markChanged(); }}
                   style={styles.colorBtn}
                 >
-                  <ColorDot color={c.hex} size={36} selected={secondaryColorIdx === i} />
+                  <ColorDot color={PRESET_COLORS[i].hex} size={36} selected={secondaryColorIdx === i && !secondaryHsl} />
                 </Pressable>
               ))}
             </View>
@@ -797,25 +856,105 @@ export default function EditItemScreen() {
               key={p}
               label={PATTERN_LABELS[p]}
               selected={pattern === p}
-              onPress={() => setPattern(p)}
+              onPress={() => { setPattern(p); markChanged(); }}
             />
           ))}
+          {customPatterns.map((cp) => (
+            <Chip
+              key={`custom-${cp}`}
+              label={cp}
+              selected={pattern === cp as any}
+              onPress={() => { setPattern(cp as any); markChanged(); }}
+            />
+          ))}
+          <Pressable
+            style={[styles.addPatternBtn, { backgroundColor: theme.colors.border }]}
+            onPress={() => setShowPatternAdd(true)}
+          >
+            <Ionicons name="add" size={16} color={theme.colors.text} />
+            <Text style={[styles.addPatternBtnText, { color: theme.colors.text }]}>Add</Text>
+          </Pressable>
         </View>
+        {showPatternAdd && (
+          <View style={[styles.tagInputRow, { marginTop: 8 }]}>
+            <TextInput
+              style={[styles.input, { flex: 1, backgroundColor: theme.colors.surface, color: theme.colors.text, borderColor: theme.colors.border }]}
+              placeholder="Enter custom pattern..."
+              placeholderTextColor={theme.colors.textLight}
+              value={patternInput}
+              onChangeText={setPatternInput}
+              onSubmitEditing={() => {
+                const trimmed = patternInput.trim();
+                if (trimmed && !customPatterns.includes(trimmed)) {
+                  setCustomPatterns((prev) => [...prev, trimmed]);
+                  setPattern(trimmed as any);
+                  markChanged();
+                }
+                setPatternInput("");
+                setShowPatternAdd(false);
+              }}
+              returnKeyType="done"
+              autoFocus
+            />
+          </View>
+        )}
 
         {/* Size (#65) */}
-        <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Size</Text>
-        <View style={styles.chipRow}>
-          {(category === "shoes" ? SHOE_SIZES : COMMON_SIZES).map((s) => (
-            <Chip key={s} label={s} selected={size === s} onPress={() => setSize(size === s ? "" : s)} />
-          ))}
-        </View>
-        <TextInput
-          style={[styles.input, { marginTop: 4 }]}
-          placeholder="Or enter custom size..."
-          placeholderTextColor={theme.colors.textLight}
-          value={size}
-          onChangeText={setSize}
-        />
+        {!NO_SIZE_CATEGORIES.includes(category) && (
+          <>
+            <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Size</Text>
+            {category === "shoes" ? (
+              <View style={styles.chipRow}>
+                {SHOE_SIZES.map((s) => (
+                  <Chip key={s} label={s} selected={size === s} onPress={() => { setSize(size === s ? "" : s); markChanged(); }} />
+                ))}
+              </View>
+            ) : (
+              <>
+                {/* Size system toggles */}
+                <View style={[styles.chipRow, { marginBottom: 8 }]}>
+                  {(Object.keys(SIZE_SYSTEM_LABELS) as SizeSystem[]).map((sys) => (
+                    <Chip
+                      key={sys}
+                      label={SIZE_SYSTEM_LABELS[sys]}
+                      selected={sizeSystem === sys}
+                      onPress={() => { setSizeSystem(sizeSystem === sys ? null : sys); setSize(""); markChanged(); }}
+                    />
+                  ))}
+                </View>
+                {/* Size options based on selected system */}
+                {sizeSystem === "letter" && (
+                  <View style={styles.chipRow}>
+                    {LETTER_SIZES.map((s) => (
+                      <Chip key={s} label={s} selected={size === s} onPress={() => { setSize(size === s ? "" : s); markChanged(); }} />
+                    ))}
+                  </View>
+                )}
+                {sizeSystem === "waist" && (
+                  <View style={styles.chipRow}>
+                    {WAIST_SIZES.map((s) => (
+                      <Chip key={s} label={s} selected={size === s} onPress={() => { setSize(size === s ? "" : s); markChanged(); }} />
+                    ))}
+                  </View>
+                )}
+                {sizeSystem === "us" && (
+                  <View style={styles.chipRow}>
+                    {US_SIZES.map((s) => (
+                      <Chip key={`us-${s}`} label={`US ${s}`} selected={size === `US ${s}`} onPress={() => { setSize(size === `US ${s}` ? "" : `US ${s}`); markChanged(); }} />
+                    ))}
+                  </View>
+                )}
+                {sizeSystem === "uk" && (
+                  <View style={styles.chipRow}>
+                    {UK_SIZES.map((s) => (
+                      <Chip key={`uk-${s}`} label={`UK ${s}`} selected={size === `UK ${s}`} onPress={() => { setSize(size === `UK ${s}` ? "" : `UK ${s}`); markChanged(); }} />
+                    ))}
+                  </View>
+                )}
+              </>
+            )}
+          </>
+        )}
 
         {/* Hardware Colour */}
         {(HARDWARE_CATEGORIES.includes(category) ||
@@ -843,31 +982,47 @@ export default function EditItemScreen() {
               key={ci}
               label={CARE_INSTRUCTION_LABELS[ci]}
               selected={careInstructions.includes(ci)}
-              onPress={() =>
+              onPress={() => {
                 setCareInstructions((prev) =>
                   prev.includes(ci) ? prev.filter((c) => c !== ci) : [...prev, ci]
-                )
-              }
+                );
+                markChanged();
+              }}
             />
           ))}
         </View>
 
-        {/* Item Flags */}
-        <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Flags</Text>
-        <View style={styles.chipRow}>
-          {(Object.keys(ITEM_FLAG_LABELS) as ItemFlag[]).map((flag) => (
-            <Chip
-              key={flag}
-              label={ITEM_FLAG_LABELS[flag]}
-              selected={itemFlags.includes(flag)}
-              onPress={() =>
-                setItemFlags((prev) =>
-                  prev.includes(flag) ? prev.filter((f) => f !== flag) : [...prev, flag]
-                )
-              }
-            />
-          ))}
-        </View>
+        {/* Item Flags - collapsed by default */}
+        <Pressable
+          style={styles.secondaryToggle}
+          onPress={() => setShowFlags(!showFlags)}
+        >
+          <Ionicons
+            name={showFlags ? "chevron-up" : "chevron-down"}
+            size={16}
+            color={theme.colors.primary}
+          />
+          <Text style={[styles.secondaryToggleText, { color: theme.colors.primary }]}>
+            Flags{itemFlags.length > 0 ? ` (${itemFlags.length})` : ""}
+          </Text>
+        </Pressable>
+        {showFlags && (
+          <View style={styles.chipRow}>
+            {(Object.keys(ITEM_FLAG_LABELS) as ItemFlag[]).map((flag) => (
+              <Chip
+                key={flag}
+                label={ITEM_FLAG_LABELS[flag]}
+                selected={itemFlags.includes(flag)}
+                onPress={() => {
+                  setItemFlags((prev) =>
+                    prev.includes(flag) ? prev.filter((f) => f !== flag) : [...prev, flag]
+                  );
+                  markChanged();
+                }}
+              />
+            ))}
+          </View>
+        )}
 
         {/* Sustainable Toggle */}
         <View style={styles.sustainableRow}>
@@ -1060,6 +1215,33 @@ export default function EditItemScreen() {
           maxLength={500}
         />
         <Text style={{ textAlign: "right", fontSize: 11, color: theme.colors.textLight, marginTop: 2 }}>{notes.length}/500</Text>
+
+        {/* Save / Archive / Delete buttons - large, spread out, always visible */}
+        <Pressable
+          style={[styles.saveBtn, { backgroundColor: theme.colors.primary }]}
+          onPress={handleSave}
+        >
+          <Ionicons name="save-outline" size={20} color="#FFFFFF" />
+          <Text style={styles.saveBtnText}>Save Changes</Text>
+        </Pressable>
+
+        <View style={styles.dangerRow}>
+          <Pressable
+            style={[styles.archiveBtn, { borderColor: theme.colors.warning }]}
+            onPress={() => setShowArchiveModal(true)}
+          >
+            <Ionicons name="archive-outline" size={18} color={theme.colors.warning} />
+            <Text style={[styles.archiveBtnText, { color: theme.colors.warning }]}>Archive</Text>
+          </Pressable>
+
+          <Pressable
+            style={[styles.deleteBtn, { borderColor: theme.colors.error }]}
+            onPress={handleDelete}
+          >
+            <Ionicons name="trash-outline" size={18} color={theme.colors.error} />
+            <Text style={[styles.deleteBtnText, { color: theme.colors.error }]}>Delete</Text>
+          </Pressable>
+        </View>
 
       </ScrollView>
 
@@ -1542,37 +1724,64 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   saveBtn: {
-    height: 52,
+    height: 56,
     borderRadius: 12,
     justifyContent: "center",
     alignItems: "center",
     marginTop: 32,
+    flexDirection: "row",
+    gap: 8,
   },
   saveBtnText: { color: "#FFFFFF", fontSize: 18, fontWeight: "700" },
+  dangerRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 16,
+    marginTop: 16,
+    marginBottom: 24,
+  },
   archiveBtn: {
+    flex: 1,
     flexDirection: "row",
     justifyContent: "center",
     alignItems: "center",
     gap: 6,
-    marginTop: 16,
-    padding: 16,
+    paddingVertical: 16,
     borderWidth: 1,
     borderRadius: 12,
+    minHeight: 52,
   },
   archiveBtnText: {
     fontSize: 15,
     fontWeight: "600",
   },
   deleteBtn: {
+    flex: 1,
     flexDirection: "row",
     justifyContent: "center",
     alignItems: "center",
     gap: 6,
-    marginTop: 8,
-    padding: 16,
+    paddingVertical: 16,
+    borderWidth: 1,
+    borderRadius: 12,
+    minHeight: 52,
   },
   deleteBtnText: {
     fontSize: 15,
+    fontWeight: "600",
+  },
+  addPatternBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 9999,
+    marginRight: 6,
+    marginBottom: 6,
+  },
+  addPatternBtnText: {
+    fontSize: 13,
     fontWeight: "600",
   },
   // Modal styles

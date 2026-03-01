@@ -267,47 +267,125 @@ export const NAMED_COLORS: NamedColor[] = [
 ];
 
 /**
- * Return the closest fashion-relevant color name for an arbitrary hex value.
+ * Return a simple, overall tone name for display (e.g. "Black", "White",
+ * "Cream", "Grey", "Blue", "Green", "Red", "Pink", "Purple", "Orange",
+ * "Yellow", "Brown", "Navy", "Beige", "Teal").
  *
- * Uses a weighted HSL distance metric:
- *   • For very low-saturation colours (grays / whites / blacks) lightness is
- *     heavily prioritised so "Charcoal" won't be confused with "Silver".
- *   • For chromatic colours, hue carries extra weight so neighbouring shades
- *     map to the most intuitive name.
+ * The actual hex is always saved for colour-wheel matching; this function
+ * is purely for the user-facing label.
  */
 export function getColorName(hex: string): string {
+  const { h, s, l } = hexToHSL(hex);
+
+  // ── Achromatic / very low saturation ──────────────────────────────
+  if (s < 8) {
+    if (l <= 10) return "Black";
+    if (l <= 35) return "Grey";
+    if (l <= 65) return "Grey";
+    if (l <= 88) return "Grey";
+    return "White";
+  }
+
+  // ── Low saturation – neutral / muted tones ────────────────────────
+  if (s < 20) {
+    if (l <= 15) return "Black";
+    if (l <= 40) return "Grey";
+    if (l <= 70) return "Grey";
+    if (l <= 90) return "Cream";
+    return "White";
+  }
+
+  // ── Chromatic colours: classify by hue ────────────────────────────
+  // Very light = pastel-ish, very dark = deep
+  if (l <= 12) return "Black";
+  if (l >= 92) return "White";
+
+  // Cream / beige zone (warm, light, low-mid saturation)
+  if (s < 50 && l > 75 && h >= 20 && h <= 65) return "Cream";
+  if (s < 40 && l > 55 && l <= 75 && h >= 20 && h <= 50) return "Beige";
+
+  // Brown zone
+  if (h >= 10 && h <= 45 && l < 45 && s >= 20) return "Brown";
+
+  // By hue ranges
+  if (h <= 10 || h > 345) {
+    // Red family
+    if (l > 70) return "Pink";
+    if (l < 30) return "Burgundy";
+    return "Red";
+  }
+  if (h > 10 && h <= 25) {
+    if (l > 70) return "Peach";
+    if (l < 35) return "Brown";
+    return "Orange";
+  }
+  if (h > 25 && h <= 45) {
+    if (l > 70) return "Cream";
+    if (l < 35) return "Brown";
+    return "Orange";
+  }
+  if (h > 45 && h <= 65) {
+    if (l > 80) return "Cream";
+    return "Yellow";
+  }
+  if (h > 65 && h <= 160) {
+    if (s < 30 && l > 50) return "Sage";
+    if (h >= 80 && h <= 100 && s >= 30 && l < 35) return "Olive";
+    return "Green";
+  }
+  if (h > 160 && h <= 195) {
+    return "Teal";
+  }
+  if (h > 195 && h <= 250) {
+    if (l < 30) return "Navy";
+    return "Blue";
+  }
+  if (h > 250 && h <= 290) {
+    if (l > 75) return "Lavender";
+    return "Purple";
+  }
+  if (h > 290 && h <= 330) {
+    if (l > 70) return "Pink";
+    return "Pink";
+  }
+  if (h > 330 && h <= 345) {
+    if (l > 70) return "Pink";
+    if (l < 30) return "Burgundy";
+    return "Red";
+  }
+
+  return "Grey";
+}
+
+/**
+ * Return the closest detailed fashion color name for an arbitrary hex value.
+ * Used internally for colour matching engine — not for display labels.
+ */
+export function getDetailedColorName(hex: string): string {
   const { h, s, l } = hexToHSL(hex);
 
   let bestName = NAMED_COLORS[0].name;
   let bestDist = Infinity;
 
   for (const nc of NAMED_COLORS) {
-    // Hue is circular – compute the shortest angular distance
     const hueDiff = Math.min(Math.abs(h - nc.h), 360 - Math.abs(h - nc.h));
     const satDiff = Math.abs(s - nc.s);
     const lightDiff = Math.abs(l - nc.l);
 
-    // Determine whether the *input* colour is essentially achromatic.
-    // When saturation is very low, hue is meaningless – weight lightness
-    // much more heavily so blacks, grays, whites, and off-whites separate
-    // cleanly.
     let dist: number;
     if (s < 10) {
-      // Near-gray: lightness dominates, hue almost irrelevant
       dist = Math.sqrt(
         0.1 * hueDiff * hueDiff +
         1.0 * satDiff * satDiff +
         6.0 * lightDiff * lightDiff
       );
     } else if (s < 25) {
-      // Low-saturation / muted tones (taupe, mushroom, stone, etc.)
       dist = Math.sqrt(
         0.6 * hueDiff * hueDiff +
         1.2 * satDiff * satDiff +
         4.0 * lightDiff * lightDiff
       );
     } else {
-      // Chromatic colours – hue matters most
       dist = Math.sqrt(
         4.0 * hueDiff * hueDiff +
         1.5 * satDiff * satDiff +

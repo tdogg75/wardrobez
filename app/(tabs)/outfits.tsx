@@ -226,6 +226,22 @@ export default function OutfitsScreen() {
     await deletePlannedOutfit(isoDate);
   }, [weekPlan, now]);
 
+  const clearAllDays = useCallback(async () => {
+    const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+    const emptyPlan: Record<string, string | null> = {};
+    for (const day of DAYS) emptyPlan[day] = null;
+    setWeekPlan(emptyPlan);
+    // Delete all planned outfits for this week
+    for (let i = 0; i < DAYS.length; i++) {
+      const currentDayIndex = (now.getDay() + 6) % 7;
+      const diff = i - currentDayIndex;
+      const targetDate = new Date(now);
+      targetDate.setDate(now.getDate() + diff);
+      const isoDate = targetDate.toISOString().split("T")[0];
+      await deletePlannedOutfit(isoDate);
+    }
+  }, [now]);
+
   const pickerOutfits = useMemo(() => {
     return outfits.filter((outfit) => {
       if (pickerSeasonFilter && !(outfit.seasons ?? []).includes(pickerSeasonFilter)) return false;
@@ -252,9 +268,22 @@ export default function OutfitsScreen() {
             <Text style={[styles.plannerTitle, { color: theme.colors.text }]}>
               Weekly Planner
             </Text>
-            <Pressable onPress={() => { setPlannerVisible(false); setPickerDay(null); }} hitSlop={12}>
-              <Ionicons name="close" size={24} color={theme.colors.text} />
-            </Pressable>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 16 }}>
+              <Pressable
+                onPress={() => {
+                  Alert.alert("Reset Week", "Remove all outfits from this week's plan?", [
+                    { text: "Cancel", style: "cancel" },
+                    { text: "Reset All", style: "destructive", onPress: clearAllDays },
+                  ]);
+                }}
+                hitSlop={12}
+              >
+                <Ionicons name="refresh-outline" size={22} color={theme.colors.error} />
+              </Pressable>
+              <Pressable onPress={() => { setPlannerVisible(false); setPickerDay(null); }} hitSlop={12}>
+                <Ionicons name="close" size={24} color={theme.colors.text} />
+              </Pressable>
+            </View>
           </View>
 
           {pickerDay ? (

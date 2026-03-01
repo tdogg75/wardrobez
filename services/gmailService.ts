@@ -168,16 +168,28 @@ async function gmailFetch<T>(
   endpoint: string,
   token: string
 ): Promise<T | null> {
-  try {
-    const res = await fetch(
-      `https://gmail.googleapis.com/gmail/v1/users/me/${endpoint}`,
-      { headers: { Authorization: `Bearer ${token}` } }
-    );
-    if (!res.ok) return null;
-    return (await res.json()) as T;
-  } catch {
-    return null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const res = await fetch(
+        `https://gmail.googleapis.com/gmail/v1/users/me/${endpoint}`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      if (res.status === 429) {
+        // Rate limited — back off and retry
+        await new Promise((r) => setTimeout(r, (attempt + 1) * 2000));
+        continue;
+      }
+      if (!res.ok) return null;
+      return (await res.json()) as T;
+    } catch {
+      if (attempt < 2) {
+        await new Promise((r) => setTimeout(r, (attempt + 1) * 1000));
+        continue;
+      }
+      return null;
+    }
   }
+  return null;
 }
 
 function decodeBase64Url(data: string): string {
@@ -522,6 +534,10 @@ function isClothingPurchase(subject: string, body: string, from: string): boolea
 
   // If it only has household keywords and no clothing keywords at all, exclude it
   if (hasHouseholdKeyword) return false;
+
+  // If we have an order confirmation signal but no specific clothing/household match,
+  // still let it through — the user can review and discard
+  if (hasOrderConfirmation) return true;
 
   return false;
 }
@@ -876,9 +892,9 @@ export async function scanGmailForPurchases(
   twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 2);
   const afterDate = twoYearsAgo.toISOString().split("T")[0].replace(/-/g, "/");
 
-  // Use Gmail search operators to narrow down — expanded keywords for better coverage
+  // Use Gmail search operators — broader query with fashion vendor names to catch more purchase emails
   const query = encodeURIComponent(
-    `after:${afterDate} (order OR receipt OR confirmation OR shipped OR invoice OR purchased OR "thanks for your order" OR "order placed") (clothing OR shirt OR pants OR shoes OR dress OR jacket OR jewelry OR accessories OR fashion OR sneakers OR boots OR sweater OR hoodie OR jeans OR skirt OR shorts OR blazer OR coat OR purse OR handbag OR sandals OR heels OR bikini OR swimsuit)`
+    `after:${afterDate} (order OR receipt OR confirmation OR shipped OR invoice OR purchased OR "thanks for your order" OR "order placed" OR "your order" OR "order summary") (clothing OR shirt OR pants OR shoes OR dress OR jacket OR jewelry OR accessories OR fashion OR sneakers OR boots OR sweater OR hoodie OR jeans OR skirt OR shorts OR blazer OR coat OR purse OR handbag OR sandals OR heels OR bikini OR swimsuit OR zara OR "h&m" OR hm.com OR asos OR nordstrom OR nike OR adidas OR gap OR uniqlo OR shein OR mango OR topshop OR revolve OR reformation OR lululemon OR anthropologie OR urban OR aritzia OR everlane OR prada OR gucci OR net-a-porter OR ssense OR farfetch OR shopbop)`
   );
 
   // Paginated fetch — fetch up to 500 messages across multiple pages
@@ -926,8 +942,13 @@ export async function scanGmailForPurchases(
   }
 
   // Fetch each message detail — user can abort by setting abortSignal.aborted
-  for (const msg of messageIds) {
+  // Small delay between requests to avoid Gmail API rate limits
+  for (let mi = 0; mi < messageIds.length; mi++) {
+    const msg = messageIds[mi];
     if (abortSignal?.aborted) break;
+
+    // Stagger requests to avoid rate limiting (100ms delay between each)
+    if (mi > 0) await new Promise((r) => setTimeout(r, 100));
 
     const detail = await gmailFetch<GmailMessageDetail>(
       `messages/${msg.id}?format=full`,

@@ -53,9 +53,15 @@ import {
   CARE_INSTRUCTION_LABELS,
   PATTERN_LABELS,
   OCCASION_LABELS,
-  COMMON_SIZES,
+  LETTER_SIZES,
+  WAIST_SIZES,
+  US_SIZES,
+  UK_SIZES,
   SHOE_SIZES,
+  NO_SIZE_CATEGORIES,
+  SIZE_SYSTEM_LABELS,
 } from "@/models/types";
+import type { SizeSystem } from "@/models/types";
 
 function generateId(): string {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 9);
@@ -148,13 +154,26 @@ export default function AddItemScreen() {
   const [hslAdjust, setHslAdjust] = useState<{ h: number; s: number; l: number } | null>(null);
   const [showColorPicker, setShowColorPicker] = useState(false);
 
-  // Secondary color
+  // Secondary color - store actual hex + HSL
   const [secondaryColorIdx, setSecondaryColorIdx] = useState<number | null>(null);
+  const [secondaryHsl, setSecondaryHsl] = useState<{ h: number; s: number; l: number } | null>(null);
   const [showSecondaryColor, setShowSecondaryColor] = useState(false);
 
   // Color dropper
   const [showDropper, setShowDropper] = useState(false);
   const [dropperTarget, setDropperTarget] = useState<"primary" | "secondary">("primary");
+  const [dropperColor, setDropperColor] = useState<string | null>(null);
+
+  // Flags collapsed
+  const [showFlags, setShowFlags] = useState(false);
+
+  // Custom patterns
+  const [customPatterns, setCustomPatterns] = useState<string[]>([]);
+  const [showPatternAdd, setShowPatternAdd] = useState(false);
+  const [patternInput, setPatternInput] = useState("");
+
+  // Size system toggle
+  const [sizeSystem, setSizeSystem] = useState<SizeSystem | null>(null);
 
   // Image viewer
   const [viewingImageIdx, setViewingImageIdx] = useState<number | null>(null);
@@ -172,8 +191,36 @@ export default function AddItemScreen() {
     return PRESET_COLORS[colorIdx].name;
   }, [finalColor, hslAdjust, colorIdx]);
 
-  const secondaryColor = secondaryColorIdx !== null ? PRESET_COLORS[secondaryColorIdx].hex : undefined;
-  const secondaryColorName = secondaryColorIdx !== null ? PRESET_COLORS[secondaryColorIdx].name : undefined;
+  const secondaryColor = useMemo(() => {
+    if (secondaryHsl) return hslToHex(secondaryHsl.h, secondaryHsl.s, secondaryHsl.l);
+    if (secondaryColorIdx !== null) return PRESET_COLORS[secondaryColorIdx].hex;
+    return undefined;
+  }, [secondaryHsl, secondaryColorIdx]);
+  const secondaryColorName = useMemo(() => {
+    if (secondaryColor) return getColorName(secondaryColor);
+    return undefined;
+  }, [secondaryColor]);
+
+  // Compute the 15 most-used colours in the wardrobe + dropper slot
+  const topColors = useMemo(() => {
+    const freq = new Map<number, number>();
+    for (const item of items) {
+      const idx = findClosestPresetIndex(item.color);
+      freq.set(idx, (freq.get(idx) ?? 0) + 1);
+    }
+    const sorted = [...freq.entries()].sort((a, b) => b[1] - a[1]);
+    const top15 = sorted.slice(0, 15).map(([idx]) => idx);
+    // Ensure current selections are included
+    if (!top15.includes(colorIdx)) top15.push(colorIdx);
+    if (secondaryColorIdx !== null && !top15.includes(secondaryColorIdx)) top15.push(secondaryColorIdx);
+    // If fewer than 15 items in wardrobe, pad with default presets
+    if (top15.length < 15) {
+      for (let i = 0; i < PRESET_COLORS.length && top15.length < 15; i++) {
+        if (!top15.includes(i)) top15.push(i);
+      }
+    }
+    return top15;
+  }, [items, colorIdx, secondaryColorIdx]);
 
   const similarItems = useMemo(() => {
     const finalHSL = hexToHSL(finalColor);
@@ -299,9 +346,11 @@ export default function AddItemScreen() {
       const idx = findClosestPresetIndex(hex);
       setColorIdx(idx);
       setHslAdjust({ h: hsl.h, s: hsl.s, l: hsl.l });
+      setDropperColor(hex);
     } else {
       const idx = findClosestPresetIndex(hex);
       setSecondaryColorIdx(idx);
+      setSecondaryHsl({ h: hsl.h, s: hsl.s, l: hsl.l });
       setShowSecondaryColor(true);
     }
   };
@@ -528,7 +577,7 @@ export default function AddItemScreen() {
           <>
             <Text style={[styles.sectionTitle, { fontSize: theme.fontSize.md, color: theme.colors.text, marginBottom: theme.spacing.sm, marginTop: theme.spacing.md }]}>Type</Text>
             <View style={styles.chipRow}>
-              {[...subcats].sort((a, b) => a.label.localeCompare(b.label)).map((sc) => (
+              {subcats.map((sc) => (
                 <Chip
                   key={sc.value}
                   label={sc.label}
@@ -601,11 +650,20 @@ export default function AddItemScreen() {
           </View>
         </View>
         <View style={styles.colorGrid}>
-          {PRESET_COLORS.map((c, i) => (
-            <Pressable key={c.hex + i} onPress={() => handleSelectPresetColor(i)} style={styles.colorBtn}>
-              <ColorDot color={c.hex} size={36} selected={colorIdx === i && !hslAdjust} />
+          {topColors.map((i) => (
+            <Pressable key={PRESET_COLORS[i].hex + i} onPress={() => handleSelectPresetColor(i)} style={styles.colorBtn}>
+              <ColorDot color={PRESET_COLORS[i].hex} size={36} selected={colorIdx === i && !hslAdjust} />
             </Pressable>
           ))}
+          {/* Dropper result colour circle (16th slot) */}
+          {dropperColor && (
+            <Pressable
+              onPress={() => { const hsl = hexToHSL(dropperColor); setHslAdjust({ h: hsl.h, s: hsl.s, l: hsl.l }); }}
+              style={styles.colorBtn}
+            >
+              <ColorDot color={dropperColor} size={36} selected={hslAdjust !== null && hslToHex(hslAdjust.h, hslAdjust.s, hslAdjust.l) === dropperColor} />
+            </Pressable>
+          )}
         </View>
 
         {/* Similar Item Warning */}
@@ -630,7 +688,7 @@ export default function AddItemScreen() {
           style={[styles.secondaryToggle, { marginTop: theme.spacing.md }]}
           onPress={() => {
             setShowSecondaryColor(!showSecondaryColor);
-            if (showSecondaryColor) setSecondaryColorIdx(null);
+            if (showSecondaryColor) { setSecondaryColorIdx(null); setSecondaryHsl(null); }
           }}
         >
           <Ionicons
@@ -647,7 +705,7 @@ export default function AddItemScreen() {
           <>
             <View style={[styles.colorHeader, { marginTop: theme.spacing.md, marginBottom: theme.spacing.sm }]}>
               <Text style={[styles.sectionTitle, { fontSize: theme.fontSize.md, color: theme.colors.text, marginBottom: 0, marginTop: 0 }]}>
-                Secondary Colour{secondaryColorIdx !== null ? ` — ${PRESET_COLORS[secondaryColorIdx].name}` : ""}
+                Secondary Colour{secondaryColor ? ` — ${secondaryColorName}` : ""}
               </Text>
               {imageUris.length > 0 && (
                 <Pressable
@@ -663,13 +721,13 @@ export default function AddItemScreen() {
               )}
             </View>
             <View style={styles.colorGrid}>
-              {PRESET_COLORS.map((c, i) => (
+              {topColors.map((i) => (
                 <Pressable
-                  key={`sec-${c.hex}-${i}`}
-                  onPress={() => setSecondaryColorIdx(secondaryColorIdx === i ? null : i)}
+                  key={`sec-${PRESET_COLORS[i].hex}-${i}`}
+                  onPress={() => { setSecondaryColorIdx(secondaryColorIdx === i ? null : i); setSecondaryHsl(null); }}
                   style={styles.colorBtn}
                 >
-                  <ColorDot color={c.hex} size={36} selected={secondaryColorIdx === i} />
+                  <ColorDot color={PRESET_COLORS[i].hex} size={36} selected={secondaryColorIdx === i && !secondaryHsl} />
                 </Pressable>
               ))}
             </View>
@@ -701,22 +759,100 @@ export default function AddItemScreen() {
               onPress={() => setPattern(p)}
             />
           ))}
+          {customPatterns.map((cp) => (
+            <Chip
+              key={`custom-${cp}`}
+              label={cp}
+              selected={pattern === cp as any}
+              onPress={() => setPattern(cp as any)}
+            />
+          ))}
+          <Pressable
+            style={[styles.addPatternBtn, { backgroundColor: theme.colors.border }]}
+            onPress={() => setShowPatternAdd(true)}
+          >
+            <Ionicons name="add" size={16} color={theme.colors.text} />
+            <Text style={[styles.addPatternBtnText, { color: theme.colors.text }]}>Add</Text>
+          </Pressable>
         </View>}
+        {!quickMode && showPatternAdd && (
+          <View style={[styles.tagInputRow, { marginTop: 8 }]}>
+            <TextInput
+              style={[styles.input, { flex: 1, backgroundColor: theme.colors.surface, borderRadius: theme.borderRadius.sm, paddingHorizontal: theme.spacing.md, fontSize: theme.fontSize.md, color: theme.colors.text, borderColor: theme.colors.border }]}
+              placeholder="Enter custom pattern..."
+              placeholderTextColor={theme.colors.textLight}
+              value={patternInput}
+              onChangeText={setPatternInput}
+              onSubmitEditing={() => {
+                const trimmed = patternInput.trim();
+                if (trimmed && !customPatterns.includes(trimmed)) {
+                  setCustomPatterns((prev) => [...prev, trimmed]);
+                  setPattern(trimmed as any);
+                }
+                setPatternInput("");
+                setShowPatternAdd(false);
+              }}
+              returnKeyType="done"
+              autoFocus
+            />
+          </View>
+        )}
 
         {/* Size (#65) */}
-        <Text style={[styles.sectionTitle, { fontSize: theme.fontSize.md, color: theme.colors.text, marginBottom: theme.spacing.sm, marginTop: theme.spacing.md }]}>Size (optional)</Text>
-        <View style={styles.chipRow}>
-          {(category === "shoes" ? SHOE_SIZES : COMMON_SIZES).map((s) => (
-            <Chip key={s} label={s} selected={size === s} onPress={() => setSize(size === s ? "" : s)} />
-          ))}
-        </View>
-        <TextInput
-          style={[styles.input, { backgroundColor: theme.colors.surface, borderRadius: theme.borderRadius.sm, paddingHorizontal: theme.spacing.md, fontSize: theme.fontSize.md, color: theme.colors.text, borderColor: theme.colors.border, marginTop: 4 }]}
-          placeholder="Or enter custom size..."
-          placeholderTextColor={theme.colors.textLight}
-          value={size}
-          onChangeText={setSize}
-        />
+        {!NO_SIZE_CATEGORIES.includes(category) && (
+          <>
+            <Text style={[styles.sectionTitle, { fontSize: theme.fontSize.md, color: theme.colors.text, marginBottom: theme.spacing.sm, marginTop: theme.spacing.md }]}>Size (optional)</Text>
+            {category === "shoes" ? (
+              <View style={styles.chipRow}>
+                {SHOE_SIZES.map((s) => (
+                  <Chip key={s} label={s} selected={size === s} onPress={() => setSize(size === s ? "" : s)} />
+                ))}
+              </View>
+            ) : (
+              <>
+                {/* Size system toggles */}
+                <View style={[styles.chipRow, { marginBottom: 8 }]}>
+                  {(Object.keys(SIZE_SYSTEM_LABELS) as SizeSystem[]).map((sys) => (
+                    <Chip
+                      key={sys}
+                      label={SIZE_SYSTEM_LABELS[sys]}
+                      selected={sizeSystem === sys}
+                      onPress={() => { setSizeSystem(sizeSystem === sys ? null : sys); setSize(""); }}
+                    />
+                  ))}
+                </View>
+                {sizeSystem === "letter" && (
+                  <View style={styles.chipRow}>
+                    {LETTER_SIZES.map((s) => (
+                      <Chip key={s} label={s} selected={size === s} onPress={() => setSize(size === s ? "" : s)} />
+                    ))}
+                  </View>
+                )}
+                {sizeSystem === "waist" && (
+                  <View style={styles.chipRow}>
+                    {WAIST_SIZES.map((s) => (
+                      <Chip key={s} label={s} selected={size === s} onPress={() => setSize(size === s ? "" : s)} />
+                    ))}
+                  </View>
+                )}
+                {sizeSystem === "us" && (
+                  <View style={styles.chipRow}>
+                    {US_SIZES.map((s) => (
+                      <Chip key={`us-${s}`} label={`US ${s}`} selected={size === `US ${s}`} onPress={() => setSize(size === `US ${s}` ? "" : `US ${s}`)} />
+                    ))}
+                  </View>
+                )}
+                {sizeSystem === "uk" && (
+                  <View style={styles.chipRow}>
+                    {UK_SIZES.map((s) => (
+                      <Chip key={`uk-${s}`} label={`UK ${s}`} selected={size === `UK ${s}`} onPress={() => setSize(size === `UK ${s}` ? "" : `UK ${s}`)} />
+                    ))}
+                  </View>
+                )}
+              </>
+            )}
+          </>
+        )}
 
         {/* Occasions (#76) — always visible, even in quick mode */}
         <Text style={[styles.sectionTitle, { fontSize: theme.fontSize.md, color: theme.colors.text, marginBottom: theme.spacing.sm, marginTop: theme.spacing.md }]}>Occasions</Text>
@@ -776,24 +912,38 @@ export default function AddItemScreen() {
           ))}
         </View>
 
-        {/* Item Flags */}
-        <Text style={[styles.sectionTitle, { fontSize: theme.fontSize.md, color: theme.colors.text, marginBottom: theme.spacing.sm, marginTop: theme.spacing.md }]}>Flags — Watch Out For</Text>
-        <View style={styles.chipRow}>
-          {(Object.keys(ITEM_FLAG_LABELS) as ItemFlag[]).map((flag) => (
-            <Chip
-              key={flag}
-              label={ITEM_FLAG_LABELS[flag]}
-              selected={itemFlags.includes(flag)}
-              onPress={() => {
-                setItemFlags((prev) =>
-                  prev.includes(flag)
-                    ? prev.filter((f) => f !== flag)
-                    : [...prev, flag]
-                );
-              }}
-            />
-          ))}
-        </View>
+        {/* Item Flags - collapsed by default */}
+        <Pressable
+          style={[styles.secondaryToggle, { marginTop: theme.spacing.md }]}
+          onPress={() => setShowFlags(!showFlags)}
+        >
+          <Ionicons
+            name={showFlags ? "chevron-up" : "chevron-down"}
+            size={16}
+            color={theme.colors.primary}
+          />
+          <Text style={[styles.secondaryToggleText, { fontSize: theme.fontSize.sm, color: theme.colors.primary }]}>
+            Flags{itemFlags.length > 0 ? ` (${itemFlags.length})` : ""}
+          </Text>
+        </Pressable>
+        {showFlags && (
+          <View style={styles.chipRow}>
+            {(Object.keys(ITEM_FLAG_LABELS) as ItemFlag[]).map((flag) => (
+              <Chip
+                key={flag}
+                label={ITEM_FLAG_LABELS[flag]}
+                selected={itemFlags.includes(flag)}
+                onPress={() => {
+                  setItemFlags((prev) =>
+                    prev.includes(flag)
+                      ? prev.filter((f) => f !== flag)
+                      : [...prev, flag]
+                  );
+                }}
+              />
+            ))}
+          </View>
+        )}
 
         {/* Sustainable */}
         <Text style={[styles.sectionTitle, { fontSize: theme.fontSize.md, color: theme.colors.text, marginBottom: theme.spacing.sm, marginTop: theme.spacing.md }]}>Sustainability</Text>
@@ -1274,6 +1424,21 @@ const styles = StyleSheet.create({
   },
   tagChipText: {
     fontWeight: "500",
+  },
+  // Pattern add button
+  addPatternBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 9999,
+    marginRight: 6,
+    marginBottom: 6,
+  },
+  addPatternBtnText: {
+    fontSize: 13,
+    fontWeight: "600",
   },
   // Notes
   notesInput: {

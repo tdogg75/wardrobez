@@ -435,11 +435,11 @@ const LOOSE_SUBS = ["hoodie", "sweatshirt", "oversized", "wide_leg"];
 // --- Pattern / Print Compatibility ---
 
 // Bold patterns that demand attention
-const BOLD_PATTERNS: string[] = ["floral", "plaid", "animal_print", "camo", "paisley", "houndstooth", "tie_dye"];
+const BOLD_PATTERNS: string[] = ["floral", "plaid", "animal_print", "paisley", "houndstooth"];
 // Subtle/regular patterns that can mix with one bold
 const SUBTLE_PATTERNS: string[] = ["striped", "polka_dot", "checkered", "color_block"];
 // Graphic is a wildcard — usually only one per outfit
-const GRAPHIC_PATTERNS: string[] = ["graphic", "abstract"];
+const GRAPHIC_PATTERNS: string[] = ["graphic"];
 
 /**
  * Evaluate how well the patterns in an outfit work together.
