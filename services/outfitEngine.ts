@@ -4,6 +4,7 @@ import type {
   Season,
   FabricType,
   Occasion,
+  Pattern,
 } from "@/models/types";
 import { hexToHSL } from "@/constants/colors";
 import { getOutfitFlags, saveOutfitFlag } from "@/services/storage";
@@ -405,6 +406,98 @@ const LOOSE_SUBS = ["hoodie", "sweatshirt", "oversized", "wide_leg"];
  * Check if an outfit violates style pairing rules.
  * Returns negative penalty for clashes, or positive bonus for great pairings.
  */
+// --- Pattern / Print Compatibility ---
+
+// Bold patterns that demand attention
+const BOLD_PATTERNS: string[] = ["floral", "plaid", "animal_print", "camo", "paisley", "houndstooth", "tie_dye"];
+// Subtle/regular patterns that can mix with one bold
+const SUBTLE_PATTERNS: string[] = ["striped", "polka_dot", "checkered", "color_block"];
+// Graphic is a wildcard — usually only one per outfit
+const GRAPHIC_PATTERNS: string[] = ["graphic", "abstract"];
+
+/**
+ * Evaluate how well the patterns in an outfit work together.
+ * Returns a score from 0 to 1 (1 = perfect pattern pairing).
+ *
+ * Rules (real styling best-practices):
+ *  1. All solids = safe, always works (1.0)
+ *  2. One patterned piece + rest solid = great (0.95)
+ *  3. One bold + one subtle (different scales) + solids = intentional mix (0.80)
+ *  4. Two bold patterns = clash unless they share the same pattern type (0.40-0.55)
+ *  5. 3+ patterned items = risky (0.30-0.50)
+ *  6. Matching pattern types (e.g., two stripes) get a small penalty for being matchy-matchy (0.65)
+ *  7. Graphic tees: max 1 per outfit
+ */
+export function patternCompatibility(items: ClothingItem[]): { score: number; note: string } {
+  const patterns = items.map((i) => i.pattern ?? "solid");
+  const nonSolid = patterns.filter((p) => p !== "solid");
+  const solidCount = patterns.length - nonSolid.length;
+
+  // All solid — always works
+  if (nonSolid.length === 0) {
+    return { score: 1.0, note: "Clean solid palette" };
+  }
+
+  // One pattern + rest solid — classic approach
+  if (nonSolid.length === 1) {
+    const thePattern = nonSolid[0];
+    if (GRAPHIC_PATTERNS.includes(thePattern)) {
+      return { score: 0.92, note: `${thePattern} as statement piece` };
+    }
+    return { score: 0.95, note: "Single pattern anchored by solids" };
+  }
+
+  // Two patterned items
+  if (nonSolid.length === 2) {
+    const [a, b] = nonSolid;
+    const aBold = BOLD_PATTERNS.includes(a);
+    const bBold = BOLD_PATTERNS.includes(b);
+    const aGraphic = GRAPHIC_PATTERNS.includes(a);
+    const bGraphic = GRAPHIC_PATTERNS.includes(b);
+
+    // Two graphics = too busy
+    if (aGraphic && bGraphic) {
+      return { score: 0.30, note: "Two graphic pieces compete for attention" };
+    }
+    // Same pattern type = matchy-matchy (not terrible, but not ideal)
+    if (a === b) {
+      return { score: 0.65, note: `Double ${a} — consider varying the scale` };
+    }
+    // One bold + one subtle = intentional pattern mixing (great styling)
+    if ((aBold && SUBTLE_PATTERNS.includes(b)) || (bBold && SUBTLE_PATTERNS.includes(a))) {
+      return { score: 0.80, note: "Intentional pattern mix — bold + subtle" };
+    }
+    // Two bold patterns = usually clashes
+    if (aBold && bBold) {
+      return { score: 0.40, note: "Two bold patterns compete — consider replacing one with a solid" };
+    }
+    // Two subtle patterns = can work
+    if (SUBTLE_PATTERNS.includes(a) && SUBTLE_PATTERNS.includes(b)) {
+      return { score: 0.72, note: "Two subtle patterns — works if scales differ" };
+    }
+    // Graphic + bold = loud
+    if ((aGraphic && bBold) || (bGraphic && aBold)) {
+      return { score: 0.35, note: "Graphic + bold pattern is very busy" };
+    }
+    // Graphic + subtle = can work
+    if ((aGraphic && SUBTLE_PATTERNS.includes(b)) || (bGraphic && SUBTLE_PATTERNS.includes(a))) {
+      return { score: 0.68, note: "Graphic with subtle pattern — keep colours aligned" };
+    }
+
+    return { score: 0.55, note: "Mixed patterns — proceed with care" };
+  }
+
+  // 3+ patterned items = very risky
+  const boldCount = nonSolid.filter((p) => BOLD_PATTERNS.includes(p)).length;
+  const graphicCount = nonSolid.filter((p) => GRAPHIC_PATTERNS.includes(p)).length;
+
+  if (graphicCount >= 2 || boldCount >= 2) {
+    return { score: 0.25, note: "Too many competing patterns — simplify" };
+  }
+
+  return { score: 0.40, note: `${nonSolid.length} patterns is ambitious — ensure scales vary` };
+}
+
 function getStyleClashPenalty(items: ClothingItem[]): number {
   let penalty = 0;
   const subs = items.map((i) => i.subCategory ?? "");
@@ -914,6 +1007,13 @@ export function suggestOutfits(
     // Style clash penalty (e.g., running shoes with blazer)
     score += getStyleClashPenalty(combo);
 
+    // Pattern compatibility — 8% weight (deducted from base)
+    const patResult = patternCompatibility(combo);
+    const patScore = patResult.score;
+    score += (patScore - 0.5) * 16; // ranges from -8 to +8
+    if (patScore >= 0.9) reasons.push("Great pattern balance");
+    else if (patScore < 0.5) reasons.push(patResult.note);
+
     // Jacket bonus for non-summer seasons
     if (season && season !== "summer") {
       const hasOuterwear = combo.some(
@@ -1066,6 +1166,12 @@ export function validateOutfit(items: ClothingItem[]): string[] {
     }
   }
 
+  // Pattern clash warning
+  const patCheck = patternCompatibility(items);
+  if (patCheck.score < 0.5) {
+    warnings.push(patCheck.note);
+  }
+
   // Fabric clash warning
   const fabricTypes = new Set(items.map((i) => i.fabricType).filter(Boolean));
   if (
@@ -1146,6 +1252,19 @@ export function getNextItemSuggestion(currentItems: ClothingItem[], allItems: Cl
   // If outfit is fairly complete, suggest refinements
   if (cats.has("blazers") && !cats.has("purse")) {
     return "A structured bag or clutch would complement this polished look.";
+  }
+
+  // Pattern suggestions
+  const currentPatterns = currentItems.map((i) => i.pattern ?? "solid");
+  const nonSolidCount = currentPatterns.filter((p) => p !== "solid").length;
+  if (nonSolidCount === 0 && currentItems.length >= 3) {
+    return "All solids — a subtle patterned piece (striped scarf, polka dot bag) could add visual interest.";
+  }
+  if (nonSolidCount >= 2) {
+    const boldPats = currentPatterns.filter((p) => BOLD_PATTERNS.includes(p));
+    if (boldPats.length >= 2) {
+      return "Two bold patterns compete for attention — consider swapping one for a solid piece.";
+    }
   }
 
   // Texture suggestions

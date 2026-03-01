@@ -1,5 +1,5 @@
 import React from "react";
-import { View, Image, StyleSheet, Text } from "react-native";
+import { View, Image, StyleSheet, Text, Pressable } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import type { ClothingItem, ClothingCategory } from "@/models/types";
 import { useTheme } from "@/hooks/useTheme";
@@ -7,6 +7,8 @@ import { useTheme } from "@/hooks/useTheme";
 interface MoodBoardProps {
   items: ClothingItem[];
   size?: number;
+  onItemPress?: (item: ClothingItem) => void;
+  onOverflowPress?: () => void;
 }
 
 // Body-like layout positions — items arranged as they'd appear on a person:
@@ -147,7 +149,7 @@ const CATEGORY_ICONS: Partial<Record<ClothingCategory, string>> = {
   jewelry: "sparkles-outline",
 };
 
-export function MoodBoard({ items, size = 280 }: MoodBoardProps) {
+export function MoodBoard({ items, size = 280, onItemPress, onOverflowPress }: MoodBoardProps) {
   const { theme } = useTheme();
 
   // Sort items by body position order
@@ -173,10 +175,12 @@ export function MoodBoard({ items, size = 280 }: MoodBoardProps) {
       {displayItems.map((item, idx) => {
         const pos = getBodyPosition(item, idx, displayItems.length);
         const iconName = CATEGORY_ICONS[item.category] ?? "shirt-outline";
+        const CellWrapper = onItemPress ? Pressable : View;
 
         return (
-          <View
+          <CellWrapper
             key={item.id}
+            onPress={onItemPress ? () => onItemPress(item) : undefined}
             style={[
               styles.cell,
               {
@@ -202,14 +206,17 @@ export function MoodBoard({ items, size = 280 }: MoodBoardProps) {
                 {item.name}
               </Text>
             </View>
-          </View>
+          </CellWrapper>
         );
       })}
 
       {items.length > 7 && (
-        <View style={[styles.overflowBadge, { backgroundColor: theme.colors.primary }]}>
+        <Pressable
+          style={[styles.overflowBadge, { backgroundColor: theme.colors.primary }]}
+          onPress={onOverflowPress}
+        >
           <Text style={styles.overflowText}>+{items.length - 7}</Text>
-        </View>
+        </Pressable>
       )}
     </View>
   );

@@ -38,6 +38,7 @@ import type {
   HardwareColour,
   ItemFlag,
   CareInstruction,
+  Pattern,
 } from "@/models/types";
 import {
   CATEGORY_LABELS,
@@ -50,6 +51,7 @@ import {
   HARDWARE_CATEGORIES,
   ITEM_FLAG_LABELS,
   CARE_INSTRUCTION_LABELS,
+  PATTERN_LABELS,
 } from "@/models/types";
 
 const ARCHIVE_REASONS: ArchiveReason[] = ["donated", "sold", "worn_out", "given_away"];
@@ -94,6 +96,9 @@ export default function EditItemScreen() {
 
   // Item flags
   const [itemFlags, setItemFlags] = useState<ItemFlag[]>([]);
+
+  // Pattern
+  const [pattern, setPattern] = useState<Pattern>("solid");
 
   // Notes
   const [notes, setNotes] = useState("");
@@ -160,6 +165,7 @@ export default function EditItemScreen() {
     setPurchaseDate(item.purchaseDate ?? "");
     setCareInstructions(item.careInstructions ?? []);
     setSustainable(item.sustainable ?? false);
+    setPattern(item.pattern ?? "solid");
     setTags(item.tags ?? []);
   }, [id, items]);
 
@@ -375,6 +381,7 @@ export default function EditItemScreen() {
       purchaseDate: purchaseDate.trim() || undefined,
       careInstructions: careInstructions.length > 0 ? careInstructions : undefined,
       sustainable,
+      pattern: pattern !== "solid" ? pattern : undefined,
       tags: tags.length > 0 ? tags : undefined,
     });
     router.back();
@@ -735,6 +742,19 @@ export default function EditItemScreen() {
               label={FABRIC_TYPE_LABELS[ft]}
               selected={fabricType === ft}
               onPress={() => setFabricType(ft)}
+            />
+          ))}
+        </View>
+
+        {/* Pattern / Print */}
+        <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Pattern</Text>
+        <View style={styles.chipRow}>
+          {(Object.keys(PATTERN_LABELS) as Pattern[]).map((p) => (
+            <Chip
+              key={p}
+              label={PATTERN_LABELS[p]}
+              selected={pattern === p}
+              onPress={() => setPattern(p)}
             />
           ))}
         </View>

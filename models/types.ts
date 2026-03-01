@@ -60,6 +60,22 @@ export type ArchiveReason = "donated" | "sold" | "worn_out" | "given_away";
 
 export type HardwareColour = "gold" | "silver" | "rose_gold" | "black" | "bronze" | "gunmetal";
 
+export type Pattern =
+  | "solid"
+  | "striped"
+  | "plaid"
+  | "floral"
+  | "polka_dot"
+  | "graphic"
+  | "camo"
+  | "abstract"
+  | "animal_print"
+  | "checkered"
+  | "paisley"
+  | "houndstooth"
+  | "tie_dye"
+  | "color_block";
+
 export type ItemFlag =
   | "too_big"
   | "too_small"
@@ -110,6 +126,8 @@ export interface ClothingItem {
   sustainable?: boolean;
   // Legacy field - kept for migration but no longer used in UI
   occasions?: Occasion[];
+  // Pattern / print
+  pattern?: Pattern;
   // Custom tags
   tags?: string[];
 }
@@ -380,6 +398,23 @@ export const HARDWARE_COLOUR_LABELS: Record<HardwareColour, string> = {
   black: "Black",
   bronze: "Bronze",
   gunmetal: "Gunmetal",
+};
+
+export const PATTERN_LABELS: Record<Pattern, string> = {
+  solid: "Solid",
+  striped: "Striped",
+  plaid: "Plaid",
+  floral: "Floral",
+  polka_dot: "Polka Dot",
+  graphic: "Graphic",
+  camo: "Camo",
+  abstract: "Abstract",
+  animal_print: "Animal Print",
+  checkered: "Checkered",
+  paisley: "Paisley",
+  houndstooth: "Houndstooth",
+  tie_dye: "Tie-Dye",
+  color_block: "Colour Block",
 };
 
 export const ITEM_FLAG_LABELS: Record<ItemFlag, string> = {

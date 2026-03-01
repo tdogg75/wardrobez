@@ -712,6 +712,12 @@ export default function OutfitsScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
+      {/* Header with outfit count (#10) */}
+      <View style={styles.outfitsHeaderRow}>
+        <Text style={[styles.outfitsHeaderTitle, { color: theme.colors.text }]}>
+          Outfits ({filteredOutfits.length})
+        </Text>
+      </View>
       {/* Filter bar */}
       <View style={[styles.filterBar, { borderBottomColor: theme.colors.border, backgroundColor: theme.colors.surface }]}>
         <ScrollView
@@ -1013,6 +1019,15 @@ export default function OutfitsScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   loader: { flex: 1, justifyContent: "center" },
+  outfitsHeaderRow: {
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 4,
+  },
+  outfitsHeaderTitle: {
+    fontSize: 24,
+    fontWeight: "800",
+  },
   filterBar: {
     borderBottomWidth: StyleSheet.hairlineWidth,
   },

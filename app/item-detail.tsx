@@ -22,8 +22,9 @@ import {
   ITEM_FLAG_LABELS,
   ARCHIVE_REASON_LABELS,
   CARE_INSTRUCTION_LABELS,
+  PATTERN_LABELS,
 } from "@/models/types";
-import type { ItemFlag, ArchiveReason, CareInstruction } from "@/models/types";
+import type { ItemFlag, ArchiveReason, CareInstruction, Pattern } from "@/models/types";
 
 const ARCHIVE_REASONS: ArchiveReason[] = ["donated", "sold", "worn_out", "given_away"];
 
@@ -217,6 +218,14 @@ export default function ItemDetailScreen() {
           <Text style={styles.infoLabel}>Fabric</Text>
           <Text style={styles.infoValue}>{FABRIC_TYPE_LABELS[item.fabricType]}</Text>
         </View>
+
+        {/* Pattern */}
+        {item.pattern && item.pattern !== "solid" && (
+          <View style={styles.infoRow}>
+            <Text style={styles.infoLabel}>Pattern</Text>
+            <Text style={styles.infoValue}>{PATTERN_LABELS[item.pattern as Pattern]}</Text>
+          </View>
+        )}
 
         {/* Product URL */}
         {item.productUrl ? (

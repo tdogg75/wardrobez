@@ -10,6 +10,8 @@ import {
   Alert,
   Image,
   Dimensions,
+  RefreshControl,
+  TextInput,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -63,6 +65,7 @@ const SECTION_ORDER: ClothingCategory[] = [
 type SortOption =
   | "newest"
   | "oldest"
+  | "recently_added"
   | "most_worn"
   | "least_worn"
   | "highest_cost"
@@ -73,6 +76,7 @@ type SortOption =
 const SORT_OPTIONS: { value: SortOption; label: string }[] = [
   { value: "newest", label: "Newest" },
   { value: "oldest", label: "Oldest" },
+  { value: "recently_added", label: "Recently Added" },
   { value: "most_worn", label: "Most Worn" },
   { value: "least_worn", label: "Least Worn" },
   { value: "highest_cost", label: "Highest Cost" },
@@ -88,6 +92,8 @@ function sortItems(items: ClothingItem[], sort: SortOption): ClothingItem[] {
       return sorted.sort((a, b) => b.createdAt - a.createdAt);
     case "oldest":
       return sorted.sort((a, b) => a.createdAt - b.createdAt);
+    case "recently_added":
+      return sorted.sort((a, b) => b.createdAt - a.createdAt);
     case "most_worn":
       return sorted.sort((a, b) => b.wearCount - a.wearCount);
     case "least_worn":
@@ -129,7 +135,7 @@ const screenWidth = Dimensions.get("window").width;
 
 export default function WardrobeScreen() {
   const { theme } = useTheme();
-  const { items, loading, addOrUpdate, getFavorites, remove, archiveItem, logItemWorn } =
+  const { items, loading, addOrUpdate, getFavorites, remove, archiveItem, logItemWorn, reload } =
     useClothingItems();
   const [filter, setFilter] = useState<
     ClothingCategory | "all" | "favorites"
@@ -138,6 +144,8 @@ export default function WardrobeScreen() {
   const [sortBy, setSortBy] = useState<SortOption>("newest");
   const [showSortMenu, setShowSortMenu] = useState(false);
   const [photoOnlyMode, setPhotoOnlyMode] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
 
   // Bulk selection state
   const [selectionMode, setSelectionMode] = useState(false);
@@ -146,15 +154,42 @@ export default function WardrobeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
+  // Pull to refresh (#9)
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await reload();
+    setRefreshing(false);
+  }, [reload]);
+
   const filtered = useMemo(() => {
-    const base =
+    let base =
       filter === "all"
         ? items
         : filter === "favorites"
           ? getFavorites()
           : items.filter((i) => i.category === filter);
+    // Search filter (#36)
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim();
+      base = base.filter(
+        (i) =>
+          i.name.toLowerCase().includes(q) ||
+          (i.brand ?? "").toLowerCase().includes(q) ||
+          (i.colorName ?? "").toLowerCase().includes(q) ||
+          (i.tags ?? []).some((t) => t.toLowerCase().includes(q))
+      );
+    }
     return sortItems(base, sortBy);
-  }, [filter, items, getFavorites, sortBy]);
+  }, [filter, items, getFavorites, sortBy, searchQuery]);
+
+  // Item counts per category for filter chips (#5)
+  const categoryCounts = useMemo(() => {
+    const counts: Record<string, number> = { all: items.length, favorites: getFavorites().length };
+    for (const item of items) {
+      counts[item.category] = (counts[item.category] ?? 0) + 1;
+    }
+    return counts;
+  }, [items, getFavorites]);
 
   // Wardrobe value summary computations
   const summary = useMemo(() => {
@@ -426,6 +461,26 @@ export default function WardrobeScreen() {
             {selectedIds.size} selected
           </Text>
           <View style={styles.selectionBarActions}>
+            {/* Select All / Deselect All (#2) */}
+            <Pressable
+              style={styles.selectionBarBtn}
+              onPress={() => {
+                if (selectedIds.size === filtered.length) {
+                  setSelectedIds(new Set());
+                } else {
+                  setSelectedIds(new Set(filtered.map((i) => i.id)));
+                }
+              }}
+            >
+              <Ionicons
+                name={selectedIds.size === filtered.length ? "checkbox-outline" : "square-outline"}
+                size={18}
+                color={theme.colors.primary}
+              />
+              <Text style={styles.selectionBarBtnText}>
+                {selectedIds.size === filtered.length ? "None" : "All"}
+              </Text>
+            </Pressable>
             <Pressable
               style={styles.selectionBarBtn}
               onPress={handleBulkArchive}
@@ -573,20 +628,41 @@ export default function WardrobeScreen() {
           data={ALL_CATEGORIES}
           keyExtractor={(item) => item}
           contentContainerStyle={styles.filterList}
-          renderItem={({ item: cat }) => (
-            <Chip
-              label={
-                cat === "all"
-                  ? "All"
-                  : cat === "favorites"
-                    ? "Favourites"
-                    : CATEGORY_LABELS[cat]
-              }
-              selected={filter === cat}
-              onPress={() => setFilter(cat)}
-            />
-          )}
+          renderItem={({ item: cat }) => {
+            const count = categoryCounts[cat] ?? 0;
+            const label = cat === "all"
+              ? `All (${count})`
+              : cat === "favorites"
+                ? `Favourites (${count})`
+                : `${CATEGORY_LABELS[cat]} (${count})`;
+            return (
+              <Chip
+                label={label}
+                selected={filter === cat}
+                onPress={() => setFilter(cat)}
+              />
+            );
+          }}
         />
+      </View>
+
+      {/* Search Bar (#36) */}
+      <View style={styles.searchRow}>
+        <Ionicons name="search-outline" size={18} color={theme.colors.textLight} />
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Search name, brand, colour, tag..."
+          placeholderTextColor={theme.colors.textLight}
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          returnKeyType="search"
+          clearButtonMode="while-editing"
+        />
+        {searchQuery.length > 0 && (
+          <Pressable onPress={() => setSearchQuery("")} hitSlop={10}>
+            <Ionicons name="close-circle" size={18} color={theme.colors.textLight} />
+          </Pressable>
+        )}
       </View>
 
       {/* Wardrobe Value Summary Banner */}
@@ -610,16 +686,24 @@ export default function WardrobeScreen() {
         />
       ) : filtered.length === 0 ? (
         <EmptyState
-          icon={filter === "favorites" ? "heart-outline" : "shirt-outline"}
+          icon={searchQuery ? "search-outline" : filter === "favorites" ? "heart-outline" : "shirt-outline"}
           title={
-            filter === "favorites"
-              ? "No favourites yet"
-              : "Your wardrobe is empty"
+            searchQuery
+              ? "No results"
+              : filter === "favorites"
+                ? "No favourites yet"
+                : filter !== "all"
+                  ? `No ${CATEGORY_LABELS[filter as ClothingCategory] ?? filter} items`
+                  : "Your wardrobe is empty"
           }
           subtitle={
-            filter === "favorites"
-              ? "Tap the heart icon on items to add them to your favourites!"
-              : "Add your first clothing item to get started with outfit suggestions!"
+            searchQuery
+              ? `Nothing matches "${searchQuery}". Try a different search.`
+              : filter === "favorites"
+                ? "Tap the heart icon on items to add them to your favourites!"
+                : filter !== "all"
+                  ? "Add items in this category to see them here."
+                  : "Add your first clothing item to get started with outfit suggestions!"
           }
         />
       ) : photoOnlyMode ? (
@@ -634,6 +718,7 @@ export default function WardrobeScreen() {
           }}
           contentContainerStyle={styles.list}
           renderItem={renderPhotoTile}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.colors.primary} />}
         />
       ) : filter === "all" ? (
         <SectionList
@@ -646,6 +731,7 @@ export default function WardrobeScreen() {
           renderSectionHeader={renderSectionHeader}
           contentContainerStyle={styles.list}
           stickySectionHeadersEnabled={false}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.colors.primary} />}
         />
       ) : (
         <FlatList
@@ -656,6 +742,7 @@ export default function WardrobeScreen() {
           columnWrapperStyle={[styles.row, { gap: itemGap }]}
           contentContainerStyle={styles.list}
           renderItem={({ item }) => renderCard(item)}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.colors.primary} />}
         />
       )}
 
@@ -867,6 +954,24 @@ function createStyles(theme: ReturnType<typeof import("@/hooks/useTheme").useThe
       fontSize: theme.fontSize.lg,
       fontWeight: "700",
       color: theme.colors.text,
+    },
+    // --- Search Bar ---
+    searchRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      marginHorizontal: theme.spacing.md,
+      marginTop: theme.spacing.sm,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderRadius: theme.borderRadius.md,
+      backgroundColor: theme.colors.surfaceAlt,
+      gap: 8,
+    },
+    searchInput: {
+      flex: 1,
+      fontSize: theme.fontSize.sm,
+      color: theme.colors.text,
+      paddingVertical: 0,
     },
     // --- FAB ---
     fab: {

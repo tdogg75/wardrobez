@@ -188,6 +188,18 @@ function analyzeStyleCoherence(items: ClothingItem[]): { score: number; note: st
     return { score: 30, note: "Athletic and formal pieces don't mix well." };
   }
 
+  // Pattern coherence
+  const patterns = items.map((i) => i.pattern ?? "solid");
+  const nonSolid = patterns.filter((p) => p !== "solid");
+  const boldPatterns = ["floral", "plaid", "animal_print", "camo", "paisley", "houndstooth", "tie_dye"];
+  const boldCount = nonSolid.filter((p) => boldPatterns.includes(p)).length;
+  if (boldCount >= 2) {
+    return { score: 40, note: "Multiple bold patterns compete — simplify to one statement pattern." };
+  }
+  if (nonSolid.length >= 3) {
+    return { score: 50, note: "Three or more patterns is very busy — try replacing some with solids." };
+  }
+
   // Fabric coherence
   const fabrics = items.map((i) => i.fabricType).filter(Boolean);
   const hasDenim = fabrics.includes("denim");
@@ -200,6 +212,11 @@ function analyzeStyleCoherence(items: ClothingItem[]): { score: number; note: st
 
   if (hasLeather && hasSilk) {
     return { score: 75, note: "Leather and silk create an edgy-meets-elegant vibe." };
+  }
+
+  // Pattern bonus: single pattern + solids is clean
+  if (nonSolid.length === 1 && items.length >= 3) {
+    return { score: 85, note: "Single pattern anchored by solids — clean and intentional." };
   }
 
   // Generally coherent

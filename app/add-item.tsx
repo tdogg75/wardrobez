@@ -38,6 +38,7 @@ import type {
   HardwareColour,
   ItemFlag,
   CareInstruction,
+  Pattern,
 } from "@/models/types";
 import {
   CATEGORY_LABELS,
@@ -49,6 +50,7 @@ import {
   HARDWARE_CATEGORIES,
   ITEM_FLAG_LABELS,
   CARE_INSTRUCTION_LABELS,
+  PATTERN_LABELS,
 } from "@/models/types";
 
 function generateId(): string {
@@ -109,6 +111,9 @@ export default function AddItemScreen() {
 
   // Sustainable
   const [sustainable, setSustainable] = useState(false);
+
+  // Pattern
+  const [pattern, setPattern] = useState<Pattern>("solid");
 
   // Tags
   const [tags, setTags] = useState<string[]>([]);
@@ -336,6 +341,7 @@ export default function AddItemScreen() {
       itemFlags: itemFlags.length > 0 ? itemFlags : undefined,
       careInstructions: careInstructions.length > 0 ? careInstructions : undefined,
       sustainable: sustainable || undefined,
+      pattern: pattern !== "solid" ? pattern : undefined,
       tags: tags.length > 0 ? tags : undefined,
     });
 
@@ -646,6 +652,19 @@ export default function AddItemScreen() {
               label={FABRIC_TYPE_LABELS[ft]}
               selected={fabricType === ft}
               onPress={() => setFabricType(ft)}
+            />
+          ))}
+        </View>
+
+        {/* Pattern / Print */}
+        <Text style={[styles.sectionTitle, { fontSize: theme.fontSize.md, color: theme.colors.text, marginBottom: theme.spacing.sm, marginTop: theme.spacing.md }]}>Pattern</Text>
+        <View style={styles.chipRow}>
+          {(Object.keys(PATTERN_LABELS) as Pattern[]).map((p) => (
+            <Chip
+              key={p}
+              label={PATTERN_LABELS[p]}
+              selected={pattern === p}
+              onPress={() => setPattern(p)}
             />
           ))}
         </View>
