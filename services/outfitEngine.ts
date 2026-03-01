@@ -5,6 +5,7 @@ import type {
   FabricType,
   Occasion,
   Pattern,
+  Outfit,
 } from "@/models/types";
 import { hexToHSL } from "@/constants/colors";
 import { getOutfitFlags, saveOutfitFlag } from "@/services/storage";
@@ -1399,6 +1400,127 @@ export function getNextItemSuggestion(currentItems: ClothingItem[], allItems: Cl
 }
 
 /* ------------------------------------------------------------------ */
+/*  Repeat Outfit Detector — warns about recently worn outfits          */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Detects whether a candidate outfit (set of clothing items) is a repeat or
+ * near-repeat of any saved outfit that was worn within the last 14 days.
+ *
+ * - **Exact repeat**: the candidate item IDs match a saved outfit's itemIds
+ *   exactly (order-independent) and that outfit was worn in the past 14 days.
+ * - **Near repeat**: 80 %+ overlap in item IDs with a saved outfit worn in
+ *   the past 14 days.
+ *
+ * When both an exact repeat and a near-repeat exist the exact repeat takes
+ * priority. Among multiple matches the most-recently-worn outfit wins.
+ */
+export function detectRepeatOutfit(
+  candidateItems: ClothingItem[],
+  savedOutfits: Outfit[]
+): {
+  isRepeat: boolean;
+  nearRepeat: boolean;
+  repeatOutfitName?: string;
+  daysSinceWorn?: number;
+  overlapPct?: number;
+} {
+  const candidateIds = new Set(candidateItems.map((item) => item.id));
+  const now = new Date();
+  const fourteenDaysMs = 14 * 24 * 60 * 60 * 1000;
+
+  let bestExact: {
+    outfitName: string;
+    daysSinceWorn: number;
+  } | null = null;
+
+  let bestNear: {
+    outfitName: string;
+    daysSinceWorn: number;
+    overlapPct: number;
+  } | null = null;
+
+  for (const outfit of savedOutfits) {
+    // Find the most recent worn date within the last 14 days
+    let mostRecentDays: number | null = null;
+
+    for (const dateStr of outfit.wornDates) {
+      const wornDate = new Date(dateStr);
+      const diffMs = now.getTime() - wornDate.getTime();
+      if (diffMs < 0 || diffMs > fourteenDaysMs) continue;
+
+      const days = Math.floor(diffMs / (24 * 60 * 60 * 1000));
+      if (mostRecentDays === null || days < mostRecentDays) {
+        mostRecentDays = days;
+      }
+    }
+
+    // Skip outfits not worn within the past 14 days
+    if (mostRecentDays === null) continue;
+
+    const outfitIds = new Set(outfit.itemIds);
+
+    // Calculate overlap
+    const intersectionSize = [...candidateIds].filter((id) =>
+      outfitIds.has(id)
+    ).length;
+    const unionSize = new Set([...candidateIds, ...outfitIds]).size;
+    const overlapPct = unionSize === 0 ? 0 : intersectionSize / unionSize;
+
+    // Exact repeat: identical sets of item IDs
+    const isExact =
+      candidateIds.size === outfitIds.size &&
+      [...candidateIds].every((id) => outfitIds.has(id));
+
+    if (isExact) {
+      if (
+        bestExact === null ||
+        mostRecentDays < bestExact.daysSinceWorn
+      ) {
+        bestExact = {
+          outfitName: outfit.name,
+          daysSinceWorn: mostRecentDays,
+        };
+      }
+    } else if (overlapPct >= 0.8) {
+      if (
+        bestNear === null ||
+        mostRecentDays < bestNear.daysSinceWorn
+      ) {
+        bestNear = {
+          outfitName: outfit.name,
+          daysSinceWorn: mostRecentDays,
+          overlapPct: Math.round(overlapPct * 100),
+        };
+      }
+    }
+  }
+
+  // Exact repeat takes priority over near-repeat
+  if (bestExact) {
+    return {
+      isRepeat: true,
+      nearRepeat: false,
+      repeatOutfitName: bestExact.outfitName,
+      daysSinceWorn: bestExact.daysSinceWorn,
+      overlapPct: 100,
+    };
+  }
+
+  if (bestNear) {
+    return {
+      isRepeat: false,
+      nearRepeat: true,
+      repeatOutfitName: bestNear.outfitName,
+      daysSinceWorn: bestNear.daysSinceWorn,
+      overlapPct: bestNear.overlapPct,
+    };
+  }
+
+  return { isRepeat: false, nearRepeat: false };
+}
+
+/* ------------------------------------------------------------------ */
 /*  Outfit Name Generator — grounded, descriptive names                 */
 /* ------------------------------------------------------------------ */
 
@@ -1462,34 +1584,76 @@ function getFabricDescriptor(items: ClothingItem[]): string {
   return "";
 }
 
-/** Generate a descriptive, grounded outfit name based on items */
+// Pattern descriptor (#94)
+function getPatternDescriptor(items: ClothingItem[]): string {
+  const patterns = items.map((i) => i.pattern ?? "solid").filter((p) => p !== "solid");
+  if (patterns.length === 0) return "";
+  const p = patterns[0];
+  const map: Record<string, string> = {
+    striped: "Striped", plaid: "Plaid", floral: "Floral", polka_dot: "Dotted",
+    graphic: "Graphic", camo: "Camo", abstract: "Abstract", animal_print: "Wild",
+    checkered: "Checkered", paisley: "Bohemian", houndstooth: "Tailored",
+    tie_dye: "Tie-Dye", color_block: "Colour-Block",
+  };
+  return map[p] ?? "";
+}
+
+// Vibe descriptor based on overall feel (#94)
+function getVibeDescriptor(items: ClothingItem[]): string {
+  const subs = items.map((i) => i.subCategory ?? "");
+  const cats = new Set(items.map((i) => i.category));
+  const fabrics = new Set(items.map((i) => i.fabricType));
+
+  if (subs.includes("running_shoes") || subs.includes("sport") || subs.includes("athletic_shorts")) return "Athletic";
+  if (fabrics.has("cashmere") && fabrics.has("silk")) return "Luxe";
+  if (cats.has("blazers") && (subs.includes("jeans") || fabrics.has("denim"))) return "Smart Casual";
+  if (cats.has("blazers") && subs.includes("heels")) return "Power";
+  if (fabrics.has("linen")) return "Resort";
+  if (subs.includes("hoodie") || subs.includes("sweatpants")) return "Loungewear";
+  if (cats.has("jackets") && cats.has("bottoms")) return "Layered";
+  return "";
+}
+
+// Creative name templates (#94)
+const NAME_TEMPLATES = [
+  (mood: string, cat: string, _fab: string, _pat: string, _vibe: string) => cat ? `${mood} ${cat}` : mood,
+  (_mood: string, cat: string, fab: string, _pat: string, _vibe: string) => fab && cat ? `${fab} ${cat} Look` : "",
+  (mood: string, _cat: string, _fab: string, pat: string, _vibe: string) => pat ? `${pat} ${mood}` : "",
+  (_mood: string, _cat: string, _fab: string, _pat: string, vibe: string) => vibe ? `${vibe} Moment` : "",
+  (mood: string, _cat: string, _fab: string, _pat: string, vibe: string) => vibe ? `${vibe} ${mood}` : "",
+  (_mood: string, cat: string, _fab: string, _pat: string, vibe: string) => vibe && cat ? `${vibe} ${cat}` : "",
+  (mood: string, cat: string, _fab: string, _pat: string, _vibe: string) => {
+    const suffixes = ["Edit", "Moment", "Day", "Look", "Vibe", "Energy", "Hour"];
+    return cat ? `${cat} ${suffixes[Math.floor(Math.random() * suffixes.length)]}` : `${mood} ${suffixes[Math.floor(Math.random() * suffixes.length)]}`;
+  },
+];
+
+/** Generate a creative, descriptive outfit name based on items (#94 enhanced) */
 export function generateOutfitName(items: ClothingItem[]): string {
   if (items.length === 0) return "New Outfit";
 
   const mood = getColorMood(items);
   const moodOptions = COLOR_MOOD_DESCRIPTORS[mood] ?? COLOR_MOOD_DESCRIPTORS.neutral;
+  const moodPick = moodOptions[Math.floor(Math.random() * moodOptions.length)];
   const catDesc = getCategoryDescriptor(items);
   const fabDesc = getFabricDescriptor(items);
+  const patDesc = getPatternDescriptor(items);
+  const vibeDesc = getVibeDescriptor(items);
 
   const candidates: string[] = [];
 
-  if (catDesc) {
-    const moodPick = moodOptions[Math.floor(Math.random() * moodOptions.length)];
-    candidates.push(`${moodPick} ${catDesc}`);
+  for (const template of NAME_TEMPLATES) {
+    const name = template(moodPick, catDesc, fabDesc, patDesc, vibeDesc);
+    if (name && name.trim().length > 3) candidates.push(name.trim());
   }
 
-  if (fabDesc && fabDesc !== catDesc) {
-    const moodPick = moodOptions[Math.floor(Math.random() * moodOptions.length)];
-    candidates.push(`${fabDesc} ${moodPick}`);
-  }
+  // Fallback options
+  if (catDesc) candidates.push(`${moodPick} ${catDesc}`);
+  if (fabDesc) candidates.push(`${fabDesc} ${moodPick}`);
+  candidates.push(moodPick);
 
-  candidates.push(moodOptions[Math.floor(Math.random() * moodOptions.length)]);
-
-  if (catDesc) {
-    const simple = ["Day", "Look", "Style", "Outfit"];
-    candidates.push(`${catDesc} ${simple[Math.floor(Math.random() * simple.length)]}`);
-  }
-
-  const pick = candidates[Math.floor(Math.random() * candidates.length)];
+  // Deduplicate
+  const unique = [...new Set(candidates)];
+  const pick = unique[Math.floor(Math.random() * unique.length)];
   return pick.replace(/\s+/g, " ").trim();
 }

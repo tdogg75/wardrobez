@@ -109,8 +109,11 @@ export default function ProfileScreen() {
   /* ---------- inspiration board state ---------- */
   const [inspirationPins, setInspirationPins] = useState<InspirationPin[]>([]);
 
-  /* ---------- packing list state ---------- */
+  /* ---------- packing list / travel mode state (#88) ---------- */
   const [tripDays, setTripDays] = useState("5");
+  const [tripDestination, setTripDestination] = useState("");
+  const [tripClimate, setTripClimate] = useState<"warm" | "cold" | "mild" | "">("");
+  const [tripType, setTripType] = useState<"casual" | "business" | "beach" | "adventure" | "">("");
   const [packingResult, setPackingResult] = useState<{ category: string; name: string; checked: boolean }[]>([]);
 
   /* ---------- wishlist state ---------- */
@@ -561,10 +564,12 @@ export default function ProfileScreen() {
     setSplurgeResult({ verdict, reason });
   };
 
-  /* --- Packing List Generator (#12) --- */
+  /* --- Packing List Generator / Travel Mode (#12, #88) --- */
   const generatePackingList = () => {
     const days = parseInt(tripDays, 10) || 5;
     const result: { category: string; name: string; checked: boolean }[] = [];
+    const climate = tripClimate || "mild";
+    const type = tripType || "casual";
 
     const itemsByCategory: Partial<Record<ClothingCategory, ClothingItem[]>> = {};
     for (const item of allActive) {
@@ -577,9 +582,22 @@ export default function ProfileScreen() {
       return shuffled.slice(0, count);
     };
 
+    // Climate-aware fabric filter: prefer appropriate fabrics
+    const climateFabrics = (items: ClothingItem[]): ClothingItem[] => {
+      if (climate === "warm") {
+        const preferred = items.filter((i) => ["cotton", "linen", "silk", "nylon"].includes(i.fabricType));
+        return preferred.length >= 2 ? preferred : items;
+      }
+      if (climate === "cold") {
+        const preferred = items.filter((i) => ["wool", "cashmere", "fleece", "leather", "denim"].includes(i.fabricType));
+        return preferred.length >= 2 ? preferred : items;
+      }
+      return items;
+    };
+
     // Tops: ~1.5 per day
     const topsNeeded = Math.ceil(days * 1.5);
-    const availableTops = itemsByCategory.tops ?? [];
+    const availableTops = climateFabrics(itemsByCategory.tops ?? []);
     const pickedTops = pickRandom(availableTops, Math.min(topsNeeded, availableTops.length));
     for (const t of pickedTops) {
       result.push({ category: "Tops", name: t.name, checked: false });
@@ -591,7 +609,10 @@ export default function ProfileScreen() {
 
     // Bottoms: 1 per 2 days
     const bottomsNeeded = Math.ceil(days / 2);
-    const availableBottoms = [...(itemsByCategory.bottoms ?? []), ...(itemsByCategory.shorts ?? []), ...(itemsByCategory.skirts ?? [])];
+    let bottomPool = [...(itemsByCategory.bottoms ?? [])];
+    if (climate === "warm") bottomPool = [...bottomPool, ...(itemsByCategory.shorts ?? []), ...(itemsByCategory.skirts ?? [])];
+    else bottomPool = [...bottomPool, ...(itemsByCategory.skirts ?? [])];
+    const availableBottoms = climateFabrics(bottomPool);
     const pickedBottoms = pickRandom(availableBottoms, Math.min(bottomsNeeded, availableBottoms.length));
     for (const b of pickedBottoms) {
       result.push({ category: "Bottoms", name: b.name, checked: false });
@@ -601,16 +622,19 @@ export default function ProfileScreen() {
       for (let i = 0; i < remaining; i++) result.push({ category: "Bottoms", name: `Extra bottom ${i + 1} (buy/borrow)`, checked: false });
     }
 
-    // Outerwear: 1
-    const availableOuterwear = [...(itemsByCategory.jackets ?? []), ...(itemsByCategory.blazers ?? [])];
-    if (availableOuterwear.length > 0) {
-      const picked = pickRandom(availableOuterwear, 1);
-      result.push({ category: "Outerwear", name: picked[0].name, checked: false });
-    } else {
-      result.push({ category: "Outerwear", name: "Jacket (buy/borrow)", checked: false });
+    // Outerwear: 1 for mild/cold, skip for warm beach
+    if (climate !== "warm" || type !== "beach") {
+      const outerwearCount = climate === "cold" ? 2 : 1;
+      const availableOuterwear = [...(itemsByCategory.jackets ?? []), ...(itemsByCategory.blazers ?? [])];
+      if (availableOuterwear.length > 0) {
+        const picked = pickRandom(availableOuterwear, Math.min(outerwearCount, availableOuterwear.length));
+        for (const o of picked) result.push({ category: "Outerwear", name: o.name, checked: false });
+      } else {
+        result.push({ category: "Outerwear", name: "Jacket (buy/borrow)", checked: false });
+      }
     }
 
-    // Shoes: 1-2 based on trip length
+    // Shoes: 1-2 based on trip length, climate-aware
     const shoesNeeded = days > 5 ? 2 : 1;
     const availableShoes = itemsByCategory.shoes ?? [];
     const pickedShoes = pickRandom(availableShoes, Math.min(shoesNeeded, availableShoes.length));
@@ -630,13 +654,48 @@ export default function ProfileScreen() {
       }
     }
 
-    // Accessories: 1-2
+    // Beach trip: add swimwear
+    if (type === "beach" || climate === "warm") {
+      const availableSwim = itemsByCategory.swimwear ?? [];
+      if (availableSwim.length > 0) {
+        const picked = pickRandom(availableSwim, Math.min(2, availableSwim.length));
+        for (const s of picked) result.push({ category: "Swimwear", name: s.name, checked: false });
+      } else {
+        result.push({ category: "Swimwear", name: "Swimsuit (buy/borrow)", checked: false });
+      }
+    }
+
+    // Business trip: include blazers
+    if (type === "business") {
+      const availableBl = itemsByCategory.blazers ?? [];
+      if (availableBl.length > 0) {
+        const picked = pickRandom(availableBl, 1);
+        result.push({ category: "Business", name: picked[0].name, checked: false });
+      } else {
+        result.push({ category: "Business", name: "Blazer (buy/borrow)", checked: false });
+      }
+    }
+
+    // Accessories: 1-3
+    const accessoryCount = type === "business" ? 3 : 2;
     const availableAccessories = [...(itemsByCategory.accessories ?? []), ...(itemsByCategory.jewelry ?? [])];
     if (availableAccessories.length > 0) {
-      const picked = pickRandom(availableAccessories, Math.min(2, availableAccessories.length));
+      const picked = pickRandom(availableAccessories, Math.min(accessoryCount, availableAccessories.length));
       for (const a of picked) {
         result.push({ category: "Accessories", name: a.name, checked: false });
       }
+    }
+
+    // Purse
+    const availablePurses = itemsByCategory.purse ?? [];
+    if (availablePurses.length > 0) {
+      const picked = pickRandom(availablePurses, 1);
+      result.push({ category: "Bags", name: picked[0].name, checked: false });
+    }
+
+    // Destination header
+    if (tripDestination.trim()) {
+      result.unshift({ category: "Trip", name: `${tripDestination} — ${days} days (${climate}, ${type})`, checked: false });
     }
 
     setPackingResult(result);
@@ -2005,33 +2064,56 @@ export default function ProfileScreen() {
       )}
 
       {/* ============================================================ */}
-      {/*  PACKING LIST GENERATOR (#12)                                  */}
+      {/*  PACKING LIST / TRAVEL MODE (#12, #88)                           */}
       {/* ============================================================ */}
       {show("packing") && (
       <View style={styles.card}>
         <SectionHeader
-          icon="briefcase-outline"
-          label="Packing List Generator"
+          icon="airplane-outline"
+          label="Travel Mode"
           open={packingOpen}
           onPress={() => setPackingOpen((v) => !v)}
         />
         {packingOpen && (
           <View style={styles.sectionBody}>
+            <Text style={styles.barLabel}>Destination</Text>
+            <TextInput
+              style={[styles.packingInput, { width: "100%", marginBottom: theme.spacing.sm }]}
+              value={tripDestination}
+              onChangeText={setTripDestination}
+              placeholder="e.g., Paris, Cancún, NYC"
+              placeholderTextColor={theme.colors.textLight}
+              autoCapitalize="words"
+            />
+
             <Text style={styles.barLabel}>Trip Duration (days)</Text>
-            <View style={styles.packingInputRow}>
-              <TextInput
-                style={styles.packingInput}
-                value={tripDays}
-                onChangeText={setTripDays}
-                keyboardType="number-pad"
-                placeholder="5"
-                placeholderTextColor={theme.colors.textLight}
-              />
-              <Pressable style={styles.packingGenerateBtn} onPress={generatePackingList}>
-                <Ionicons name="shuffle-outline" size={18} color="#FFFFFF" />
-                <Text style={styles.packingGenerateBtnText}>Generate</Text>
-              </Pressable>
+            <TextInput
+              style={[styles.packingInput, { width: "100%", marginBottom: theme.spacing.sm }]}
+              value={tripDays}
+              onChangeText={setTripDays}
+              keyboardType="number-pad"
+              placeholder="5"
+              placeholderTextColor={theme.colors.textLight}
+            />
+
+            <Text style={styles.barLabel}>Climate</Text>
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: theme.spacing.sm }}>
+              {(["warm", "mild", "cold"] as const).map((c) => (
+                <Chip key={c} label={c === "warm" ? "Warm / Hot" : c === "cold" ? "Cold / Winter" : "Mild / Temperate"} selected={tripClimate === c} onPress={() => setTripClimate(tripClimate === c ? "" : c)} />
+              ))}
             </View>
+
+            <Text style={styles.barLabel}>Trip Type</Text>
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: theme.spacing.md }}>
+              {(["casual", "business", "beach", "adventure"] as const).map((t) => (
+                <Chip key={t} label={t.charAt(0).toUpperCase() + t.slice(1)} selected={tripType === t} onPress={() => setTripType(tripType === t ? "" : t)} />
+              ))}
+            </View>
+
+            <Pressable style={styles.packingGenerateBtn} onPress={generatePackingList}>
+              <Ionicons name="briefcase-outline" size={18} color="#FFFFFF" />
+              <Text style={styles.packingGenerateBtnText}>Generate Packing List</Text>
+            </Pressable>
 
             {packingResult.length > 0 && (
               <>

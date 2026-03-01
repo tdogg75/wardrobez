@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -13,7 +13,10 @@ import {
   RefreshControl,
   TextInput,
   Modal,
+  NativeSyntheticEvent,
+  NativeScrollEvent,
 } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -148,6 +151,11 @@ export default function WardrobeScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
 
+  // Scroll-to-top button state (#28)
+  const listRef = useRef<FlatList>(null);
+  const sectionListRef = useRef<SectionList>(null);
+  const [showScrollTop, setShowScrollTop] = useState(false);
+
   // Bulk selection state
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -161,6 +169,56 @@ export default function WardrobeScreen() {
     await reload();
     setRefreshing(false);
   }, [reload]);
+
+  // Load wardrobe view preferences on mount (#59)
+  useEffect(() => {
+    (async () => {
+      try {
+        const raw = await AsyncStorage.getItem("wardrobez:wardrobe_prefs");
+        if (raw) {
+          const prefs = JSON.parse(raw);
+          if (prefs.numColumns && COLUMN_OPTIONS.includes(prefs.numColumns)) {
+            setNumColumns(prefs.numColumns);
+          }
+          if (prefs.sortBy) {
+            setSortBy(prefs.sortBy);
+          }
+          if (prefs.filter) {
+            setFilter(prefs.filter);
+          }
+        }
+      } catch (_) {
+        // ignore storage errors
+      }
+    })();
+  }, []);
+
+  // Persist wardrobe view preferences when they change (#59)
+  useEffect(() => {
+    AsyncStorage.setItem(
+      "wardrobez:wardrobe_prefs",
+      JSON.stringify({ numColumns, sortBy, filter })
+    ).catch(() => {});
+  }, [numColumns, sortBy, filter]);
+
+  // Scroll handler for scroll-to-top button (#28)
+  const handleScroll = useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const offsetY = event.nativeEvent.contentOffset.y;
+      setShowScrollTop(offsetY > 400);
+    },
+    []
+  );
+
+  const scrollToTop = useCallback(() => {
+    listRef.current?.scrollToOffset?.({ offset: 0, animated: true });
+    sectionListRef.current?.scrollToLocation?.({
+      sectionIndex: 0,
+      itemIndex: 0,
+      viewOffset: 0,
+      animated: true,
+    });
+  }, []);
 
   const filtered = useMemo(() => {
     let base =
@@ -738,6 +796,7 @@ export default function WardrobeScreen() {
       ) : photoOnlyMode ? (
         /* Photo-only grid view */
         <FlatList
+          ref={listRef as any}
           key="photo-grid"
           data={filtered}
           keyExtractor={(item) => item.id}
@@ -747,10 +806,13 @@ export default function WardrobeScreen() {
           }}
           contentContainerStyle={styles.list}
           renderItem={renderPhotoTile}
+          onScroll={handleScroll}
+          scrollEventThrottle={16}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.colors.primary} />}
         />
       ) : filter === "all" ? (
         <SectionList
+          ref={sectionListRef as any}
           key={`section-grid-${numColumns}`}
           sections={sections}
           keyExtractor={(item, index) =>
@@ -760,10 +822,13 @@ export default function WardrobeScreen() {
           renderSectionHeader={renderSectionHeader}
           contentContainerStyle={styles.list}
           stickySectionHeadersEnabled={false}
+          onScroll={handleScroll}
+          scrollEventThrottle={16}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.colors.primary} />}
         />
       ) : (
         <FlatList
+          ref={listRef as any}
           key={`grid-${numColumns}`}
           data={filtered}
           keyExtractor={(item) => item.id}
@@ -771,8 +836,17 @@ export default function WardrobeScreen() {
           columnWrapperStyle={[styles.row, { gap: itemGap }]}
           contentContainerStyle={styles.list}
           renderItem={({ item }) => renderCard(item)}
+          onScroll={handleScroll}
+          scrollEventThrottle={16}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.colors.primary} />}
         />
+      )}
+
+      {/* Scroll to top button (#28) */}
+      {showScrollTop && (
+        <Pressable style={styles.scrollTopBtn} onPress={scrollToTop}>
+          <Ionicons name="arrow-up" size={20} color="#FFFFFF" />
+        </Pressable>
       )}
 
       {/* FAB - hidden in selection mode */}
@@ -1083,6 +1157,23 @@ function createStyles(theme: ReturnType<typeof import("@/hooks/useTheme").useThe
       borderRadius: theme.borderRadius.md,
       paddingVertical: theme.spacing.sm,
       alignItems: "center",
+    },
+    // --- Scroll to top button (#28) ---
+    scrollTopBtn: {
+      position: "absolute",
+      left: 20,
+      bottom: 24,
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      backgroundColor: theme.colors.primary,
+      justifyContent: "center",
+      alignItems: "center",
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.2,
+      shadowRadius: 4,
+      elevation: 4,
     },
     // --- FAB ---
     fab: {

@@ -12,10 +12,11 @@ import {
   Modal,
   TextInput,
 } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 import { useClothingItems } from "@/hooks/useClothingItems";
 import { useOutfits } from "@/hooks/useOutfits";
-import { suggestOutfits, generateOutfitName, flagOutfit, type SuggestionResult } from "@/services/outfitEngine";
+import { suggestOutfits, generateOutfitName, flagOutfit, detectRepeatOutfit, type SuggestionResult } from "@/services/outfitEngine";
 import {
   getCurrentWeather,
   weatherToSeason,
@@ -82,7 +83,28 @@ export default function SuggestScreen() {
   // Track locked names per suggestion index (generated names locked on first generation)
   const [lockedNames, setLockedNames] = useState<Record<number, string>>({});
 
-  // Fetch weather on mount
+  // Load last used filters from AsyncStorage on mount
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const [savedSeason, savedOccasion] = await Promise.all([
+          AsyncStorage.getItem("wardrobez:suggest_last_season"),
+          AsyncStorage.getItem("wardrobez:suggest_last_occasion"),
+        ]);
+        if (!mounted) return;
+        if (savedSeason) setSeason(savedSeason as Season);
+        if (savedOccasion) setSelectedOccasion(savedOccasion as Occasion);
+      } catch (_) {
+        // ignore storage errors
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  // Fetch weather on mount — weather-detected season overrides stored value
   useEffect(() => {
     let mounted = true;
     setLoadingWeather(true);
@@ -92,7 +114,8 @@ export default function SuggestScreen() {
         setWeather(w);
         if (w) {
           setWeatherTips(getWeatherTips(w));
-          if (!season) setSeason(weatherToSeason(w));
+          // Weather-detected season always overrides stored/manual selection
+          setSeason(weatherToSeason(w));
         }
       })
       .finally(() => mounted && setLoadingWeather(false));
@@ -100,6 +123,24 @@ export default function SuggestScreen() {
       mounted = false;
     };
   }, []);
+
+  // Persist season whenever it changes
+  useEffect(() => {
+    if (season) {
+      AsyncStorage.setItem("wardrobez:suggest_last_season", season).catch(() => {});
+    } else {
+      AsyncStorage.removeItem("wardrobez:suggest_last_season").catch(() => {});
+    }
+  }, [season]);
+
+  // Persist occasion whenever it changes
+  useEffect(() => {
+    if (selectedOccasion) {
+      AsyncStorage.setItem("wardrobez:suggest_last_occasion", selectedOccasion).catch(() => {});
+    } else {
+      AsyncStorage.removeItem("wardrobez:suggest_last_occasion").catch(() => {});
+    }
+  }, [selectedOccasion]);
 
   /**
    * Filter items by occasion when an occasion chip is selected.
@@ -851,7 +892,9 @@ export default function SuggestScreen() {
         </View>
       )}
 
-      {suggestions.map((suggestion, idx) => (
+      {suggestions.map((suggestion, idx) => {
+        const repeatCheck = detectRepeatOutfit(suggestion.items, outfits);
+        return (
         <View key={idx} style={dynamicStyles.suggestionCard}>
           <View style={dynamicStyles.suggestionHeader}>
             <Text style={dynamicStyles.suggestionTitle} numberOfLines={1}>
@@ -869,6 +912,18 @@ export default function SuggestScreen() {
           <Text style={dynamicStyles.scoreText}>
             Score: {Math.round(suggestion.score)}
           </Text>
+
+          {/* Repeat outfit warning (#95) */}
+          {(repeatCheck.isRepeat || repeatCheck.nearRepeat) && (
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: "#F59E0B18", paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, marginBottom: 8 }}>
+              <Ionicons name="alert-circle" size={16} color="#F59E0B" />
+              <Text style={{ fontSize: 12, color: "#B45309", flex: 1 }}>
+                {repeatCheck.isRepeat
+                  ? `Exact repeat of "${repeatCheck.repeatOutfitName}" worn ${repeatCheck.daysSinceWorn}d ago`
+                  : `${repeatCheck.overlapPct}% similar to "${repeatCheck.repeatOutfitName}" worn ${repeatCheck.daysSinceWorn}d ago`}
+              </Text>
+            </View>
+          )}
 
           <View style={dynamicStyles.moodBoardWrap}>
             <MoodBoard items={suggestion.items} size={260} />
@@ -932,7 +987,8 @@ export default function SuggestScreen() {
             </Pressable>
           </View>
         </View>
-      ))}
+        );
+      })}
 
       {/* Save Modal — pick occasions + seasons before saving */}
       <Modal visible={saveModalVisible} transparent animationType="fade" onRequestClose={() => setSaveModalVisible(false)}>
