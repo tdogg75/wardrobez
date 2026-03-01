@@ -128,9 +128,16 @@ export interface ClothingItem {
   occasions?: Occasion[];
   // Pattern / print
   pattern?: Pattern;
+  // Size (e.g., "S", "M", "L", "XL", "32", "8", "One Size")
+  size?: string;
   // Custom tags
   tags?: string[];
 }
+
+/** Common sizes for quick selection */
+export const COMMON_SIZES = ["XXS", "XS", "S", "M", "L", "XL", "XXL", "One Size"] as const;
+export const NUMERIC_SIZES = ["0", "2", "4", "6", "8", "10", "12", "14", "16"] as const;
+export const SHOE_SIZES = ["5", "5.5", "6", "6.5", "7", "7.5", "8", "8.5", "9", "9.5", "10", "10.5", "11", "11.5", "12", "13"] as const;
 
 /** A single wear-log entry for an outfit, optionally with a selfie + note */
 export interface WornEntry {

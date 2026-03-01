@@ -51,6 +51,8 @@ import {
   ITEM_FLAG_LABELS,
   CARE_INSTRUCTION_LABELS,
   PATTERN_LABELS,
+  COMMON_SIZES,
+  SHOE_SIZES,
 } from "@/models/types";
 
 function generateId(): string {
@@ -120,6 +122,9 @@ export default function AddItemScreen() {
 
   // Pattern
   const [pattern, setPattern] = useState<Pattern>("solid");
+
+  // Size (#65)
+  const [size, setSize] = useState("");
 
   // Tags
   const [tags, setTags] = useState<string[]>([]);
@@ -351,6 +356,7 @@ export default function AddItemScreen() {
       careInstructions: careInstructions.length > 0 ? careInstructions : undefined,
       sustainable: sustainable || undefined,
       pattern: pattern !== "solid" ? pattern : undefined,
+      size: size.trim() || undefined,
       tags: tags.length > 0 ? tags : undefined,
     });
 
@@ -516,7 +522,7 @@ export default function AddItemScreen() {
           <>
             <Text style={[styles.sectionTitle, { fontSize: theme.fontSize.md, color: theme.colors.text, marginBottom: theme.spacing.sm, marginTop: theme.spacing.md }]}>Type</Text>
             <View style={styles.chipRow}>
-              {subcats.map((sc) => (
+              {[...subcats].sort((a, b) => a.label.localeCompare(b.label)).map((sc) => (
                 <Chip
                   key={sc.value}
                   label={sc.label}
@@ -690,6 +696,21 @@ export default function AddItemScreen() {
             />
           ))}
         </View>}
+
+        {/* Size (#65) */}
+        <Text style={[styles.sectionTitle, { fontSize: theme.fontSize.md, color: theme.colors.text, marginBottom: theme.spacing.sm, marginTop: theme.spacing.md }]}>Size (optional)</Text>
+        <View style={styles.chipRow}>
+          {(category === "shoes" ? SHOE_SIZES : COMMON_SIZES).map((s) => (
+            <Chip key={s} label={s} selected={size === s} onPress={() => setSize(size === s ? "" : s)} />
+          ))}
+        </View>
+        <TextInput
+          style={[styles.input, { backgroundColor: theme.colors.surface, borderRadius: theme.borderRadius.sm, paddingHorizontal: theme.spacing.md, fontSize: theme.fontSize.md, color: theme.colors.text, borderColor: theme.colors.border, marginTop: 4 }]}
+          placeholder="Or enter custom size..."
+          placeholderTextColor={theme.colors.textLight}
+          value={size}
+          onChangeText={setSize}
+        />
 
         {/* Sections hidden in Quick Add mode */}
         {!quickMode && <>

@@ -15,6 +15,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useClothingItems } from "@/hooks/useClothingItems";
 import { ColorDot } from "@/components/ColorDot";
 import { useTheme } from "@/hooks/useTheme";
+import { hexToHSL } from "@/constants/colors";
 import {
   CATEGORY_LABELS,
   SUBCATEGORIES,
@@ -51,7 +52,7 @@ function formatAge(dateInput: string | number): string {
 export default function ItemDetailScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { getById, addOrUpdate, remove, archiveItem, logItemWorn, removeItemWornDate } = useClothingItems();
+  const { items: allItems, getById, addOrUpdate, remove, archiveItem, logItemWorn, removeItemWornDate } = useClothingItems();
   const { theme } = useTheme();
   const [showArchiveModal, setShowArchiveModal] = useState(false);
   const [showWearLog, setShowWearLog] = useState(false);
@@ -60,6 +61,20 @@ export default function ItemDetailScreen() {
   const styles = useMemo(() => makeStyles(theme), [theme]);
 
   const item = getById(id);
+
+  // Similar items (#47) — same category, similar colour
+  const similarItems = useMemo(() => {
+    if (!item) return [];
+    const itemHSL = hexToHSL(item.color);
+    return allItems
+      .filter((i) => {
+        if (i.id === item.id || i.category !== item.category) return false;
+        const iHSL = hexToHSL(i.color);
+        const hueDiff = Math.min(Math.abs(itemHSL.h - iHSL.h), 360 - Math.abs(itemHSL.h - iHSL.h));
+        return hueDiff <= 40;
+      })
+      .slice(0, 5);
+  }, [item, allItems]);
 
   if (!item) {
     return (
@@ -224,6 +239,14 @@ export default function ItemDetailScreen() {
           <View style={styles.infoRow}>
             <Text style={styles.infoLabel}>Pattern</Text>
             <Text style={styles.infoValue}>{PATTERN_LABELS[item.pattern as Pattern]}</Text>
+          </View>
+        )}
+
+        {/* Size (#65) */}
+        {item.size && (
+          <View style={styles.infoRow}>
+            <Text style={styles.infoLabel}>Size</Text>
+            <Text style={styles.infoValue}>{item.size}</Text>
           </View>
         )}
 
@@ -405,6 +428,35 @@ export default function ItemDetailScreen() {
           <Ionicons name="create-outline" size={20} color="#FFFFFF" />
           <Text style={styles.editBtnText}>Edit Item</Text>
         </Pressable>
+
+        {/* Similar Items (#47) */}
+        {similarItems.length > 0 && (
+          <View style={styles.similarSection}>
+            <Text style={[styles.similarTitle, { color: theme.colors.text }]}>
+              Similar Items
+            </Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              {similarItems.map((si) => (
+                <Pressable
+                  key={si.id}
+                  style={styles.similarCard}
+                  onPress={() => router.push(`/item-detail?id=${si.id}`)}
+                >
+                  {si.imageUris?.length > 0 ? (
+                    <Image source={{ uri: si.imageUris[0] }} style={styles.similarImage} />
+                  ) : (
+                    <View style={[styles.similarImagePlaceholder, { backgroundColor: si.color + "30" }]}>
+                      <ColorDot color={si.color} size={24} />
+                    </View>
+                  )}
+                  <Text style={[styles.similarName, { color: theme.colors.text }]} numberOfLines={1}>
+                    {si.name}
+                  </Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+          </View>
+        )}
 
         {/* Archive Button */}
         <Pressable
@@ -683,6 +735,37 @@ function makeStyles(theme: ReturnType<typeof useTheme>["theme"]) {
       fontSize: theme.fontSize.lg,
       fontWeight: "700",
       color: "#FFFFFF",
+    },
+    similarSection: {
+      marginTop: theme.spacing.lg,
+      paddingHorizontal: theme.spacing.md,
+    },
+    similarTitle: {
+      fontSize: theme.fontSize.md,
+      fontWeight: "700",
+      marginBottom: theme.spacing.sm,
+    },
+    similarCard: {
+      width: 80,
+      marginRight: theme.spacing.sm,
+      alignItems: "center",
+    },
+    similarImage: {
+      width: 70,
+      height: 70,
+      borderRadius: theme.borderRadius.md,
+    },
+    similarImagePlaceholder: {
+      width: 70,
+      height: 70,
+      borderRadius: theme.borderRadius.md,
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    similarName: {
+      fontSize: 11,
+      marginTop: 4,
+      textAlign: "center",
     },
     archiveBtn: {
       flexDirection: "row",

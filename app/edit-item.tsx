@@ -52,6 +52,8 @@ import {
   ITEM_FLAG_LABELS,
   CARE_INSTRUCTION_LABELS,
   PATTERN_LABELS,
+  COMMON_SIZES,
+  SHOE_SIZES,
 } from "@/models/types";
 
 const ARCHIVE_REASONS: ArchiveReason[] = ["donated", "sold", "worn_out", "given_away"];
@@ -99,6 +101,9 @@ export default function EditItemScreen() {
 
   // Pattern
   const [pattern, setPattern] = useState<Pattern>("solid");
+
+  // Size (#65)
+  const [size, setSize] = useState("");
 
   // Notes
   const [notes, setNotes] = useState("");
@@ -166,6 +171,7 @@ export default function EditItemScreen() {
     setCareInstructions(item.careInstructions ?? []);
     setSustainable(item.sustainable ?? false);
     setPattern(item.pattern ?? "solid");
+    setSize(item.size ?? "");
     setTags(item.tags ?? []);
   }, [id, items]);
 
@@ -382,6 +388,7 @@ export default function EditItemScreen() {
       careInstructions: careInstructions.length > 0 ? careInstructions : undefined,
       sustainable,
       pattern: pattern !== "solid" ? pattern : undefined,
+      size: size.trim() || undefined,
       tags: tags.length > 0 ? tags : undefined,
     });
     router.back();
@@ -587,7 +594,7 @@ export default function EditItemScreen() {
           <>
             <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Type</Text>
             <View style={styles.chipRow}>
-              {subcats.map((sc) => (
+              {[...subcats].sort((a, b) => a.label.localeCompare(b.label)).map((sc) => (
                 <Chip
                   key={sc.value}
                   label={sc.label}
@@ -758,6 +765,21 @@ export default function EditItemScreen() {
             />
           ))}
         </View>
+
+        {/* Size (#65) */}
+        <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Size</Text>
+        <View style={styles.chipRow}>
+          {(category === "shoes" ? SHOE_SIZES : COMMON_SIZES).map((s) => (
+            <Chip key={s} label={s} selected={size === s} onPress={() => setSize(size === s ? "" : s)} />
+          ))}
+        </View>
+        <TextInput
+          style={[styles.input, { marginTop: 4 }]}
+          placeholder="Or enter custom size..."
+          placeholderTextColor={theme.colors.textLight}
+          value={size}
+          onChangeText={setSize}
+        />
 
         {/* Hardware Colour */}
         {(HARDWARE_CATEGORIES.includes(category) ||

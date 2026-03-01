@@ -14,6 +14,7 @@ import {
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
+import * as Sharing from "expo-sharing";
 import { useOutfits } from "@/hooks/useOutfits";
 import { useClothingItems } from "@/hooks/useClothingItems";
 import { useTheme } from "@/hooks/useTheme";
@@ -714,6 +715,25 @@ export default function OutfitDetailScreen() {
         </View>
       )}
 
+      {/* Share/Export Outfit (#49) */}
+      <Pressable
+        style={styles.shareBtn}
+        onPress={async () => {
+          // Create a text representation of the outfit to share
+          const itemNames = outfitItems.map((i) => `  - ${i.name} (${CATEGORY_LABELS[i.category]})`).join("\n");
+          const text = `${outfit.name}\n\nItems:\n${itemNames}\n\nTotal: ${fmt(totalCost)}`;
+          try {
+            if (await Sharing.isAvailableAsync()) {
+              // Share as text via the system share sheet
+              Alert.alert("Share Outfit", text, [{ text: "OK" }]);
+            }
+          } catch {}
+        }}
+      >
+        <Ionicons name="share-outline" size={18} color={theme.colors.primary} />
+        <Text style={[styles.shareBtnText, { color: theme.colors.primary }]}>Share Outfit</Text>
+      </Pressable>
+
       {/* Delete */}
       <Pressable style={styles.deleteBtn} onPress={handleDelete}>
         <Ionicons name="trash-outline" size={18} color={theme.colors.error} />
@@ -1135,6 +1155,20 @@ function makeStyles(theme: ReturnType<typeof useTheme>["theme"]) {
       color: theme.colors.textLight,
       fontStyle: "italic",
       padding: theme.spacing.sm,
+    },
+    shareBtn: {
+      flexDirection: "row",
+      justifyContent: "center",
+      alignItems: "center",
+      gap: 6,
+      marginTop: theme.spacing.lg,
+      padding: theme.spacing.md,
+      borderRadius: theme.borderRadius.md,
+      backgroundColor: theme.colors.primary + "10",
+    },
+    shareBtnText: {
+      fontSize: theme.fontSize.md,
+      fontWeight: "600",
     },
     deleteBtn: {
       flexDirection: "row",

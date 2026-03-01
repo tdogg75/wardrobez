@@ -930,9 +930,28 @@ export function suggestOutfits(
     season?: Season;
     occasion?: Occasion;
     maxResults?: number;
+    /** Past outfits with ratings for feedback-based scoring (#66) */
+    ratedOutfits?: Array<{ itemIds: string[]; rating: number }>;
   } = {}
 ): SuggestionResult[] {
-  const { season, occasion, maxResults = 6 } = options;
+  const { season, occasion, maxResults = 6, ratedOutfits } = options;
+
+  // Build item affinity map from rated outfits (#66)
+  // Items that appeared in high-rated outfits get a boost
+  const itemAffinity = new Map<string, number>();
+  if (ratedOutfits) {
+    for (const ro of ratedOutfits) {
+      if (ro.rating >= 4) {
+        for (const itemId of ro.itemIds) {
+          itemAffinity.set(itemId, (itemAffinity.get(itemId) ?? 0) + (ro.rating - 3));
+        }
+      } else if (ro.rating <= 2) {
+        for (const itemId of ro.itemIds) {
+          itemAffinity.set(itemId, (itemAffinity.get(itemId) ?? 0) - 1);
+        }
+      }
+    }
+  }
 
   // Group items by category
   const byCategory = new Map<ClothingCategory, ClothingItem[]>();
@@ -1066,6 +1085,39 @@ export function suggestOutfits(
         score += 3;
         reasons.push("Trendy monochromatic look");
       }
+    }
+
+    // Rating affinity bonus (#66) — items from highly-rated outfits get boosted
+    if (itemAffinity.size > 0) {
+      let affinityScore = 0;
+      for (const item of combo) {
+        affinityScore += itemAffinity.get(item.id) ?? 0;
+      }
+      score += Math.min(affinityScore * 0.5, 5);
+      if (affinityScore >= 3) reasons.push("Items from your top-rated outfits");
+    }
+
+    // Wear recency penalty (#67) — deprioritize recently worn items
+    const now = Date.now();
+    const recentlyWorn = combo.filter((item) => {
+      const lastWorn = item.wearDates?.[item.wearDates.length - 1];
+      if (!lastWorn) return false;
+      const daysSince = (now - new Date(lastWorn).getTime()) / 86400000;
+      return daysSince < 3;
+    });
+    if (recentlyWorn.length > 0) {
+      score -= recentlyWorn.length * 3;
+    }
+    // Boost neglected items (#67)
+    const neglected = combo.filter((item) => {
+      if (!item.wearDates?.length) return item.wearCount === 0;
+      const lastWorn = item.wearDates[item.wearDates.length - 1];
+      const daysSince = (now - new Date(lastWorn).getTime()) / 86400000;
+      return daysSince > 30;
+    });
+    if (neglected.length >= 2) {
+      score += 2;
+      reasons.push("Rediscover neglected pieces");
     }
 
     // Winter stockings with dress/skirt bonus

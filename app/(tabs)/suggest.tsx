@@ -42,7 +42,15 @@ function generateId(): string {
 export default function SuggestScreen() {
   const { theme } = useTheme();
   const { items } = useClothingItems();
-  const { addOrUpdate: saveOutfit } = useOutfits();
+  const { outfits, addOrUpdate: saveOutfit } = useOutfits();
+
+  // Build rated outfits for feedback (#66)
+  const ratedOutfits = useMemo(() =>
+    outfits
+      .filter((o) => o.rating && o.rating > 0)
+      .map((o) => ({ itemIds: o.itemIds, rating: o.rating ?? 0 })),
+    [outfits]
+  );
 
   const [season, setSeason] = useState<Season | undefined>(undefined);
   const [selectedOccasion, setSelectedOccasion] = useState<Occasion | undefined>(undefined);
@@ -161,20 +169,20 @@ export default function SuggestScreen() {
       );
       return;
     }
-    const results = suggestOutfits(occasionFilteredItems, { season, maxResults: 6 });
+    const results = suggestOutfits(occasionFilteredItems, { season, maxResults: 6, ratedOutfits });
     setSuggestions(results);
     setGenerated(true);
     setQuickPickMode(false);
     setCustomNames({});
     setLockedNames({});
-  }, [occasionFilteredItems, season]);
+  }, [occasionFilteredItems, season, ratedOutfits]);
 
   const handleSurpriseMe = useCallback(() => {
     if (occasionFilteredItems.length < 2) {
       Alert.alert("Not enough items", "Add at least 2 items first.");
       return;
     }
-    const results = suggestOutfits(occasionFilteredItems, { season, maxResults: 10 });
+    const results = suggestOutfits(occasionFilteredItems, { season, maxResults: 10, ratedOutfits });
     if (results.length === 0) {
       Alert.alert("No luck!", "Couldn't assemble an outfit. Try adding more items.");
       return;
@@ -192,7 +200,7 @@ export default function SuggestScreen() {
       Alert.alert("Not enough items", "Add at least 2 items first.");
       return;
     }
-    const results = suggestOutfits(occasionFilteredItems, { season, maxResults: 10 });
+    const results = suggestOutfits(occasionFilteredItems, { season, maxResults: 10, ratedOutfits });
     if (results.length === 0) {
       Alert.alert("No luck!", "Couldn't assemble an outfit. Try adding more items.");
       return;
