@@ -808,18 +808,7 @@ export default function WardrobeScreen() {
         )}
       </View>
 
-      {/* Wardrobe Value Summary Banner */}
-      {!loading && filtered.length > 0 && (
-        <View style={styles.summaryBanner}>
-          <Text style={styles.summaryText}>
-            {summary.totalItems} item{summary.totalItems !== 1 ? "s" : ""}
-            {" \u00B7 "}${summary.totalCost.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })} total
-            {summary.avgCpw > 0 && (
-              <>{" \u00B7 "}${summary.avgCpw.toFixed(2)} avg $/wear</>
-            )}
-          </Text>
-        </View>
-      )}
+      {/* Summary banner removed — stats live in Profile > Spending */}
 
       {/* Seasonal Rotation Banner (#79) */}
       {!loading && !seasonBannerDismissed && seasonalRotation && (

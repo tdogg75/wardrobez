@@ -221,10 +221,18 @@ img.src = ${JSON.stringify(dataUri)};
 
 function cropImage(sx,sy,sw,sh) {
   var c = document.getElementById('c');
-  c.width = sw;
-  c.height = sh;
+  var MAX_CANVAS = 2048;
+  var outW = sw;
+  var outH = sh;
+  if (outW > MAX_CANVAS || outH > MAX_CANVAS) {
+    var scale = MAX_CANVAS / Math.max(outW, outH);
+    outW = Math.round(outW * scale);
+    outH = Math.round(outH * scale);
+  }
+  c.width = outW;
+  c.height = outH;
   var ctx = c.getContext('2d');
-  ctx.drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh);
+  ctx.drawImage(img, sx, sy, sw, sh, 0, 0, outW, outH);
   var result = c.toDataURL('image/jpeg', 0.9);
   window.ReactNativeWebView.postMessage(JSON.stringify({
     type:'cropped', data: result
@@ -262,8 +270,16 @@ function cropImage(sx,sy,sw,sh) {
     const scaleY = naturalSize.h / imgSize.h;
     const sx = Math.round(crop.x * scaleX);
     const sy = Math.round(crop.y * scaleY);
-    const sw = Math.round(crop.w * scaleX);
-    const sh = Math.round(crop.h * scaleY);
+    let sw = Math.round(crop.w * scaleX);
+    let sh = Math.round(crop.h * scaleY);
+
+    // Limit output canvas size to avoid WebView canvas limits on mobile
+    const MAX_CANVAS = 2048;
+    if (sw > MAX_CANVAS || sh > MAX_CANVAS) {
+      const downscale = MAX_CANVAS / Math.max(sw, sh);
+      sw = Math.round(sw * downscale);
+      sh = Math.round(sh * downscale);
+    }
 
     webViewRef.current.injectJavaScript(`cropImage(${sx},${sy},${sw},${sh}); true;`);
   }, [crop, imgSize, naturalSize]);
@@ -308,7 +324,7 @@ function cropImage(sx,sy,sw,sh) {
               <Image
                 source={{ uri: imageUri }}
                 style={{ width: imgSize.w, height: imgSize.h }}
-                resizeMode="cover"
+                resizeMode="contain"
               />
 
               {/* Dark overlay with cutout */}
