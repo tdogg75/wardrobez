@@ -73,6 +73,7 @@ export default function GmailPurchasesScreen() {
   const [clientId, setClientId] = useState("");
   const [clientIdInput, setClientIdInput] = useState("");
   const [manualTokenInput, setManualTokenInput] = useState("");
+  const abortRef = React.useRef({ aborted: false });
 
   // reviewing_items state
   const [editableItems, setEditableItems] = useState<EditableLineItem[]>([]);
@@ -118,6 +119,7 @@ export default function GmailPurchasesScreen() {
       // Switch to reviewing_emails immediately so results stream in
       let hasStartedReview = false;
 
+      abortRef.current = { aborted: false };
       const results = await scanGmailForPurchases(
         token,
         (loaded, total) => {
@@ -129,7 +131,8 @@ export default function GmailPurchasesScreen() {
             hasStartedReview = true;
             setScanState("reviewing_emails");
           }
-        }
+        },
+        abortRef.current
       );
 
       setScanningDone(true);
@@ -523,6 +526,15 @@ export default function GmailPurchasesScreen() {
             Checking {progress.loaded} of {progress.total} emails
           </Text>
         )}
+        <Pressable
+          style={[styles.secondaryBtn, { marginTop: 24 }]}
+          onPress={() => {
+            abortRef.current.aborted = true;
+            setScanningDone(true);
+          }}
+        >
+          <Text style={styles.secondaryBtnText}>Done Checking</Text>
+        </Pressable>
       </View>
     );
   }

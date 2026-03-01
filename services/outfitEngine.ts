@@ -19,8 +19,10 @@ export function colorCompatibility(hex1: string, hex2: string): number {
   const neutral1 = isNeutral(hex1);
   const neutral2 = isNeutral(hex2);
 
-  if (neutral1 && neutral2) return 0.9;
-  if (neutral1 || neutral2) return 0.85;
+  // Two neutrals always work (black + white, navy + grey, etc.)
+  if (neutral1 && neutral2) return 0.92;
+  // One neutral grounds any colour
+  if (neutral1 || neutral2) return 0.87;
 
   const c1 = hexToHSL(hex1);
   const c2 = hexToHSL(hex2);
@@ -29,29 +31,46 @@ export function colorCompatibility(hex1: string, hex2: string): number {
   const satDiff = Math.abs(c1.s - c2.s);
   const satBonus = satDiff < 20 ? 0.05 : satDiff < 40 ? 0.02 : 0;
   const lightDiff = Math.abs(c1.l - c2.l);
-  const lightBonus = lightDiff > 15 && lightDiff < 50 ? 0.05 : 0;
+  // Tonal dressing bonus: same hue, different lightness = modern & chic
+  const tonalBonus = hueDiff < 15 && lightDiff > 15 && lightDiff < 45 ? 0.08 : 0;
+  const lightBonus = lightDiff > 15 && lightDiff < 50 ? 0.04 : 0;
 
   let baseScore = 0.35;
 
+  // Monochromatic: same hue, vary saturation/lightness = very trendy
   if (hueDiff < 10) {
-    baseScore = lightDiff > 15 ? 0.88 : 0.72;
-  } else if (hueDiff < 30) {
-    baseScore = 0.85;
-  } else if (hueDiff < 60) {
-    baseScore = 0.75;
-  } else if (hueDiff > 120 && hueDiff < 150) {
-    baseScore = 0.78;
-  } else if (hueDiff > 110 && hueDiff <= 130) {
-    baseScore = 0.73;
-  } else if (hueDiff >= 150 && hueDiff <= 210) {
+    baseScore = lightDiff > 15 ? 0.92 : 0.74;
+  }
+  // Analogous: adjacent colours on wheel (e.g., rust + blush, navy + teal)
+  else if (hueDiff < 30) {
+    baseScore = 0.86;
+  }
+  // Broader analogous
+  else if (hueDiff < 60) {
+    baseScore = 0.76;
+  }
+  // Triadic harmony (~120° apart, e.g., red + blue + yellow tones)
+  else if (hueDiff >= 110 && hueDiff <= 130) {
+    baseScore = 0.74;
+  }
+  // Split-complementary (~150° apart — a classic fashion pairing)
+  else if (hueDiff >= 135 && hueDiff < 165) {
+    baseScore = 0.82;
+  }
+  // Complementary (opposite on wheel — bold, eye-catching)
+  else if (hueDiff >= 165 && hueDiff <= 195) {
     baseScore = 0.9;
-  } else if (hueDiff > 80 && hueDiff <= 100) {
-    baseScore = 0.65;
-  } else {
-    baseScore = 0.4;
+  }
+  // Awkward gap (80-110° — colours that feel "off" together)
+  else if (hueDiff > 80 && hueDiff < 110) {
+    baseScore = 0.5;
+  }
+  // Anything else is a weaker pairing
+  else {
+    baseScore = 0.42;
   }
 
-  return Math.min(1.0, baseScore + satBonus + lightBonus);
+  return Math.min(1.0, baseScore + satBonus + lightBonus + tonalBonus);
 }
 
 function outfitColorScore(items: ClothingItem[]): { score: number; hasGreatHarmony: boolean } {
@@ -74,8 +93,49 @@ function outfitColorScore(items: ClothingItem[]): { score: number; hasGreatHarmo
   }
 
   if (pairs === 0) return { score: 0.85, hasGreatHarmony: false };
-  const avgScore = totalScore / pairs;
-  return { score: avgScore, hasGreatHarmony: avgScore > 0.78 };
+  let avgScore = totalScore / pairs;
+
+  // Trend bonuses:
+  // 1. Monochromatic outfits (all similar hue) — very on-trend
+  const hsls = allColors.map((c) => hexToHSL(c));
+  const nonNeutralHSLs = hsls.filter((h) => h.s >= 15 && h.l > 10 && h.l < 90);
+  if (nonNeutralHSLs.length >= 2) {
+    const hues = nonNeutralHSLs.map((h) => h.h);
+    const maxHueDiff = Math.max(
+      ...hues.flatMap((a, i) => hues.slice(i + 1).map((b) =>
+        Math.min(Math.abs(a - b), 360 - Math.abs(a - b))
+      ))
+    );
+    if (maxHueDiff < 20) avgScore = Math.max(avgScore, 0.92); // monochrome bonus
+  }
+
+  // 2. The "rule of 3 colours or fewer" — more than 3 distinct hues penalised
+  const distinctHues = getDistinctHueCount(hsls);
+  if (distinctHues > 3) {
+    avgScore -= 0.05 * (distinctHues - 3);
+  }
+
+  // 3. Neutral base + single accent colour is a fashion staple
+  const neutrals = hsls.filter((h) => h.s < 15 || h.l < 15 || h.l > 90);
+  const accents = hsls.filter((h) => h.s >= 15 && h.l >= 15 && h.l <= 90);
+  if (neutrals.length >= 2 && accents.length === 1) {
+    avgScore = Math.max(avgScore, 0.88);
+  }
+
+  return { score: Math.min(1.0, Math.max(0, avgScore)), hasGreatHarmony: avgScore > 0.78 };
+}
+
+/** Count distinct colour families in the outfit (within 40° hue bands) */
+function getDistinctHueCount(hsls: { h: number; s: number; l: number }[]): number {
+  const nonNeutral = hsls.filter((h) => h.s >= 15 && h.l > 10 && h.l < 90);
+  if (nonNeutral.length === 0) return 0;
+  const hues = nonNeutral.map((h) => h.h).sort((a, b) => a - b);
+  let groups = 1;
+  for (let i = 1; i < hues.length; i++) {
+    const diff = Math.min(hues[i] - hues[i - 1], 360 - (hues[i] - hues[i - 1]));
+    if (diff > 40) groups++;
+  }
+  return groups;
 }
 
 // --- Fabric Compatibility ---
@@ -83,22 +143,72 @@ function outfitColorScore(items: ClothingItem[]): { score: number; hasGreatHarmo
 const FORMAL_FABRICS: FabricType[] = ["silk", "wool", "cashmere", "leather", "satin"];
 const CASUAL_FABRICS: FabricType[] = ["cotton", "denim", "linen", "nylon", "polyester", "fleece"];
 
-function fabricCompatibility(items: ClothingItem[]): number {
-  const types = items.map((i) => i.fabricType);
-  const uniqueTypes = new Set(types);
-  if (uniqueTypes.size === 1) return 0.9;
+// Great fabric pairings that stylists love
+const ELEVATED_PAIRINGS: [FabricType, FabricType][] = [
+  ["denim", "leather"],   // classic cool combo
+  ["denim", "cotton"],    // casual staple
+  ["silk", "wool"],       // luxe mix
+  ["silk", "denim"],      // high-low contrast (very trendy)
+  ["cashmere", "denim"],  // casual luxury
+  ["linen", "cotton"],    // summer staple
+  ["leather", "wool"],    // winter chic
+  ["satin", "wool"],      // evening elegance
+  ["leather", "silk"],    // edgy meets elegant
+  ["fleece", "denim"],    // cozy casual
+];
 
+// Pairings that usually feel "off"
+const AWKWARD_PAIRINGS: [FabricType, FabricType][] = [
+  ["fleece", "silk"],     // too much contrast
+  ["fleece", "satin"],    // gym meets gala
+  ["nylon", "silk"],      // athletic vs dressy
+  ["nylon", "satin"],     // both shiny but wrong contexts
+  ["polyester", "cashmere"], // cheap meets luxury
+];
+
+function fabricCompatibility(items: ClothingItem[]): number {
+  const types = items.map((i) => i.fabricType).filter(Boolean);
+  const uniqueTypes = new Set(types);
+  if (uniqueTypes.size <= 1) return 0.9;
+
+  // Check for specifically elevated or awkward pairings
+  let elevatedPairs = 0;
+  let awkwardPairs = 0;
+  let totalPairs = 0;
+
+  for (let i = 0; i < types.length; i++) {
+    for (let j = i + 1; j < types.length; j++) {
+      totalPairs++;
+      const pair: [FabricType, FabricType] = [types[i], types[j]];
+      if (ELEVATED_PAIRINGS.some(([a, b]) => (pair[0] === a && pair[1] === b) || (pair[0] === b && pair[1] === a))) {
+        elevatedPairs++;
+      }
+      if (AWKWARD_PAIRINGS.some(([a, b]) => (pair[0] === a && pair[1] === b) || (pair[0] === b && pair[1] === a))) {
+        awkwardPairs++;
+      }
+    }
+  }
+
+  if (totalPairs === 0) return 0.85;
+
+  // Base score from formal/casual mix
   const hasFormal = types.some((t) => FORMAL_FABRICS.includes(t));
   const hasCasual = types.some((t) => CASUAL_FABRICS.includes(t));
+  let baseScore = 0.85;
 
   if (hasFormal && hasCasual) {
+    // Mixed formality is OK and often intentional in modern fashion (e.g. silk + denim)
     const formalCount = types.filter((t) => FORMAL_FABRICS.includes(t)).length;
     const casualCount = types.filter((t) => CASUAL_FABRICS.includes(t)).length;
     const balance = Math.min(formalCount, casualCount) / Math.max(formalCount, casualCount);
-    return 0.6 + balance * 0.2;
+    baseScore = 0.65 + balance * 0.15;
   }
 
-  return 0.85;
+  // Apply pairing bonuses/penalties
+  const elevatedBonus = (elevatedPairs / totalPairs) * 0.15;
+  const awkwardPenalty = (awkwardPairs / totalPairs) * 0.2;
+
+  return Math.min(1.0, Math.max(0.3, baseScore + elevatedBonus - awkwardPenalty));
 }
 
 // --- Comprehensive Seasonal Logic ---
@@ -287,11 +397,19 @@ const FORMAL_ITEM_SUBS: string[] = [
   "heels", "loafers", "blouse",
 ];
 
+// Volume/silhouette pairings that work well
+const SLIM_SUBS = ["leggings", "skinny", "pencil_skirt", "mini_skirt"];
+const LOOSE_SUBS = ["hoodie", "sweatshirt", "oversized", "wide_leg"];
+
 /**
- * Check if an outfit violates style pairing rules
- * (e.g., running shoes with a fancy dress)
+ * Check if an outfit violates style pairing rules.
+ * Returns negative penalty for clashes, or positive bonus for great pairings.
  */
 function getStyleClashPenalty(items: ClothingItem[]): number {
+  let penalty = 0;
+  const subs = items.map((i) => i.subCategory ?? "");
+
+  // 1. Formal vs casual clash
   const hasFormalItem = items.some(
     (i) =>
       FORMAL_ITEM_SUBS.includes(i.subCategory ?? "") ||
@@ -300,9 +418,36 @@ function getStyleClashPenalty(items: ClothingItem[]): number {
   const hasCasualOnly = items.some((i) =>
     CASUAL_ONLY_SUBS.includes(i.subCategory ?? "")
   );
+  if (hasFormalItem && hasCasualOnly) penalty -= 8;
 
-  if (hasFormalItem && hasCasualOnly) return -8;
-  return 0;
+  // 2. Specific bad pairings
+  const hasRunningShoes = subs.includes("running_shoes") || subs.includes("soccer_shoes");
+  const hasFormalDress = subs.includes("formal_dress") || subs.includes("cocktail_dress");
+  if (hasRunningShoes && hasFormalDress) penalty -= 12; // athletic shoes with formal dress = big no
+
+  const hasFlipFlops = subs.includes("casual_sandals") || subs.includes("flip_flops") || subs.includes("slides");
+  const hasBlazer = items.some((i) => i.category === "blazers");
+  if (hasFlipFlops && hasBlazer) penalty -= 6; // slides with a blazer is usually wrong
+
+  // 3. Volume balance bonus: slim bottom + loose top (or vice versa) is a classic rule
+  const hasSlimBottom = items.some(
+    (i) => (i.category === "bottoms" || i.category === "skirts") && SLIM_SUBS.includes(i.subCategory ?? "")
+  );
+  const hasLooseTop = items.some(
+    (i) => i.category === "tops" && LOOSE_SUBS.includes(i.subCategory ?? "")
+  );
+  if (hasSlimBottom && hasLooseTop) penalty += 3; // balanced proportions
+
+  // 4. Matching metals bonus (already handled by hardware, but reinforce)
+  const hwColors = items.map((i) => i.hardwareColour).filter(Boolean);
+  const uniqueHW = new Set(hwColors);
+  if (uniqueHW.size === 1 && hwColors.length >= 2) penalty += 2;
+
+  // 5. "Elevated casual" bonus: denim + blazer or leather jacket
+  const hasDenim = items.some((i) => i.subCategory === "jeans" || i.fabricType === "denim");
+  if (hasDenim && hasBlazer) penalty += 3; // classic elevated casual
+
+  return penalty;
 }
 
 function getWorkScore(items: ClothingItem[]): number {
@@ -792,6 +937,30 @@ export function suggestOutfits(
     if (categories.has("dresses")) reasons.push("Dress-based look");
     if (categories.has("blazers")) reasons.push("Polished with blazer");
 
+    // Texture/fabric contrast bonus (silk + denim, leather + knit = intentional high-low)
+    const fabrics = new Set(combo.map((i) => i.fabricType).filter(Boolean));
+    if ((fabrics.has("silk") && fabrics.has("denim")) ||
+        (fabrics.has("leather") && fabrics.has("wool")) ||
+        (fabrics.has("cashmere") && fabrics.has("denim"))) {
+      score += 2;
+      reasons.push("Great fabric contrast");
+    }
+
+    // Monochromatic outfit bonus
+    const comboHSLs = combo.map((i) => hexToHSL(i.color));
+    const nonNeutralH = comboHSLs.filter((h) => h.s >= 15 && h.l > 10 && h.l < 90);
+    if (nonNeutralH.length >= 2) {
+      const maxDiff = Math.max(
+        ...nonNeutralH.flatMap((a, i) => nonNeutralH.slice(i + 1).map((b) =>
+          Math.min(Math.abs(a.h - b.h), 360 - Math.abs(a.h - b.h))
+        ))
+      );
+      if (maxDiff < 15) {
+        score += 3;
+        reasons.push("Trendy monochromatic look");
+      }
+    }
+
     // Winter stockings with dress/skirt bonus
     if (season === "winter") {
       const hasDressOrSkirt = combo.some(
@@ -876,6 +1045,36 @@ export function validateOutfit(items: ClothingItem[]): string[] {
     warnings.push("Mixing very casual items (hoodies, sweats) with formal pieces may clash");
   }
 
+  // Running/athletic shoes with dressy outfit
+  const hasAthleticShoes = items.some(
+    (i) => i.category === "shoes" && ["running_shoes", "soccer_shoes"].includes(i.subCategory ?? "")
+  );
+  const hasDressyItems = items.some(
+    (i) => ["formal_dress", "cocktail_dress", "formal_blazer"].includes(i.subCategory ?? "")
+  );
+  if (hasAthleticShoes && hasDressyItems) {
+    warnings.push("Athletic shoes don't pair well with dressy pieces — try loafers, heels, or ankle boots");
+  }
+
+  // Too many colours warning
+  const nonNeutralItems = items.filter((i) => !isNeutral(i.color));
+  if (nonNeutralItems.length > 3) {
+    const hues = nonNeutralItems.map((i) => hexToHSL(i.color).h);
+    const distinctHues = getDistinctHueCount(nonNeutralItems.map((i) => hexToHSL(i.color)));
+    if (distinctHues > 3) {
+      warnings.push(`${distinctHues} different colour families — try sticking to 2-3 max for a cohesive look`);
+    }
+  }
+
+  // Fabric clash warning
+  const fabricTypes = new Set(items.map((i) => i.fabricType).filter(Boolean));
+  if (
+    (fabricTypes.has("fleece") && fabricTypes.has("silk")) ||
+    (fabricTypes.has("nylon") && fabricTypes.has("satin"))
+  ) {
+    warnings.push("These fabrics have very different formality levels — the outfit may feel disjointed");
+  }
+
   return warnings;
 }
 
@@ -947,6 +1146,38 @@ export function getNextItemSuggestion(currentItems: ClothingItem[], allItems: Cl
   // If outfit is fairly complete, suggest refinements
   if (cats.has("blazers") && !cats.has("purse")) {
     return "A structured bag or clutch would complement this polished look.";
+  }
+
+  // Texture suggestions
+  const fabrics = new Set(currentItems.map((i) => i.fabricType).filter(Boolean));
+  if (fabrics.size === 1 && currentItems.length >= 3) {
+    const fabric = [...fabrics][0];
+    if (fabric === "cotton" || fabric === "denim") {
+      return "Adding a leather or silk piece would create appealing texture contrast.";
+    }
+    if (fabric === "wool" || fabric === "cashmere") {
+      return "A denim or leather piece would break up the knit textures nicely.";
+    }
+  }
+
+  // Monochromatic refinement
+  const hsls = currentItems.map((i) => hexToHSL(i.color));
+  const nonNeutral = hsls.filter((h) => h.s >= 15 && h.l > 10 && h.l < 90);
+  if (nonNeutral.length >= 2) {
+    const maxHueDiff = Math.max(
+      ...nonNeutral.flatMap((a, i) => nonNeutral.slice(i + 1).map((b) =>
+        Math.min(Math.abs(a.h - b.h), 360 - Math.abs(a.h - b.h))
+      ))
+    );
+    if (maxHueDiff < 20) {
+      return "Beautiful tonal outfit! A metallic accessory would add just the right amount of contrast.";
+    }
+  }
+
+  // All neutrals suggestion
+  const allNeutral = currentItems.every((i) => isNeutral(i.color));
+  if (allNeutral && currentItems.length >= 3) {
+    return "Chic neutral palette! A pop of colour through a shoe, bag, or scarf would bring it to life.";
   }
 
   return null;

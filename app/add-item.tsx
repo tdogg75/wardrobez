@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import {
   View,
   Text,
@@ -12,7 +12,7 @@ import {
   Modal,
   Linking,
 } from "react-native";
-import { useRouter } from "expo-router";
+import { useRouter, useLocalSearchParams } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import { Ionicons } from "@expo/vector-icons";
 import { useClothingItems } from "@/hooks/useClothingItems";
@@ -77,6 +77,7 @@ function getTodayISO(): string {
 
 export default function AddItemScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ barcodeResult?: string }>();
   const { items, addOrUpdate } = useClothingItems();
   const { theme } = useTheme();
 
@@ -162,6 +163,24 @@ export default function AddItemScreen() {
       return hueDiff <= 30;
     });
   }, [items, category, finalColor]);
+
+  // Handle barcode scan result
+  useEffect(() => {
+    if (params.barcodeResult) {
+      try {
+        const result = JSON.parse(params.barcodeResult);
+        if (result.name) setName(result.name);
+        if (result.brand) setBrand(result.brand);
+        if (result.category) setCategory(result.category);
+        if (result.subCategory) setSubCategory(result.subCategory);
+        if (result.fabricType) setFabricType(result.fabricType);
+        if (result.cost != null) setCost(String(result.cost));
+        Alert.alert("Barcode Scanned!", "Product info has been applied. Review and adjust as needed.");
+      } catch {
+        // ignore parse errors
+      }
+    }
+  }, [params.barcodeResult]);
 
   const pickImage = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -382,6 +401,16 @@ export default function AddItemScreen() {
           value={brand}
           onChangeText={setBrand}
         />
+
+        {/* Barcode Scanner */}
+        <Pressable
+          style={[styles.barcodeBtn, { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border, borderRadius: theme.borderRadius.sm, marginTop: theme.spacing.md }]}
+          onPress={() => router.push("/barcode-scanner")}
+        >
+          <Ionicons name="barcode-outline" size={22} color={theme.colors.primary} />
+          <Text style={[styles.barcodeBtnText, { color: theme.colors.primary }]}>Scan Barcode / QR Code</Text>
+          <Ionicons name="chevron-forward" size={16} color={theme.colors.textLight} />
+        </Pressable>
 
         {/* Product URL */}
         <Text style={[styles.sectionTitle, { fontSize: theme.fontSize.md, color: theme.colors.text, marginBottom: theme.spacing.sm, marginTop: theme.spacing.md }]}>Product URL (optional)</Text>
@@ -1009,6 +1038,19 @@ const styles = StyleSheet.create({
   input: {
     height: 48,
     borderWidth: 1,
+  },
+  barcodeBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderWidth: 1,
+  },
+  barcodeBtnText: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: "600",
   },
   urlRow: {
     flexDirection: "row",

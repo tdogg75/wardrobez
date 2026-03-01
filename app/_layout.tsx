@@ -59,6 +59,13 @@ function AppContent() {
             }}
           />
           <Stack.Screen
+            name="barcode-scanner"
+            options={{
+              presentation: "fullScreenModal",
+              headerShown: false,
+            }}
+          />
+          <Stack.Screen
             name="outfit-detail"
             options={{
               presentation: "modal",

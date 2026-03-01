@@ -13,6 +13,7 @@ import {
   Dimensions,
 } from "react-native";
 import { useRouter } from "expo-router";
+import { useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useOutfits } from "@/hooks/useOutfits";
 import { useClothingItems } from "@/hooks/useClothingItems";
@@ -25,7 +26,8 @@ import {
   OCCASION_LABELS,
   CATEGORY_LABELS,
 } from "@/models/types";
-import type { ClothingItem, Season, Occasion, Outfit } from "@/models/types";
+import type { ClothingItem, Season, Occasion, Outfit, PlannedOutfit } from "@/models/types";
+import { getPlannedOutfits, savePlannedOutfit, deletePlannedOutfit } from "@/services/storage";
 
 const SEASONS: Season[] = ["spring", "summer", "fall", "winter"];
 const OCCASIONS: Occasion[] = ["casual", "work", "fancy", "party", "vacation"];
@@ -73,6 +75,16 @@ export default function OutfitsScreen() {
   const now = new Date();
   const [calYear, setCalYear] = useState(now.getFullYear());
   const [calMonth, setCalMonth] = useState(now.getMonth());
+
+  // Weekly planner state
+  const [plannerVisible, setPlannerVisible] = useState(false);
+  const [weekPlan, setWeekPlan] = useState<Record<string, string | null>>({
+    Monday: null, Tuesday: null, Wednesday: null, Thursday: null,
+    Friday: null, Saturday: null, Sunday: null,
+  });
+  const [pickerDay, setPickerDay] = useState<string | null>(null);
+  const [pickerSeasonFilter, setPickerSeasonFilter] = useState<Season | null>(null);
+  const [pickerOccasionFilter, setPickerOccasionFilter] = useState<Occasion | null>(null);
 
   const filteredOutfits = useMemo(() => {
     return outfits.filter((outfit) => {
@@ -162,6 +174,258 @@ export default function OutfitsScreen() {
     },
     []
   );
+
+  // --- Weekly Planner helpers ---
+  const loadWeekPlan = useCallback(async () => {
+    const saved = await getPlannedOutfits();
+    if (saved.length > 0) {
+      const plan: Record<string, string | null> = {
+        Monday: null, Tuesday: null, Wednesday: null, Thursday: null,
+        Friday: null, Saturday: null, Sunday: null,
+      };
+      const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+      for (const entry of saved) {
+        const d = new Date(entry.date);
+        const dayName = dayNames[d.getDay()];
+        if (dayName && entry.outfitId) {
+          plan[dayName] = entry.outfitId;
+        }
+      }
+      setWeekPlan(plan);
+    }
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadWeekPlan();
+    }, [loadWeekPlan])
+  );
+
+  const assignOutfit = useCallback(async (day: string, outfit: Outfit) => {
+    const newPlan = { ...weekPlan, [day]: outfit.id };
+    setWeekPlan(newPlan);
+    const dayIndex = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"].indexOf(day);
+    const currentDayIndex = (now.getDay() + 6) % 7; // Monday = 0
+    const diff = dayIndex - currentDayIndex;
+    const targetDate = new Date(now);
+    targetDate.setDate(now.getDate() + diff);
+    const isoDate = targetDate.toISOString().split("T")[0];
+    await savePlannedOutfit({ date: isoDate, outfitId: outfit.id });
+    setPickerDay(null);
+  }, [weekPlan, now]);
+
+  const clearDay = useCallback(async (day: string) => {
+    const newPlan = { ...weekPlan, [day]: null };
+    setWeekPlan(newPlan);
+    const dayIndex = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"].indexOf(day);
+    const currentDayIndex = (now.getDay() + 6) % 7;
+    const diff = dayIndex - currentDayIndex;
+    const targetDate = new Date(now);
+    targetDate.setDate(now.getDate() + diff);
+    const isoDate = targetDate.toISOString().split("T")[0];
+    await deletePlannedOutfit(isoDate);
+  }, [weekPlan, now]);
+
+  const pickerOutfits = useMemo(() => {
+    return outfits.filter((outfit) => {
+      if (pickerSeasonFilter && !(outfit.seasons ?? []).includes(pickerSeasonFilter)) return false;
+      if (pickerOccasionFilter && !(outfit.occasions ?? []).includes(pickerOccasionFilter)) return false;
+      return true;
+    });
+  }, [outfits, pickerSeasonFilter, pickerOccasionFilter]);
+
+  // --- Planner Modal ---
+  const renderPlannerModal = () => {
+    const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+    const todayIdx = (now.getDay() + 6) % 7; // Monday = 0
+
+    return (
+      <Modal
+        visible={plannerVisible}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => { setPlannerVisible(false); setPickerDay(null); }}
+      >
+        <View style={[styles.plannerModal, { backgroundColor: theme.colors.background }]}>
+          {/* Header */}
+          <View style={[styles.plannerHeader, { borderBottomColor: theme.colors.border }]}>
+            <Text style={[styles.plannerTitle, { color: theme.colors.text }]}>
+              Weekly Planner
+            </Text>
+            <Pressable onPress={() => { setPlannerVisible(false); setPickerDay(null); }} hitSlop={12}>
+              <Ionicons name="close" size={24} color={theme.colors.text} />
+            </Pressable>
+          </View>
+
+          {pickerDay ? (
+            /* --- Outfit Picker for a specific day --- */
+            <View style={{ flex: 1 }}>
+              <View style={[styles.pickerHeader, { borderBottomColor: theme.colors.border }]}>
+                <Pressable onPress={() => setPickerDay(null)} hitSlop={12}>
+                  <Ionicons name="arrow-back" size={22} color={theme.colors.text} />
+                </Pressable>
+                <Text style={[styles.pickerDayTitle, { color: theme.colors.text }]}>
+                  {pickerDay}
+                </Text>
+                {weekPlan[pickerDay] && (
+                  <Pressable
+                    onPress={() => clearDay(pickerDay)}
+                    style={[styles.pickerClearBtn, { backgroundColor: theme.colors.error + "15" }]}
+                  >
+                    <Text style={[styles.pickerClearText, { color: theme.colors.error }]}>Clear</Text>
+                  </Pressable>
+                )}
+              </View>
+
+              {/* Filters */}
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.pickerFilters}
+              >
+                <Text style={[styles.filterLabel, { color: theme.colors.textLight }]}>Season:</Text>
+                {SEASONS.map((s) => (
+                  <Chip
+                    key={s}
+                    label={SEASON_LABELS[s]}
+                    selected={pickerSeasonFilter === s}
+                    onPress={() => setPickerSeasonFilter(pickerSeasonFilter === s ? null : s)}
+                  />
+                ))}
+                <View style={[styles.filterDivider, { backgroundColor: theme.colors.border }]} />
+                <Text style={[styles.filterLabel, { color: theme.colors.textLight }]}>Occasion:</Text>
+                {OCCASIONS.map((o) => (
+                  <Chip
+                    key={o}
+                    label={OCCASION_LABELS[o]}
+                    selected={pickerOccasionFilter === o}
+                    onPress={() => setPickerOccasionFilter(pickerOccasionFilter === o ? null : o)}
+                  />
+                ))}
+              </ScrollView>
+
+              {/* Outfit list */}
+              <FlatList
+                data={pickerOutfits}
+                keyExtractor={(o) => o.id}
+                contentContainerStyle={styles.pickerList}
+                ListEmptyComponent={
+                  <View style={styles.pickerEmpty}>
+                    <Ionicons name="shirt-outline" size={32} color={theme.colors.textLight} />
+                    <Text style={[styles.pickerEmptyText, { color: theme.colors.textLight }]}>
+                      No outfits match these filters
+                    </Text>
+                  </View>
+                }
+                renderItem={({ item: outfit }) => {
+                  const oItems = resolveItems(outfit);
+                  const isSelected = weekPlan[pickerDay] === outfit.id;
+                  return (
+                    <Pressable
+                      style={[
+                        styles.pickerCard,
+                        { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
+                        isSelected && { borderColor: theme.colors.primary, borderWidth: 2 },
+                      ]}
+                      onPress={() => assignOutfit(pickerDay, outfit)}
+                    >
+                      <View style={styles.pickerCardBody}>
+                        <View style={styles.pickerMoodWrap}>
+                          <MoodBoard items={oItems} size={80} />
+                        </View>
+                        <View style={styles.pickerCardInfo}>
+                          <Text style={[styles.pickerCardName, { color: theme.colors.text }]} numberOfLines={1}>
+                            {outfit.name}
+                          </Text>
+                          <Text style={[styles.pickerCardItems, { color: theme.colors.textSecondary }]} numberOfLines={2}>
+                            {oItems.map((i) => i.name).join(" + ")}
+                          </Text>
+                          <View style={styles.pickerCardMeta}>
+                            {[1, 2, 3, 4, 5].map((star) => (
+                              <Ionicons
+                                key={star}
+                                name={star <= outfit.rating ? "star" : "star-outline"}
+                                size={12}
+                                color={star <= outfit.rating ? "#FFD700" : theme.colors.textLight}
+                              />
+                            ))}
+                            {(outfit.occasions ?? []).length > 0 && (
+                              <Text style={[styles.pickerCardTag, { color: theme.colors.primary }]}>
+                                {(outfit.occasions ?? []).map((o) => OCCASION_LABELS[o]).join(", ")}
+                              </Text>
+                            )}
+                          </View>
+                        </View>
+                        {isSelected && (
+                          <Ionicons name="checkmark-circle" size={22} color={theme.colors.primary} />
+                        )}
+                      </View>
+                    </Pressable>
+                  );
+                }}
+              />
+            </View>
+          ) : (
+            /* --- Days of the week overview --- */
+            <ScrollView contentContainerStyle={styles.plannerBody}>
+              {DAYS.map((day, idx) => {
+                const outfitId = weekPlan[day];
+                const outfit = outfitId ? outfits.find((o) => o.id === outfitId) : null;
+                const oItems = outfit ? resolveItems(outfit) : [];
+                const isToday = idx === todayIdx;
+
+                return (
+                  <Pressable
+                    key={day}
+                    style={[
+                      styles.plannerDayRow,
+                      { borderBottomColor: theme.colors.border },
+                      isToday && { backgroundColor: theme.colors.primary + "08" },
+                    ]}
+                    onPress={() => {
+                      setPickerDay(day);
+                      setPickerSeasonFilter(null);
+                      setPickerOccasionFilter(null);
+                    }}
+                  >
+                    <View style={[styles.plannerDayLabel, isToday && { backgroundColor: theme.colors.primary + "15" }]}>
+                      <Text style={[styles.plannerDayText, { color: isToday ? theme.colors.primary : theme.colors.text }]}>
+                        {day.slice(0, 3)}
+                      </Text>
+                      {isToday && (
+                        <View style={[styles.todayDot, { backgroundColor: theme.colors.primary }]} />
+                      )}
+                    </View>
+                    {outfit ? (
+                      <View style={styles.plannerOutfitInfo}>
+                        <View style={styles.plannerMoodBoardWrap}>
+                          <MoodBoard items={oItems} size={56} />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={[styles.plannerOutfitName, { color: theme.colors.text }]} numberOfLines={1}>
+                            {outfit.name}
+                          </Text>
+                          <Text style={[styles.plannerOutfitMeta, { color: theme.colors.textSecondary }]} numberOfLines={1}>
+                            {oItems.length} items
+                          </Text>
+                        </View>
+                        <Ionicons name="chevron-forward" size={16} color={theme.colors.textLight} />
+                      </View>
+                    ) : (
+                      <View style={[styles.plannerEmptySlot, { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border }]}>
+                        <Ionicons name="add-outline" size={18} color={theme.colors.textLight} />
+                        <Text style={[styles.plannerEmptyText, { color: theme.colors.textLight }]}>Tap to assign</Text>
+                      </View>
+                    )}
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          )}
+        </View>
+      </Modal>
+    );
+  };
 
   // --- Comparison Modal ---
   const renderCompareModal = () => {
@@ -477,6 +741,18 @@ export default function OutfitsScreen() {
             />
           </Pressable>
 
+          {/* Weekly planner button */}
+          <Pressable
+            style={[styles.viewToggle, { backgroundColor: theme.colors.surfaceAlt }]}
+            onPress={() => setPlannerVisible(true)}
+          >
+            <Ionicons
+              name="today-outline"
+              size={16}
+              color={theme.colors.textLight}
+            />
+          </Pressable>
+
           <View style={[styles.filterDivider, { backgroundColor: theme.colors.border }]} />
 
           {/* Compare mode toggle */}
@@ -727,6 +1003,9 @@ export default function OutfitsScreen() {
 
       {/* Comparison modal */}
       {renderCompareModal()}
+
+      {/* Weekly planner modal */}
+      {renderPlannerModal()}
     </View>
   );
 }
@@ -1081,5 +1360,159 @@ const styles = StyleSheet.create({
   },
   calOutfitMeta: {
     fontSize: 11,
+  },
+
+  // Weekly Planner styles
+  plannerModal: { flex: 1 },
+  plannerHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  plannerTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+  },
+  plannerBody: { paddingBottom: 40 },
+  plannerDayRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  plannerDayLabel: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 12,
+  },
+  plannerDayText: {
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  todayDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 3,
+    marginTop: 2,
+  },
+  plannerOutfitInfo: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  plannerMoodBoardWrap: {
+    borderRadius: 8,
+    overflow: "hidden",
+  },
+  plannerOutfitName: {
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  plannerOutfitMeta: {
+    fontSize: 11,
+    marginTop: 2,
+  },
+  plannerEmptySlot: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderStyle: "dashed",
+  },
+  plannerEmptyText: {
+    fontSize: 13,
+  },
+
+  // Outfit picker styles
+  pickerHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  pickerDayTitle: {
+    flex: 1,
+    fontSize: 17,
+    fontWeight: "700",
+  },
+  pickerClearBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  pickerClearText: {
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  pickerFilters: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    alignItems: "center",
+    gap: 6,
+  },
+  pickerList: {
+    padding: 12,
+    paddingBottom: 40,
+  },
+  pickerEmpty: {
+    alignItems: "center",
+    paddingVertical: 40,
+    gap: 8,
+  },
+  pickerEmptyText: {
+    fontSize: 14,
+  },
+  pickerCard: {
+    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    marginBottom: 10,
+    overflow: "hidden",
+  },
+  pickerCardBody: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 10,
+    gap: 12,
+  },
+  pickerMoodWrap: {
+    borderRadius: 8,
+    overflow: "hidden",
+  },
+  pickerCardInfo: {
+    flex: 1,
+  },
+  pickerCardName: {
+    fontSize: 14,
+    fontWeight: "700",
+    marginBottom: 2,
+  },
+  pickerCardItems: {
+    fontSize: 11,
+    lineHeight: 15,
+    marginBottom: 4,
+  },
+  pickerCardMeta: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 2,
+  },
+  pickerCardTag: {
+    fontSize: 10,
+    fontWeight: "600",
+    marginLeft: 6,
   },
 });
