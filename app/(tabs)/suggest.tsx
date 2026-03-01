@@ -9,11 +9,13 @@ import {
   ActivityIndicator,
   Animated,
   Dimensions,
+  Modal,
+  TextInput,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useClothingItems } from "@/hooks/useClothingItems";
 import { useOutfits } from "@/hooks/useOutfits";
-import { suggestOutfits, generateOutfitName, type SuggestionResult } from "@/services/outfitEngine";
+import { suggestOutfits, generateOutfitName, flagOutfit, type SuggestionResult } from "@/services/outfitEngine";
 import {
   getCurrentWeather,
   weatherToSeason,
@@ -54,6 +56,17 @@ export default function SuggestScreen() {
   const [activeQuickPick, setActiveQuickPick] = useState(0);
   const quickPickScrollRef = useRef<ScrollView>(null);
   const quickPickFadeAnim = useRef(new Animated.Value(0)).current;
+
+  // Save modal state — lets user pick occasions/seasons before saving
+  const [saveModalVisible, setSaveModalVisible] = useState(false);
+  const [saveModalSuggestion, setSaveModalSuggestion] = useState<{ suggestion: SuggestionResult; idx: number } | null>(null);
+  const [saveOccasions, setSaveOccasions] = useState<Occasion[]>([]);
+  const [saveSeasons, setSaveSeasons] = useState<Season[]>([]);
+
+  // Flag modal state — lets user flag an outfit as bad
+  const [flagModalVisible, setFlagModalVisible] = useState(false);
+  const [flagSuggestion, setFlagSuggestion] = useState<SuggestionResult | null>(null);
+  const [flagReason, setFlagReason] = useState("");
 
   // Track custom names per suggestion index
   const [customNames, setCustomNames] = useState<Record<number, string>>({});
@@ -203,28 +216,16 @@ export default function SuggestScreen() {
     }).start();
   }, [occasionFilteredItems, season, quickPickFadeAnim]);
 
-  const handleQuickPickSelect = async (suggestion: SuggestionResult, idx: number) => {
-    const name = getSuggestedName(suggestion, idx);
-
-    await saveOutfit({
-      id: generateId(),
-      name,
-      nameLocked: true,
-      itemIds: suggestion.items.map((i) => i.id),
-      occasions: selectedOccasion ? [selectedOccasion] : [],
-      seasons: season ? [season] : [],
-      rating: Math.min(5, Math.max(1, Math.round(suggestion.score / 20))),
-      createdAt: Date.now(),
-      suggested: true,
-      wornDates: [],
-    });
-
-    Alert.alert("Saved!", `"${name}" has been saved. Time to get dressed!`);
-    setQuickPickMode(false);
-    setQuickPicks([]);
+  const openSaveModal = (suggestion: SuggestionResult, idx: number) => {
+    setSaveModalSuggestion({ suggestion, idx });
+    setSaveOccasions(selectedOccasion ? [selectedOccasion] : []);
+    setSaveSeasons(season ? [season] : []);
+    setSaveModalVisible(true);
   };
 
-  const handleSave = async (suggestion: SuggestionResult, idx: number) => {
+  const handleConfirmSave = async () => {
+    if (!saveModalSuggestion) return;
+    const { suggestion, idx } = saveModalSuggestion;
     const name = getSuggestedName(suggestion, idx);
 
     await saveOutfit({
@@ -232,15 +233,46 @@ export default function SuggestScreen() {
       name,
       nameLocked: true,
       itemIds: suggestion.items.map((i) => i.id),
-      occasions: selectedOccasion ? [selectedOccasion] : [],
-      seasons: season ? [season] : [],
+      occasions: saveOccasions,
+      seasons: saveSeasons,
       rating: Math.min(5, Math.max(1, Math.round(suggestion.score / 20))),
       createdAt: Date.now(),
       suggested: true,
       wornDates: [],
     });
 
+    setSaveModalVisible(false);
+    setSaveModalSuggestion(null);
     Alert.alert("Saved!", `"${name}" has been added to your outfits.`);
+
+    if (quickPickMode) {
+      setQuickPickMode(false);
+      setQuickPicks([]);
+    }
+  };
+
+  const handleQuickPickSelect = (suggestion: SuggestionResult, idx: number) => {
+    openSaveModal(suggestion, idx);
+  };
+
+  const handleSave = (suggestion: SuggestionResult, idx: number) => {
+    openSaveModal(suggestion, idx);
+  };
+
+  const openFlagModal = (suggestion: SuggestionResult) => {
+    setFlagSuggestion(suggestion);
+    setFlagReason("");
+    setFlagModalVisible(true);
+  };
+
+  const handleConfirmFlag = async () => {
+    if (!flagSuggestion || !flagReason.trim()) return;
+    const subs = flagSuggestion.items.map((i) => i.subCategory ?? i.category);
+    const pattern = subs.join("+");
+    await flagOutfit(pattern, flagReason.trim());
+    setFlagModalVisible(false);
+    setFlagSuggestion(null);
+    Alert.alert("Flagged", "This type of outfit won't be suggested again.");
   };
 
   const handleQuickPickScroll = (event: any) => {
@@ -869,19 +901,127 @@ export default function SuggestScreen() {
             </View>
           )}
 
-          <Pressable
-            style={dynamicStyles.saveOutfitBtn}
-            onPress={() => handleSave(suggestion, idx)}
-          >
-            <Ionicons
-              name="bookmark-outline"
-              size={16}
-              color={theme.colors.primary}
-            />
-            <Text style={dynamicStyles.saveOutfitText}>Save Outfit</Text>
-          </Pressable>
+          <View style={{ flexDirection: "row", gap: 8, marginTop: 12 }}>
+            <Pressable
+              style={[dynamicStyles.saveOutfitBtn, { flex: 1 }]}
+              onPress={() => handleSave(suggestion, idx)}
+            >
+              <Ionicons name="bookmark-outline" size={16} color={theme.colors.primary} />
+              <Text style={dynamicStyles.saveOutfitText}>Save Outfit</Text>
+            </Pressable>
+            <Pressable
+              style={{
+                paddingHorizontal: 12,
+                paddingVertical: 10,
+                borderRadius: theme.borderRadius.sm,
+                backgroundColor: theme.colors.error + "12",
+                justifyContent: "center",
+                alignItems: "center",
+              }}
+              onPress={() => openFlagModal(suggestion)}
+            >
+              <Ionicons name="flag-outline" size={16} color={theme.colors.error} />
+            </Pressable>
+          </View>
         </View>
       ))}
+
+      {/* Save Modal — pick occasions + seasons before saving */}
+      <Modal visible={saveModalVisible} transparent animationType="fade" onRequestClose={() => setSaveModalVisible(false)}>
+        <Pressable style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.4)", justifyContent: "flex-end" }} onPress={() => setSaveModalVisible(false)}>
+          <Pressable style={{ backgroundColor: theme.colors.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, paddingBottom: 40 }} onPress={() => {}}>
+            <Text style={{ fontSize: 18, fontWeight: "700", color: theme.colors.text, marginBottom: 16 }}>Save Outfit</Text>
+
+            <Text style={{ fontSize: 14, fontWeight: "600", color: theme.colors.text, marginBottom: 8 }}>Occasions</Text>
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>
+              {OCCASIONS.map((o) => (
+                <Chip
+                  key={o}
+                  label={OCCASION_LABELS[o]}
+                  selected={saveOccasions.includes(o)}
+                  onPress={() => setSaveOccasions((prev) => prev.includes(o) ? prev.filter((x) => x !== o) : [...prev, o])}
+                />
+              ))}
+            </View>
+
+            <Text style={{ fontSize: 14, fontWeight: "600", color: theme.colors.text, marginBottom: 8 }}>Seasons</Text>
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 20 }}>
+              {(["spring", "summer", "fall", "winter"] as Season[]).map((s) => (
+                <Chip
+                  key={s}
+                  label={SEASON_LABELS[s]}
+                  selected={saveSeasons.includes(s)}
+                  onPress={() => setSaveSeasons((prev) => prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s])}
+                />
+              ))}
+            </View>
+
+            <Pressable
+              style={{ backgroundColor: theme.colors.primary, borderRadius: 12, paddingVertical: 14, alignItems: "center" }}
+              onPress={handleConfirmSave}
+            >
+              <Text style={{ color: "#FFF", fontWeight: "700", fontSize: 16 }}>Save</Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* Flag Modal — explain why an outfit doesn't work */}
+      <Modal visible={flagModalVisible} transparent animationType="fade" onRequestClose={() => setFlagModalVisible(false)}>
+        <Pressable style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.4)", justifyContent: "flex-end" }} onPress={() => setFlagModalVisible(false)}>
+          <Pressable style={{ backgroundColor: theme.colors.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, paddingBottom: 40 }} onPress={() => {}}>
+            <Text style={{ fontSize: 18, fontWeight: "700", color: theme.colors.text, marginBottom: 8 }}>Flag Outfit</Text>
+            <Text style={{ fontSize: 14, color: theme.colors.textSecondary, marginBottom: 16 }}>
+              Tell us why this outfit doesn't work and we won't suggest it again.
+            </Text>
+
+            {flagSuggestion && (
+              <View style={{ marginBottom: 12 }}>
+                {flagSuggestion.items.slice(0, 4).map((item) => (
+                  <Text key={item.id} style={{ fontSize: 13, color: theme.colors.textLight, marginBottom: 2 }}>
+                    {CATEGORY_LABELS[item.category]}: {item.name}
+                  </Text>
+                ))}
+              </View>
+            )}
+
+            <TextInput
+              style={{
+                backgroundColor: theme.colors.background,
+                borderRadius: 10,
+                padding: 12,
+                fontSize: 14,
+                color: theme.colors.text,
+                minHeight: 60,
+                marginBottom: 16,
+                borderWidth: 1,
+                borderColor: theme.colors.border,
+              }}
+              placeholder="e.g., Running shoes don't go with fancy clothing"
+              placeholderTextColor={theme.colors.textLight}
+              value={flagReason}
+              onChangeText={setFlagReason}
+              multiline
+            />
+
+            <View style={{ flexDirection: "row", gap: 12 }}>
+              <Pressable
+                style={{ flex: 1, borderRadius: 12, paddingVertical: 14, alignItems: "center", borderWidth: 1, borderColor: theme.colors.border }}
+                onPress={() => setFlagModalVisible(false)}
+              >
+                <Text style={{ color: theme.colors.text, fontWeight: "600", fontSize: 15 }}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                style={{ flex: 1, backgroundColor: theme.colors.error, borderRadius: 12, paddingVertical: 14, alignItems: "center", opacity: flagReason.trim() ? 1 : 0.4 }}
+                onPress={handleConfirmFlag}
+                disabled={!flagReason.trim()}
+              >
+                <Text style={{ color: "#FFF", fontWeight: "700", fontSize: 15 }}>Flag</Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </ScrollView>
   );
 }

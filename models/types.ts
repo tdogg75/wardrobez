@@ -1,13 +1,15 @@
 export type ClothingCategory =
   | "tops"
   | "bottoms"
-  | "skirts_shorts"
+  | "shorts"
+  | "skirts"
   | "dresses"
   | "jumpsuits"
   | "blazers"
   | "jackets"
   | "shoes"
   | "accessories"
+  | "purse"
   | "swimwear"
   | "jewelry";
 
@@ -207,13 +209,15 @@ export interface PackingList {
 export const CATEGORY_LABELS: Record<ClothingCategory, string> = {
   tops: "Tops",
   bottoms: "Bottoms",
-  skirts_shorts: "Skirts & Shorts",
+  shorts: "Shorts",
+  skirts: "Skirts",
   dresses: "Dresses",
   jumpsuits: "Jumpsuits",
   blazers: "Blazers",
   jackets: "Jackets",
   shoes: "Shoes",
   accessories: "Accessories",
+  purse: "Purse",
   swimwear: "Swimwear",
   jewelry: "Jewellery",
 };
@@ -224,35 +228,34 @@ export const SUBCATEGORIES: Record<ClothingCategory, { value: string; label: str
     { value: "long_sleeve", label: "Long Sleeve" },
     { value: "tshirt", label: "T-Shirt" },
     { value: "tank_top", label: "Tank Top" },
-    { value: "polo", label: "Polo" },
     { value: "sweater", label: "Sweater" },
     { value: "cardigan", label: "Cardigan" },
     { value: "sweatshirt", label: "Sweatshirt" },
     { value: "hoodie", label: "Hoodie" },
     { value: "zip_up", label: "Zip-Up" },
-    { value: "workout_shirt", label: "Workout Shirt" },
+    { value: "lounge_shirt", label: "Lounge Shirt" },
+    { value: "sport", label: "Sport" },
   ],
   bottoms: [
     { value: "trousers", label: "Trousers" },
     { value: "jeans", label: "Jeans" },
-    { value: "casual_pants", label: "Casual Pants" },
+    { value: "casual", label: "Casual" },
     { value: "leggings", label: "Leggings" },
-    { value: "joggers", label: "Joggers" },
-    { value: "other", label: "Other" },
+    { value: "sweatpants", label: "Sweatpants" },
   ],
-  skirts_shorts: [
-    { value: "mini_skirt", label: "Mini Skirt" },
-    { value: "midi_skirt", label: "Midi Skirt" },
-    { value: "maxi_skirt", label: "Maxi Skirt" },
+  shorts: [
+    { value: "casual_shorts", label: "Casual" },
+    { value: "athletic_shorts", label: "Athletic" },
+  ],
+  skirts: [
+    { value: "mini_skirt", label: "Mini" },
+    { value: "midi_skirt", label: "Midi" },
+    { value: "maxi_skirt", label: "Maxi" },
     { value: "skort", label: "Skort" },
-    { value: "casual_shorts", label: "Casual Shorts" },
-    { value: "athletic_shorts", label: "Athletic Shorts" },
-    { value: "dressy_shorts", label: "Dressy Shorts" },
   ],
   dresses: [
     { value: "work_dress", label: "Work" },
     { value: "casual_dress", label: "Casual" },
-    { value: "formal_dress", label: "Formal" },
     { value: "party_dress", label: "Party" },
     { value: "sundress", label: "Sundress" },
     { value: "cover_up", label: "Cover-Up" },
@@ -277,9 +280,10 @@ export const SUBCATEGORIES: Record<ClothingCategory, { value: string; label: str
     { value: "flats", label: "Flats" },
     { value: "loafers", label: "Loafers" },
     { value: "heels", label: "Heels" },
+    { value: "casual_sandals", label: "Casual Sandals" },
     { value: "sandals", label: "Sandals" },
+    { value: "birks", label: "Birks" },
     { value: "ankle_boots", label: "Ankle Boots" },
-    { value: "dress_boots", label: "Dress Boots" },
     { value: "knee_boots", label: "Knee-High Boots" },
     { value: "winter_boots", label: "Winter Boots" },
     { value: "running_shoes", label: "Running Shoes" },
@@ -292,7 +296,14 @@ export const SUBCATEGORIES: Record<ClothingCategory, { value: string; label: str
     { value: "scarves", label: "Scarves" },
     { value: "hair_pieces", label: "Hair Pieces" },
     { value: "stockings", label: "Stockings/Tights" },
-    { value: "bags", label: "Bags" },
+  ],
+  purse: [
+    { value: "beach_bag", label: "Beach Bag" },
+    { value: "backpack", label: "Backpack" },
+    { value: "handbag", label: "Handbag" },
+    { value: "crossbody", label: "Crossbody" },
+    { value: "clutch", label: "Clutch" },
+    { value: "tote", label: "Tote" },
   ],
   jewelry: [
     { value: "earrings", label: "Earrings" },
@@ -303,9 +314,8 @@ export const SUBCATEGORIES: Record<ClothingCategory, { value: string; label: str
   ],
   swimwear: [
     { value: "one_piece", label: "One Piece" },
-    { value: "swim_top", label: "Swim Top" },
-    { value: "swim_bottom", label: "Swim Bottom" },
-    { value: "cover_up", label: "Cover-Up" },
+    { value: "top", label: "Top" },
+    { value: "bottom", label: "Bottom" },
   ],
 };
 
@@ -385,7 +395,7 @@ export const ITEM_FLAG_LABELS: Record<ItemFlag, string> = {
 };
 
 // Items that can have hardware (buttons, buckles, clasps)
-export const HARDWARE_CATEGORIES: ClothingCategory[] = ["blazers", "accessories", "jewelry"];
+export const HARDWARE_CATEGORIES: ClothingCategory[] = ["blazers", "accessories", "jewelry", "purse"];
 export const HARDWARE_SUBCATEGORIES: string[] = [
   "casual_blazer", "formal_blazer",
   "belts", "watches", "bracelets", "necklaces",

@@ -285,8 +285,8 @@ export default function ProfileScreen() {
 
   /* --- Wardrobe Gap Analysis --- */
   const ALL_CATEGORIES: ClothingCategory[] = [
-    "tops", "bottoms", "skirts_shorts", "dresses", "jumpsuits", "blazers", "jackets",
-    "shoes", "accessories", "swimwear", "jewelry",
+    "tops", "bottoms", "shorts", "skirts", "dresses", "jumpsuits", "blazers", "jackets",
+    "shoes", "accessories", "purse", "swimwear", "jewelry",
   ];
 
   const gapInsights = useMemo(() => {
@@ -658,7 +658,7 @@ export default function ProfileScreen() {
 
     // Bottoms: 1 per 2 days
     const bottomsNeeded = Math.ceil(days / 2);
-    const availableBottoms = [...(itemsByCategory.bottoms ?? []), ...(itemsByCategory.skirts_shorts ?? [])];
+    const availableBottoms = [...(itemsByCategory.bottoms ?? []), ...(itemsByCategory.shorts ?? []), ...(itemsByCategory.skirts ?? [])];
     const pickedBottoms = pickRandom(availableBottoms, Math.min(bottomsNeeded, availableBottoms.length));
     for (const b of pickedBottoms) {
       result.push({ category: "Bottoms", name: b.name, checked: false });

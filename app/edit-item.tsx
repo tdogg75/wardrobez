@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo, useLayoutEffect, useCallback } from "react";
 import {
   View,
   Text,
@@ -14,7 +14,7 @@ import {
   Switch,
 } from "react-native";
 import { fetchProductFromUrl } from "@/services/productSearch";
-import { useRouter, useLocalSearchParams } from "expo-router";
+import { useRouter, useLocalSearchParams, useNavigation } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import { Ionicons } from "@expo/vector-icons";
 import { useClothingItems } from "@/hooks/useClothingItems";
@@ -58,6 +58,7 @@ export default function EditItemScreen() {
   const { theme } = useTheme();
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
+  const navigation = useNavigation();
   const { items, addOrUpdate, remove, archiveItem, removeItemWornDate } = useClothingItems();
 
   const [name, setName] = useState("");
@@ -400,6 +401,25 @@ export default function EditItemScreen() {
     Alert.alert("Archived", "Item has been archived and affected outfits have been flagged.");
     router.back();
   };
+
+  // Set header right icons: save, archive, delete
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerRight: () => (
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 12, marginRight: 4 }}>
+          <Pressable onPress={handleSave} hitSlop={10}>
+            <Ionicons name="checkmark-circle" size={26} color={theme.colors.primary} />
+          </Pressable>
+          <Pressable onPress={() => setShowArchiveModal(true)} hitSlop={10}>
+            <Ionicons name="archive-outline" size={22} color={theme.colors.warning} />
+          </Pressable>
+          <Pressable onPress={handleDelete} hitSlop={10}>
+            <Ionicons name="trash-outline" size={22} color={theme.colors.error} />
+          </Pressable>
+        </View>
+      ),
+    });
+  }, [navigation, handleSave, handleDelete, theme]);
 
   const subcats = SUBCATEGORIES[category];
 
@@ -942,26 +962,6 @@ export default function EditItemScreen() {
           textAlignVertical="top"
         />
 
-        <Pressable style={[styles.saveBtn, { backgroundColor: theme.colors.primary }]} onPress={handleSave}>
-          <Text style={styles.saveBtnText}>Save Changes</Text>
-        </Pressable>
-
-        {/* Archive Button */}
-        <Pressable
-          style={[
-            styles.archiveBtn,
-            { borderColor: theme.colors.warning + "40", backgroundColor: theme.colors.warning + "08" },
-          ]}
-          onPress={() => setShowArchiveModal(true)}
-        >
-          <Ionicons name="archive-outline" size={18} color={theme.colors.warning} />
-          <Text style={[styles.archiveBtnText, { color: theme.colors.warning }]}>Archive Item</Text>
-        </Pressable>
-
-        <Pressable style={styles.deleteBtn} onPress={handleDelete}>
-          <Ionicons name="trash-outline" size={18} color={theme.colors.error} />
-          <Text style={[styles.deleteBtnText, { color: theme.colors.error }]}>Delete Item</Text>
-        </Pressable>
       </ScrollView>
 
       {/* Color Picker Modal */}

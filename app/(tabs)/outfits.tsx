@@ -148,7 +148,7 @@ export default function OutfitsScreen() {
     [getById]
   );
 
-  /** Summarise the category breakdown for an outfit (supports skirts_shorts, jumpsuits, etc.) */
+  /** Summarise the category breakdown for an outfit */
   const categorySummary = useCallback(
     (items: ClothingItem[]): string => {
       const counts: Record<string, number> = {};

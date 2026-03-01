@@ -157,11 +157,15 @@ export default function ItemDetailScreen() {
           </Pressable>
         </View>
 
-        {/* Brand (prominent) */}
+        {/* Brand (prominent + clickable) */}
         {item.brand ? (
-          <View style={styles.brandRow}>
+          <Pressable
+            style={styles.brandRow}
+            onPress={() => router.push({ pathname: "/brand-items", params: { brand: item.brand } })}
+          >
             <Text style={styles.brandText}>{item.brand}</Text>
-          </View>
+            <Ionicons name="chevron-forward" size={16} color={theme.colors.textLight} />
+          </Pressable>
         ) : null}
 
         {/* Sustainable badge */}
