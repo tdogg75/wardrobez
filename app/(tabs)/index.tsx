@@ -25,7 +25,7 @@ import { ClothingCard } from "@/components/ClothingCard";
 import { Chip } from "@/components/Chip";
 import { EmptyState } from "@/components/EmptyState";
 import { useTheme } from "@/hooks/useTheme";
-import type { ClothingCategory, ClothingItem } from "@/models/types";
+import type { ClothingCategory, ClothingItem, FabricType } from "@/models/types";
 import { CATEGORY_LABELS } from "@/models/types";
 
 const ALL_CATEGORIES: (ClothingCategory | "all" | "favorites")[] = [
@@ -134,6 +134,39 @@ function sortItems(items: ClothingItem[], sort: SortOption): ClothingItem[] {
   }
 }
 
+// --- Seasonal rotation helpers (#79) ---
+const SUMMER_FABRICS: FabricType[] = ["linen", "cotton", "nylon"];
+const WINTER_FABRICS: FabricType[] = ["wool", "cashmere", "fleece", "leather"];
+
+type SeasonName = "spring" | "summer" | "fall" | "winter";
+
+function getCurrentSeason(): SeasonName {
+  const month = new Date().getMonth(); // 0-indexed
+  if (month >= 2 && month <= 4) return "spring";
+  if (month >= 5 && month <= 7) return "summer";
+  if (month >= 8 && month <= 10) return "fall";
+  return "winter";
+}
+
+function getOppositeSeason(season: SeasonName): SeasonName {
+  switch (season) {
+    case "spring": return "fall";
+    case "summer": return "winter";
+    case "fall": return "spring";
+    case "winter": return "summer";
+  }
+}
+
+function getSeasonLabel(season: SeasonName): string {
+  return season.charAt(0).toUpperCase() + season.slice(1);
+}
+
+function isSeasonFabric(fabric: FabricType, season: SeasonName): boolean {
+  if (season === "summer" || season === "spring") return SUMMER_FABRICS.includes(fabric);
+  if (season === "winter" || season === "fall") return WINTER_FABRICS.includes(fabric);
+  return false;
+}
+
 const PHOTO_GRID_COLUMNS = 3;
 const screenWidth = Dimensions.get("window").width;
 
@@ -150,6 +183,7 @@ export default function WardrobeScreen() {
   const [photoOnlyMode, setPhotoOnlyMode] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [seasonBannerDismissed, setSeasonBannerDismissed] = useState(false);
 
   // Scroll-to-top button state (#28)
   const listRef = useRef<FlatList>(null);
@@ -264,6 +298,28 @@ export default function WardrobeScreen() {
         : 0;
     return { totalItems, totalCost, avgCpw };
   }, [filtered]);
+
+  // Seasonal rotation reminder (#79)
+  const seasonalRotation = useMemo(() => {
+    const currentSeason = getCurrentSeason();
+    const oppositeSeason = getOppositeSeason(currentSeason);
+    // Count active items whose fabric belongs to the opposite season
+    const oppositeSeasonItems = items.filter((i) =>
+      isSeasonFabric(i.fabricType, oppositeSeason)
+    );
+    const count = oppositeSeasonItems.length;
+    if (count === 0) return null;
+    const currentLabel = getSeasonLabel(currentSeason);
+    const oppositeLabel = getSeasonLabel(oppositeSeason);
+    // Build contextual message
+    let message: string;
+    if (currentSeason === "spring" || currentSeason === "summer") {
+      message = `${currentLabel} is here! You have ${count} ${oppositeLabel.toLowerCase()} item${count !== 1 ? "s" : ""} that could be rotated out.`;
+    } else {
+      message = `${currentLabel} is coming! You have ${count} ${oppositeLabel.toLowerCase()} item${count !== 1 ? "s" : ""} that could be rotated out.`;
+    }
+    return { message, count };
+  }, [items]);
 
   // Group items by category for section list when filter is "all"
   const sections = useMemo(() => {
@@ -765,6 +821,21 @@ export default function WardrobeScreen() {
         </View>
       )}
 
+      {/* Seasonal Rotation Banner (#79) */}
+      {!loading && !seasonBannerDismissed && seasonalRotation && (
+        <View style={styles.seasonBanner}>
+          <Ionicons name="leaf-outline" size={18} color={theme.colors.warning} style={{ marginRight: 8 }} />
+          <Text style={styles.seasonBannerText}>{seasonalRotation.message}</Text>
+          <Pressable
+            onPress={() => setSeasonBannerDismissed(true)}
+            hitSlop={10}
+            style={styles.seasonBannerDismiss}
+          >
+            <Ionicons name="close" size={18} color={theme.colors.textLight} />
+          </Pressable>
+        </View>
+      )}
+
       {loading ? (
         <ActivityIndicator
           size="large"
@@ -1075,6 +1146,29 @@ function createStyles(theme: ReturnType<typeof import("@/hooks/useTheme").useThe
       fontSize: theme.fontSize.xs,
       fontWeight: "600",
       color: theme.colors.primary,
+    },
+    // --- Seasonal Rotation Banner (#79) ---
+    seasonBanner: {
+      flexDirection: "row",
+      alignItems: "center",
+      marginHorizontal: theme.spacing.md,
+      marginTop: theme.spacing.sm,
+      paddingHorizontal: theme.spacing.md,
+      paddingVertical: theme.spacing.sm,
+      backgroundColor: theme.colors.warning + "14",
+      borderRadius: theme.borderRadius.sm,
+      borderLeftWidth: 3,
+      borderLeftColor: theme.colors.warning,
+    },
+    seasonBannerText: {
+      flex: 1,
+      fontSize: theme.fontSize.xs,
+      fontWeight: "600",
+      color: theme.colors.warning,
+    },
+    seasonBannerDismiss: {
+      marginLeft: 8,
+      padding: 4,
     },
     // --- Loader / List ---
     loader: {

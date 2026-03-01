@@ -1132,6 +1132,41 @@ export default function ProfileScreen() {
 
             <Divider />
 
+            {/* Monthly Spending Breakdown (#61) */}
+            <SubHeading>Monthly Spending</SubHeading>
+            {(() => {
+              const monthlySpend: Record<string, number> = {};
+              for (const item of allActive) {
+                if (!item.cost || item.cost <= 0) continue;
+                const date = item.purchaseDate ?? new Date(item.createdAt).toISOString().slice(0, 10);
+                const monthKey = date.slice(0, 7); // "YYYY-MM"
+                monthlySpend[monthKey] = (monthlySpend[monthKey] ?? 0) + item.cost;
+              }
+              const months = Object.keys(monthlySpend).sort().reverse().slice(0, 6);
+              if (months.length === 0) {
+                return <Text style={styles.emptyText}>No purchase date data available.</Text>;
+              }
+              const maxMonthly = Math.max(...months.map((m) => monthlySpend[m]), 1);
+              return months.map((month) => {
+                const [y, m] = month.split("-");
+                const label = `${["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][parseInt(m, 10) - 1]} ${y}`;
+                const total = monthlySpend[month];
+                return (
+                  <View key={month} style={styles.barRow}>
+                    <View style={styles.barLabelRow}>
+                      <Text style={styles.barLabel}>{label}</Text>
+                      <Text style={styles.barValue}>{fmt(total)}</Text>
+                    </View>
+                    <View style={styles.barTrack}>
+                      <View style={[styles.barFill, { width: `${(total / maxMonthly) * 100}%` }]} />
+                    </View>
+                  </View>
+                );
+              });
+            })()}
+
+            <Divider />
+
             {/* Cost per Wear */}
             <SubHeading>Cost per Wear</SubHeading>
             {costPerWear.length === 0 ? (
@@ -1139,7 +1174,7 @@ export default function ProfileScreen() {
                 No items with cost and wear data.
               </Text>
             ) : (
-              costPerWear.map(({ item, cpw }) => (
+              costPerWear.slice(0, 10).map(({ item, cpw }) => (
                 <Pressable
                   key={item.id}
                   style={styles.listItem}
@@ -1840,7 +1875,7 @@ export default function ProfileScreen() {
       <View style={styles.card}>
         <SectionHeader
           icon="trending-up-outline"
-          label="Best ROI Items"
+          label="Cost-Per-Wear Chart"
           open={roiOpen}
           onPress={() => setRoiOpen((v) => !v)}
         />
@@ -1849,20 +1884,46 @@ export default function ProfileScreen() {
             {costPerWear.length === 0 ? (
               <Text style={styles.emptyText}>No items with cost and wear data yet.</Text>
             ) : (
-              costPerWear.slice(0, 10).map(({ item, cpw }, idx) => (
-                <Pressable
-                  key={item.id}
-                  style={styles.listItem}
-                  onPress={() => router.push({ pathname: "/edit-item", params: { id: item.id } })}
-                >
-                  <Text style={[styles.barLabel, { marginRight: 8, width: 20 }]}>#{idx + 1}</Text>
-                  <View style={styles.listItemLeft}>
-                    <Text style={styles.listItemName} numberOfLines={1}>{item.name}</Text>
-                    <Text style={styles.listItemSub}>{item.brand || CATEGORY_LABELS[item.category]} · {item.wearCount} wears</Text>
-                  </View>
-                  <Text style={styles.cpwValue}>{fmt(cpw)}/wear</Text>
-                </Pressable>
-              ))
+              <>
+                {/* Visual CPW bar chart (#58) */}
+                {(() => {
+                  const top10 = costPerWear.slice(0, 10);
+                  const maxCpw = Math.max(...top10.map((c) => c.cpw), 1);
+                  return top10.map(({ item, cpw }, idx) => {
+                    const barPct = Math.min(100, (cpw / maxCpw) * 100);
+                    const isGood = cpw < 5;
+                    const isOk = cpw < 15;
+                    const barColor = isGood ? theme.colors.success : isOk ? theme.colors.warning : theme.colors.error;
+                    return (
+                      <Pressable
+                        key={item.id}
+                        style={{ marginBottom: 10 }}
+                        onPress={() => router.push({ pathname: "/edit-item", params: { id: item.id } })}
+                      >
+                        <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 2 }}>
+                          <Text style={styles.listItemName} numberOfLines={1}>
+                            {idx + 1}. {item.name}
+                          </Text>
+                          <Text style={[styles.cpwValue, { color: barColor }]}>{fmt(cpw)}/wear</Text>
+                        </View>
+                        <View style={styles.barTrack}>
+                          <View style={[styles.barFill, { width: `${barPct}%`, backgroundColor: barColor }]} />
+                        </View>
+                        <Text style={styles.listItemSub}>
+                          {item.brand || CATEGORY_LABELS[item.category]} · {item.wearCount} wears · {fmt(item.cost ?? 0)} total
+                        </Text>
+                      </Pressable>
+                    );
+                  });
+                })()}
+                <Divider />
+                <View style={styles.spendTotalRow}>
+                  <Text style={styles.barLabel}>Average CPW</Text>
+                  <Text style={styles.cpwValue}>
+                    {fmt(costPerWear.reduce((sum, c) => sum + c.cpw, 0) / costPerWear.length)}
+                  </Text>
+                </View>
+              </>
             )}
           </View>
         )}

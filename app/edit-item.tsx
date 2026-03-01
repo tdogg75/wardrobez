@@ -39,6 +39,7 @@ import type {
   ItemFlag,
   CareInstruction,
   Pattern,
+  Occasion,
 } from "@/models/types";
 import {
   CATEGORY_LABELS,
@@ -52,6 +53,7 @@ import {
   ITEM_FLAG_LABELS,
   CARE_INSTRUCTION_LABELS,
   PATTERN_LABELS,
+  OCCASION_LABELS,
   COMMON_SIZES,
   SHOE_SIZES,
 } from "@/models/types";
@@ -101,6 +103,9 @@ export default function EditItemScreen() {
 
   // Pattern
   const [pattern, setPattern] = useState<Pattern>("solid");
+
+  // Occasions (#76)
+  const [occasions, setOccasions] = useState<Occasion[]>([]);
 
   // Size (#65)
   const [size, setSize] = useState("");
@@ -171,6 +176,7 @@ export default function EditItemScreen() {
     setCareInstructions(item.careInstructions ?? []);
     setSustainable(item.sustainable ?? false);
     setPattern(item.pattern ?? "solid");
+    setOccasions(item.occasions ?? []);
     setSize(item.size ?? "");
     setTags(item.tags ?? []);
   }, [id, items]);
@@ -399,6 +405,7 @@ export default function EditItemScreen() {
       careInstructions: careInstructions.length > 0 ? careInstructions : undefined,
       sustainable,
       pattern: pattern !== "solid" ? pattern : undefined,
+      occasions: occasions.length > 0 ? occasions : undefined,
       size: size.trim() || undefined,
       tags: tags.length > 0 ? tags : undefined,
     });
@@ -868,6 +875,25 @@ export default function EditItemScreen() {
             trackColor={{ false: theme.colors.border, true: theme.colors.accent }}
             thumbColor={sustainable ? theme.colors.primary : theme.colors.surfaceAlt}
           />
+        </View>
+
+        {/* Occasions (#76) */}
+        <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Occasions</Text>
+        <View style={styles.chipRow}>
+          {(Object.keys(OCCASION_LABELS) as Occasion[]).map((occ) => (
+            <Chip
+              key={occ}
+              label={OCCASION_LABELS[occ]}
+              selected={occasions.includes(occ)}
+              onPress={() => {
+                setOccasions((prev) =>
+                  prev.includes(occ)
+                    ? prev.filter((o) => o !== occ)
+                    : [...prev, occ]
+                );
+              }}
+            />
+          ))}
         </View>
 
         {/* Tags */}

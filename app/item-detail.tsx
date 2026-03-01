@@ -32,6 +32,30 @@ const ARCHIVE_REASONS: ArchiveReason[] = ["donated", "sold", "worn_out", "given_
 const fmt = (n: number) =>
   n.toLocaleString("en-US", { style: "currency", currency: "USD" });
 
+/** Compute a wear freshness indicator based on most recent wear date and wear count. */
+function getWearFreshness(wearDates?: string[], wearCount?: number): {
+  label: string;
+  color: string;
+} {
+  const count = wearCount ?? 0;
+  if (count === 0 || !wearDates || wearDates.length === 0) {
+    return { label: "Never worn", color: "#9CA3AF" }; // grey
+  }
+  const now = new Date();
+  const mostRecent = wearDates.reduce((latest, d) => {
+    const t = new Date(d).getTime();
+    return t > latest ? t : latest;
+  }, 0);
+  const daysSince = Math.floor((now.getTime() - mostRecent) / 86400000);
+  if (daysSince <= 7) {
+    return { label: `Fresh (worn ${daysSince}d ago)`, color: "#22C55E" }; // green
+  }
+  if (daysSince <= 30) {
+    return { label: `Due for a wear (${daysSince}d)`, color: "#EAB308" }; // yellow
+  }
+  return { label: `Neglected (${daysSince}d)`, color: "#EF4444" }; // red
+}
+
 /** Return a human-friendly age string like "3 months" or "1 year, 2 months". */
 function formatAge(dateInput: string | number): string {
   const then = new Date(dateInput);
@@ -94,6 +118,11 @@ export default function ItemDetailScreen() {
       : null;
 
   const ageSource: string | number | undefined = item.purchaseDate ?? item.createdAt;
+
+  const freshness = useMemo(
+    () => getWearFreshness(item.wearDates, item.wearCount),
+    [item.wearDates, item.wearCount]
+  );
 
   const toggleFavorite = async () => {
     await addOrUpdate({ ...item, favorite: !item.favorite });
@@ -291,6 +320,14 @@ export default function ItemDetailScreen() {
             <Text style={styles.infoValue}>{formatAge(ageSource)}</Text>
           </View>
         )}
+
+        {/* Freshness (#78) */}
+        <View style={styles.infoRow}>
+          <Text style={styles.infoLabel}>Freshness</Text>
+          <Text style={[styles.infoValue, { color: freshness.color, fontWeight: "600" }]}>
+            {freshness.label}
+          </Text>
+        </View>
 
         {/* Wear Count + Log Wear */}
         <View style={styles.infoRow}>

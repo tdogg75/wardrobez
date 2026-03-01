@@ -124,7 +124,7 @@ export interface ClothingItem {
   careInstructions?: CareInstruction[];
   // Sustainability - is this from a sustainable/ethical brand?
   sustainable?: boolean;
-  // Legacy field - kept for migration but no longer used in UI
+  // Occasion tags for filtering
   occasions?: Occasion[];
   // Pattern / print
   pattern?: Pattern;

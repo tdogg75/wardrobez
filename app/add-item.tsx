@@ -39,6 +39,7 @@ import type {
   ItemFlag,
   CareInstruction,
   Pattern,
+  Occasion,
 } from "@/models/types";
 import {
   CATEGORY_LABELS,
@@ -51,6 +52,7 @@ import {
   ITEM_FLAG_LABELS,
   CARE_INSTRUCTION_LABELS,
   PATTERN_LABELS,
+  OCCASION_LABELS,
   COMMON_SIZES,
   SHOE_SIZES,
 } from "@/models/types";
@@ -122,6 +124,9 @@ export default function AddItemScreen() {
 
   // Pattern
   const [pattern, setPattern] = useState<Pattern>("solid");
+
+  // Occasions (#76)
+  const [occasions, setOccasions] = useState<Occasion[]>([]);
 
   // Size (#65)
   const [size, setSize] = useState("");
@@ -356,6 +361,7 @@ export default function AddItemScreen() {
       careInstructions: careInstructions.length > 0 ? careInstructions : undefined,
       sustainable: sustainable || undefined,
       pattern: pattern !== "solid" ? pattern : undefined,
+      occasions: occasions.length > 0 ? occasions : undefined,
       size: size.trim() || undefined,
       tags: tags.length > 0 ? tags : undefined,
     });
@@ -711,6 +717,25 @@ export default function AddItemScreen() {
           value={size}
           onChangeText={setSize}
         />
+
+        {/* Occasions (#76) — always visible, even in quick mode */}
+        <Text style={[styles.sectionTitle, { fontSize: theme.fontSize.md, color: theme.colors.text, marginBottom: theme.spacing.sm, marginTop: theme.spacing.md }]}>Occasions</Text>
+        <View style={styles.chipRow}>
+          {(Object.keys(OCCASION_LABELS) as Occasion[]).map((occ) => (
+            <Chip
+              key={occ}
+              label={OCCASION_LABELS[occ]}
+              selected={occasions.includes(occ)}
+              onPress={() => {
+                setOccasions((prev) =>
+                  prev.includes(occ)
+                    ? prev.filter((o) => o !== occ)
+                    : [...prev, occ]
+                );
+              }}
+            />
+          ))}
+        </View>
 
         {/* Sections hidden in Quick Add mode */}
         {!quickMode && <>
