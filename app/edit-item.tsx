@@ -203,6 +203,17 @@ export default function EditItemScreen() {
     setImageUris((prev) => prev.filter((_, i) => i !== index));
   };
 
+  // Reorder images (#69)
+  const moveImage = (index: number, direction: -1 | 1) => {
+    const target = index + direction;
+    if (target < 0 || target >= imageUris.length) return;
+    setImageUris((prev) => {
+      const next = [...prev];
+      [next[index], next[target]] = [next[target], next[index]];
+      return next;
+    });
+  };
+
   // Cropper state
   const [croppingIdx, setCroppingIdx] = useState<number | null>(null);
 
@@ -462,6 +473,21 @@ export default function EditItemScreen() {
               {index === 0 && (
                 <View style={[styles.primaryBadge, { backgroundColor: theme.colors.primary }]}>
                   <Text style={styles.primaryBadgeText}>Main</Text>
+                </View>
+              )}
+              {/* Reorder buttons (#69) */}
+              {imageUris.length > 1 && (
+                <View style={styles.reorderBtns}>
+                  {index > 0 && (
+                    <Pressable onPress={() => moveImage(index, -1)} style={styles.reorderBtn}>
+                      <Ionicons name="chevron-back" size={14} color="#FFF" />
+                    </Pressable>
+                  )}
+                  {index < imageUris.length - 1 && (
+                    <Pressable onPress={() => moveImage(index, 1)} style={styles.reorderBtn}>
+                      <Ionicons name="chevron-forward" size={14} color="#FFF" />
+                    </Pressable>
+                  )}
                 </View>
               )}
             </Pressable>
@@ -1267,6 +1293,23 @@ const styles = StyleSheet.create({
   content: { padding: 16, paddingBottom: 48 },
   photoScroll: {
     marginBottom: 8,
+  },
+  reorderBtns: {
+    position: "absolute",
+    bottom: 4,
+    left: 0,
+    right: 0,
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: 4,
+  },
+  reorderBtn: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "center",
+    alignItems: "center",
   },
   photoThumb: {
     width: 100,

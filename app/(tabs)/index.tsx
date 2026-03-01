@@ -12,6 +12,7 @@ import {
   Dimensions,
   RefreshControl,
   TextInput,
+  Modal,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -301,6 +302,27 @@ export default function WardrobeScreen() {
     );
   }, [selectedIds, remove, exitSelectionMode]);
 
+  // Bulk tag editing (#70)
+  const [bulkTagModalVisible, setBulkTagModalVisible] = useState(false);
+  const [bulkTagInput, setBulkTagInput] = useState("");
+
+  const handleBulkAddTag = useCallback(async () => {
+    if (selectedIds.size === 0 || !bulkTagInput.trim()) return;
+    const tag = bulkTagInput.trim();
+    for (const id of Array.from(selectedIds)) {
+      const item = items.find((i) => i.id === id);
+      if (item) {
+        const existingTags = item.tags ?? [];
+        if (!existingTags.includes(tag)) {
+          await addOrUpdate({ ...item, tags: [...existingTags, tag] });
+        }
+      }
+    }
+    setBulkTagInput("");
+    setBulkTagModalVisible(false);
+    Alert.alert("Done", `Tag "${tag}" added to ${selectedIds.size} item(s)`);
+  }, [selectedIds, items, addOrUpdate, bulkTagInput]);
+
   const cardWidthPct =
     numColumns === 2 ? "48%" : numColumns === 4 ? "23%" : "11.5%";
   const compact = numColumns >= 4;
@@ -509,6 +531,13 @@ export default function WardrobeScreen() {
               >
                 Delete
               </Text>
+            </Pressable>
+            <Pressable
+              style={styles.selectionBarBtn}
+              onPress={() => setBulkTagModalVisible(true)}
+            >
+              <Ionicons name="pricetag-outline" size={18} color={theme.colors.primary} />
+              <Text style={styles.selectionBarBtnText}>Tag</Text>
             </Pressable>
             <Pressable
               style={styles.selectionBarBtn}
@@ -755,6 +784,46 @@ export default function WardrobeScreen() {
           <Ionicons name="add" size={28} color="#FFFFFF" />
         </Pressable>
       )}
+
+      {/* Bulk Tag Modal (#70) */}
+      <Modal
+        visible={bulkTagModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setBulkTagModalVisible(false)}
+      >
+        <Pressable style={styles.bulkTagOverlay} onPress={() => setBulkTagModalVisible(false)}>
+          <View style={[styles.bulkTagSheet, { backgroundColor: theme.colors.surface }]}>
+            <Text style={[styles.bulkTagTitle, { color: theme.colors.text }]}>
+              Add Tag to {selectedIds.size} Item{selectedIds.size !== 1 ? "s" : ""}
+            </Text>
+            <TextInput
+              style={[styles.bulkTagInput, { backgroundColor: theme.colors.surfaceAlt, color: theme.colors.text, borderColor: theme.colors.border }]}
+              placeholder="Enter tag name..."
+              placeholderTextColor={theme.colors.textLight}
+              value={bulkTagInput}
+              onChangeText={setBulkTagInput}
+              autoFocus
+              returnKeyType="done"
+              onSubmitEditing={handleBulkAddTag}
+            />
+            <View style={styles.bulkTagActions}>
+              <Pressable
+                style={[styles.bulkTagCancelBtn, { borderColor: theme.colors.border }]}
+                onPress={() => setBulkTagModalVisible(false)}
+              >
+                <Text style={{ color: theme.colors.textSecondary }}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.bulkTagSaveBtn, { backgroundColor: theme.colors.primary }]}
+                onPress={handleBulkAddTag}
+              >
+                <Text style={{ color: "#FFF", fontWeight: "600" }}>Add Tag</Text>
+              </Pressable>
+            </View>
+          </View>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -972,6 +1041,48 @@ function createStyles(theme: ReturnType<typeof import("@/hooks/useTheme").useThe
       fontSize: theme.fontSize.sm,
       color: theme.colors.text,
       paddingVertical: 0,
+    },
+    // --- Bulk Tag Modal ---
+    bulkTagOverlay: {
+      flex: 1,
+      backgroundColor: "rgba(0,0,0,0.4)",
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    bulkTagSheet: {
+      width: "85%",
+      borderRadius: theme.borderRadius.lg,
+      padding: theme.spacing.lg,
+    },
+    bulkTagTitle: {
+      fontSize: theme.fontSize.lg,
+      fontWeight: "700",
+      marginBottom: theme.spacing.md,
+    },
+    bulkTagInput: {
+      borderWidth: 1,
+      borderRadius: theme.borderRadius.sm,
+      paddingHorizontal: theme.spacing.md,
+      paddingVertical: theme.spacing.sm,
+      fontSize: theme.fontSize.md,
+      marginBottom: theme.spacing.md,
+    },
+    bulkTagActions: {
+      flexDirection: "row",
+      gap: theme.spacing.sm,
+    },
+    bulkTagCancelBtn: {
+      flex: 1,
+      borderWidth: 1,
+      borderRadius: theme.borderRadius.md,
+      paddingVertical: theme.spacing.sm,
+      alignItems: "center",
+    },
+    bulkTagSaveBtn: {
+      flex: 1,
+      borderRadius: theme.borderRadius.md,
+      paddingVertical: theme.spacing.sm,
+      alignItems: "center",
     },
     // --- FAB ---
     fab: {

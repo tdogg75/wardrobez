@@ -74,6 +74,31 @@ export function colorCompatibility(hex1: string, hex2: string): number {
   return Math.min(1.0, baseScore + satBonus + lightBonus + tonalBonus);
 }
 
+// --- Color Temperature (#74) ---
+// Warm hues: red, orange, yellow (0-60°, 330-360°)
+// Cool hues: blue, green, purple (120-270°)
+// Neutral zone: 60-120° and 270-330° can go either way
+function getColorTemp(hex: string): "warm" | "cool" | "neutral" {
+  const { h, s, l } = hexToHSL(hex);
+  if (s < 12 || l < 12 || l > 90) return "neutral"; // achromatic
+  if ((h >= 0 && h <= 60) || h >= 330) return "warm";
+  if (h >= 120 && h <= 270) return "cool";
+  return "neutral";
+}
+
+function colorTemperatureScore(items: ClothingItem[]): number {
+  const temps = items.map((i) => getColorTemp(i.color)).filter((t) => t !== "neutral");
+  if (temps.length < 2) return 0; // not enough non-neutral items to judge
+  const warmCount = temps.filter((t) => t === "warm").length;
+  const coolCount = temps.filter((t) => t === "cool").length;
+  // All same temperature = great coherence
+  if (warmCount === 0 || coolCount === 0) return 3;
+  // Mixed temps = penalty proportional to imbalance
+  const ratio = Math.min(warmCount, coolCount) / Math.max(warmCount, coolCount);
+  if (ratio > 0.6) return -3; // roughly equal warm and cool = clash
+  return -1; // minor mix
+}
+
 function outfitColorScore(items: ClothingItem[]): { score: number; hasGreatHarmony: boolean } {
   if (items.length < 2) return { score: 0.85, hasGreatHarmony: false };
 
@@ -1033,6 +1058,12 @@ export function suggestOutfits(
     // Style clash penalty (e.g., running shoes with blazer)
     score += getStyleClashPenalty(combo);
 
+    // Color temperature coherence (#74)
+    const tempScore = colorTemperatureScore(combo);
+    score += tempScore;
+    if (tempScore >= 3) reasons.push("Cohesive colour temperature");
+    else if (tempScore <= -2) reasons.push("Mixed warm and cool tones");
+
     // Pattern compatibility — 8% weight (deducted from base)
     const patResult = patternCompatibility(combo);
     const patScore = patResult.score;
@@ -1223,6 +1254,12 @@ export function validateOutfit(items: ClothingItem[]): string[] {
     if (distinctHues > 3) {
       warnings.push(`${distinctHues} different colour families — try sticking to 2-3 max for a cohesive look`);
     }
+  }
+
+  // Color temperature warning (#74)
+  const tempCheck = colorTemperatureScore(items);
+  if (tempCheck <= -2) {
+    warnings.push("Mixing warm and cool tones — consider sticking to one temperature family");
   }
 
   // Pattern clash warning
