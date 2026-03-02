@@ -223,11 +223,15 @@ export default function GmailPurchasesScreen() {
   };
 
   const goToNextEmail = () => {
-    if (currentEmailIndex < purchases.length - 1) {
-      setCurrentEmailIndex((i) => i + 1);
-    } else {
-      // No more emails
+    const nextIndex = currentEmailIndex + 1;
+    if (nextIndex < purchases.length) {
+      setCurrentEmailIndex(nextIndex);
+    } else if (scanningDone) {
+      // Scan finished and no more emails left
       handleStopScanning();
+    } else {
+      // Scan still running — move past current email and wait for more to stream in
+      setCurrentEmailIndex(nextIndex);
     }
   };
 
@@ -900,6 +904,21 @@ export default function GmailPurchasesScreen() {
     }
 
     if (!currentEmail) {
+      if (!scanningDone) {
+        // Scan still running — wait for more emails to stream in
+        return (
+          <View style={styles.center}>
+            <ActivityIndicator size="large" color={theme.colors.primary} />
+            <Text style={styles.title}>Waiting for more emails...</Text>
+            <Text style={styles.subtitle}>
+              Still scanning{progress.total > 0 ? ` (${progress.loaded}/${progress.total})` : ""}...
+            </Text>
+            <Pressable style={styles.primaryBtn} onPress={handleStopScanning}>
+              <Text style={styles.primaryBtnText}>Stop & Finish</Text>
+            </Pressable>
+          </View>
+        );
+      }
       // Reached end of emails
       return (
         <View style={styles.center}>
