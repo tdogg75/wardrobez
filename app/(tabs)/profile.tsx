@@ -881,7 +881,7 @@ export default function ProfileScreen() {
           onPress: async () => {
             try {
               const result = await DocumentPicker.getDocumentAsync({
-                type: "application/json",
+                type: ["application/json", "text/plain", "application/octet-stream", "*/*"],
                 copyToCacheDirectory: true,
               });
 
@@ -891,6 +891,14 @@ export default function ProfileScreen() {
 
               const fileUri = result.assets[0].uri;
               const raw = await FileSystem.readAsStringAsync(fileUri);
+
+              // Validate it's a wardrobez backup before importing
+              const parsed = JSON.parse(raw);
+              if (!parsed.clothing_items || !parsed.outfits) {
+                Alert.alert("Invalid File", "This doesn't appear to be a Wardrobez backup file. Please select a wardrobez-backup.json file.");
+                return;
+              }
+
               await importAllData(raw);
               Alert.alert(
                 "Import Complete",
