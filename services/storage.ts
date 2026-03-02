@@ -1,6 +1,6 @@
 import * as FileSystem from "expo-file-system";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import type { ClothingItem, Outfit, FabricType, ArchiveReason, WishlistItem, OutfitTemplate, PlannedOutfit, InspirationPin, PackingList } from "@/models/types";
+import type { ClothingItem, Outfit, FabricType, ArchiveReason, WishlistItem, OutfitTemplate, PlannedOutfit, SavedWeekPlan, InspirationPin, PackingList } from "@/models/types";
 
 // --- File-System Storage Layer ---
 // Data is persisted as JSON files in the app's document directory.
@@ -17,6 +17,7 @@ const FILES = {
   INSPIRATION: `${DATA_DIR}inspiration.json`,
   PACKING_LISTS: `${DATA_DIR}packing-lists.json`,
   OUTFIT_FLAGS: `${DATA_DIR}outfit-flags.json`,
+  SAVED_WEEK_PLANS: `${DATA_DIR}saved-week-plans.json`,
 } as const;
 
 // Legacy AsyncStorage keys for one-time migration
@@ -788,4 +789,24 @@ export async function saveOutfitFlag(flag: OutfitFlagData): Promise<void> {
 export async function deleteOutfitFlag(id: string): Promise<void> {
   const flags = await getOutfitFlags();
   await writeJsonFile(FILES.OUTFIT_FLAGS, flags.filter((f) => f.id !== id));
+}
+
+// --- Saved Week Plans ---
+
+export async function getSavedWeekPlans(): Promise<SavedWeekPlan[]> {
+  const data = await readJsonFile<SavedWeekPlan[]>(FILES.SAVED_WEEK_PLANS);
+  return data ?? [];
+}
+
+export async function saveWeekPlan(plan: SavedWeekPlan): Promise<void> {
+  const list = await getSavedWeekPlans();
+  const idx = list.findIndex((p) => p.id === plan.id);
+  if (idx >= 0) list[idx] = plan;
+  else list.push(plan);
+  await writeJsonFile(FILES.SAVED_WEEK_PLANS, list);
+}
+
+export async function deleteWeekPlan(id: string): Promise<void> {
+  const list = await getSavedWeekPlans();
+  await writeJsonFile(FILES.SAVED_WEEK_PLANS, list.filter((p) => p.id !== id));
 }

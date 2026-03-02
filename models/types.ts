@@ -214,6 +214,15 @@ export interface PlannedOutfit {
   notes?: string;
 }
 
+/** Saved weekly plan template */
+export interface SavedWeekPlan {
+  id: string;
+  name: string;
+  /** Mapping of day name ("Monday"..."Sunday") to outfit ID */
+  days: Record<string, string | null>;
+  createdAt: number;
+}
+
 /** Style inspiration pin */
 export interface InspirationPin {
   id: string;

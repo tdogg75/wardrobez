@@ -11,6 +11,7 @@ import {
   Image,
   Modal,
   Dimensions,
+  TextInput,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { useFocusEffect } from "expo-router";
@@ -26,8 +27,8 @@ import {
   OCCASION_LABELS,
   CATEGORY_LABELS,
 } from "@/models/types";
-import type { ClothingItem, Season, Occasion, Outfit, PlannedOutfit } from "@/models/types";
-import { getPlannedOutfits, savePlannedOutfit, deletePlannedOutfit } from "@/services/storage";
+import type { ClothingItem, Season, Occasion, Outfit, PlannedOutfit, SavedWeekPlan } from "@/models/types";
+import { getPlannedOutfits, savePlannedOutfit, deletePlannedOutfit, getSavedWeekPlans, saveWeekPlan, deleteWeekPlan } from "@/services/storage";
 
 const SEASONS: Season[] = ["spring", "summer", "fall", "winter"];
 const OCCASIONS: Occasion[] = ["casual", "work", "fancy", "party", "vacation"];
@@ -85,6 +86,10 @@ export default function OutfitsScreen() {
   const [pickerDay, setPickerDay] = useState<string | null>(null);
   const [pickerSeasonFilter, setPickerSeasonFilter] = useState<Season | null>(null);
   const [pickerOccasionFilter, setPickerOccasionFilter] = useState<Occasion | null>(null);
+  const [savedPlans, setSavedPlans] = useState<SavedWeekPlan[]>([]);
+  const [showSavePlanModal, setShowSavePlanModal] = useState(false);
+  const [savePlanName, setSavePlanName] = useState("");
+  const [showLoadPlanModal, setShowLoadPlanModal] = useState(false);
 
   const filteredOutfits = useMemo(() => {
     return outfits.filter((outfit) => {
@@ -242,6 +247,70 @@ export default function OutfitsScreen() {
     }
   }, [now]);
 
+  const loadSavedPlans = useCallback(async () => {
+    const plans = await getSavedWeekPlans();
+    setSavedPlans(plans);
+  }, []);
+
+  const handleSaveWeekPlan = useCallback(async () => {
+    const name = savePlanName.trim();
+    if (!name) return;
+    const hasAnyOutfit = Object.values(weekPlan).some((v) => v != null);
+    if (!hasAnyOutfit) {
+      Alert.alert("Empty Plan", "Assign at least one outfit before saving.");
+      return;
+    }
+    try {
+      const plan: SavedWeekPlan = {
+        id: Date.now().toString(36) + Math.random().toString(36).slice(2, 9),
+        name,
+        days: { ...weekPlan },
+        createdAt: Date.now(),
+      };
+      await saveWeekPlan(plan);
+      await loadSavedPlans();
+      setShowSavePlanModal(false);
+      setSavePlanName("");
+      Alert.alert("Saved!", `"${name}" has been saved.`);
+    } catch {
+      Alert.alert("Error", "Failed to save the week plan.");
+    }
+  }, [savePlanName, weekPlan, loadSavedPlans]);
+
+  const applyWeekPlan = useCallback(async (plan: SavedWeekPlan) => {
+    setWeekPlan(plan.days);
+    // Persist each day
+    const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+    for (let i = 0; i < DAYS.length; i++) {
+      const day = DAYS[i];
+      const currentDayIndex = (now.getDay() + 6) % 7;
+      const diff = i - currentDayIndex;
+      const targetDate = new Date(now);
+      targetDate.setDate(now.getDate() + diff);
+      const isoDate = targetDate.toISOString().split("T")[0];
+      if (plan.days[day]) {
+        await savePlannedOutfit({ date: isoDate, outfitId: plan.days[day]! });
+      } else {
+        await deletePlannedOutfit(isoDate);
+      }
+    }
+    setShowLoadPlanModal(false);
+  }, [now]);
+
+  const handleDeleteWeekPlan = useCallback(async (plan: SavedWeekPlan) => {
+    Alert.alert("Delete Plan", `Delete "${plan.name}"?`, [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: async () => {
+          await deleteWeekPlan(plan.id);
+          await loadSavedPlans();
+        },
+      },
+    ]);
+  }, [loadSavedPlans]);
+
   const pickerOutfits = useMemo(() => {
     return outfits.filter((outfit) => {
       if (pickerSeasonFilter && !(outfit.seasons ?? []).includes(pickerSeasonFilter)) return false;
@@ -268,7 +337,25 @@ export default function OutfitsScreen() {
             <Text style={[styles.plannerTitle, { color: theme.colors.text }]}>
               Weekly Planner
             </Text>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 16 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 14 }}>
+              <Pressable
+                onPress={() => {
+                  setSavePlanName("");
+                  setShowSavePlanModal(true);
+                }}
+                hitSlop={12}
+              >
+                <Ionicons name="save-outline" size={20} color={theme.colors.primary} />
+              </Pressable>
+              <Pressable
+                onPress={() => {
+                  loadSavedPlans();
+                  setShowLoadPlanModal(true);
+                }}
+                hitSlop={12}
+              >
+                <Ionicons name="download-outline" size={20} color={theme.colors.primary} />
+              </Pressable>
               <Pressable
                 onPress={() => {
                   Alert.alert("Reset Week", "Remove all outfits from this week's plan?", [
@@ -278,7 +365,7 @@ export default function OutfitsScreen() {
                 }}
                 hitSlop={12}
               >
-                <Ionicons name="refresh-outline" size={22} color={theme.colors.error} />
+                <Ionicons name="refresh-outline" size={20} color={theme.colors.error} />
               </Pressable>
               <Pressable onPress={() => { setPlannerVisible(false); setPickerDay(null); }} hitSlop={12}>
                 <Ionicons name="close" size={24} color={theme.colors.text} />
@@ -451,6 +538,95 @@ export default function OutfitsScreen() {
               })}
             </ScrollView>
           )}
+
+          {/* Save Plan Name Modal */}
+          <Modal
+            visible={showSavePlanModal}
+            transparent
+            animationType="fade"
+            onRequestClose={() => setShowSavePlanModal(false)}
+          >
+            <View style={styles.savePlanOverlay}>
+              <View style={[styles.savePlanContent, { backgroundColor: theme.colors.background }]}>
+                <Text style={[styles.savePlanTitle, { color: theme.colors.text }]}>Save Week Plan</Text>
+                <Text style={[styles.savePlanSubtitle, { color: theme.colors.textSecondary }]}>
+                  Give this week's plan a name to reuse later
+                </Text>
+                <TextInput
+                  style={[styles.savePlanInput, { backgroundColor: theme.colors.surface, color: theme.colors.text, borderColor: theme.colors.border }]}
+                  value={savePlanName}
+                  onChangeText={setSavePlanName}
+                  placeholder="e.g. Work Week, Vacation, etc."
+                  placeholderTextColor={theme.colors.textLight}
+                  autoFocus
+                  returnKeyType="done"
+                  onSubmitEditing={handleSaveWeekPlan}
+                />
+                <View style={styles.savePlanBtnRow}>
+                  <Pressable style={styles.savePlanCancelBtn} onPress={() => setShowSavePlanModal(false)}>
+                    <Text style={[styles.savePlanCancelText, { color: theme.colors.textSecondary }]}>Cancel</Text>
+                  </Pressable>
+                  <Pressable
+                    style={[styles.savePlanSaveBtn, { backgroundColor: theme.colors.primary }, !savePlanName.trim() && { opacity: 0.4 }]}
+                    onPress={handleSaveWeekPlan}
+                    disabled={!savePlanName.trim()}
+                  >
+                    <Text style={styles.savePlanSaveText}>Save</Text>
+                  </Pressable>
+                </View>
+              </View>
+            </View>
+          </Modal>
+
+          {/* Load Plan Modal */}
+          <Modal
+            visible={showLoadPlanModal}
+            transparent
+            animationType="fade"
+            onRequestClose={() => setShowLoadPlanModal(false)}
+          >
+            <View style={styles.savePlanOverlay}>
+              <View style={[styles.savePlanContent, { backgroundColor: theme.colors.background, maxHeight: "70%" }]}>
+                <Text style={[styles.savePlanTitle, { color: theme.colors.text }]}>Load Saved Plan</Text>
+                {savedPlans.length === 0 ? (
+                  <View style={{ alignItems: "center", paddingVertical: 24 }}>
+                    <Ionicons name="calendar-outline" size={36} color={theme.colors.textLight} />
+                    <Text style={[styles.savePlanSubtitle, { color: theme.colors.textLight, marginTop: 8 }]}>
+                      No saved plans yet
+                    </Text>
+                  </View>
+                ) : (
+                  <FlatList
+                    data={savedPlans}
+                    keyExtractor={(p) => p.id}
+                    style={{ marginTop: 12 }}
+                    renderItem={({ item: plan }) => {
+                      const filledDays = Object.values(plan.days).filter(Boolean).length;
+                      return (
+                        <Pressable
+                          style={[styles.savedPlanCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}
+                          onPress={() => applyWeekPlan(plan)}
+                        >
+                          <View style={{ flex: 1 }}>
+                            <Text style={[styles.savedPlanName, { color: theme.colors.text }]}>{plan.name}</Text>
+                            <Text style={[styles.savedPlanMeta, { color: theme.colors.textSecondary }]}>
+                              {filledDays} day{filledDays !== 1 ? "s" : ""} planned
+                            </Text>
+                          </View>
+                          <Pressable onPress={() => handleDeleteWeekPlan(plan)} hitSlop={8} style={{ padding: 8 }}>
+                            <Ionicons name="trash-outline" size={18} color={theme.colors.error} />
+                          </Pressable>
+                        </Pressable>
+                      );
+                    }}
+                  />
+                )}
+                <Pressable style={[styles.savePlanCancelBtn, { alignSelf: "center", marginTop: 16 }]} onPress={() => setShowLoadPlanModal(false)}>
+                  <Text style={[styles.savePlanCancelText, { color: theme.colors.textSecondary }]}>Close</Text>
+                </Pressable>
+              </View>
+            </View>
+          </Modal>
         </View>
       </Modal>
     );
@@ -1604,5 +1780,75 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: "600",
     marginLeft: 6,
+  },
+  // Save/Load plan modals
+  savePlanOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 24,
+  },
+  savePlanContent: {
+    width: "100%",
+    borderRadius: 12,
+    padding: 20,
+  },
+  savePlanTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+  },
+  savePlanSubtitle: {
+    fontSize: 14,
+    marginTop: 4,
+    marginBottom: 16,
+  },
+  savePlanInput: {
+    height: 44,
+    borderRadius: 8,
+    paddingHorizontal: 14,
+    fontSize: 15,
+    borderWidth: 1,
+  },
+  savePlanBtnRow: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    gap: 12,
+    marginTop: 20,
+  },
+  savePlanCancelBtn: {
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+  },
+  savePlanCancelText: {
+    fontSize: 15,
+    fontWeight: "600",
+  },
+  savePlanSaveBtn: {
+    paddingVertical: 10,
+    paddingHorizontal: 24,
+    borderRadius: 8,
+  },
+  savePlanSaveText: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#FFFFFF",
+  },
+  savedPlanCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 14,
+    borderRadius: 8,
+    borderWidth: 1,
+    marginBottom: 8,
+  },
+  savedPlanName: {
+    fontSize: 15,
+    fontWeight: "700",
+  },
+  savedPlanMeta: {
+    fontSize: 12,
+    marginTop: 2,
   },
 });
