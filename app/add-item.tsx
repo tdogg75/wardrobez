@@ -31,7 +31,10 @@ import {
 } from "@/constants/colors";
 import {
   fetchProductFromUrl,
+  searchWebForProduct,
+  fetchSearchResult,
 } from "@/services/productSearch";
+import type { WebSearchResult } from "@/services/productSearch";
 import type {
   ClothingCategory,
   FabricType,
@@ -177,6 +180,13 @@ export default function AddItemScreen() {
 
   // Image viewer
   const [viewingImageIdx, setViewingImageIdx] = useState<number | null>(null);
+
+  // Web search
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searching, setSearching] = useState(false);
+  const [searchResults, setSearchResults] = useState<WebSearchResult[]>([]);
+  const [showSearchResults, setShowSearchResults] = useState(false);
+  const [fetchingResult, setFetchingResult] = useState<string | null>(null); // URL being fetched
 
   // Computed final color
   const finalColor = useMemo(() => {
@@ -336,6 +346,64 @@ export default function AddItemScreen() {
       Alert.alert("Fetch failed", "Something went wrong fetching the URL. Please fill in manually.");
     } finally {
       setFetchingUrl(false);
+    }
+  };
+
+  const handleWebSearch = async () => {
+    const q = searchQuery.trim();
+    if (!q) {
+      Alert.alert("Enter a search", "Type a brand and item name, e.g. \"aritzia effortless pant\"");
+      return;
+    }
+    setSearching(true);
+    try {
+      const results = await searchWebForProduct(q);
+      if (results.length === 0) {
+        Alert.alert("No results", "Couldn't find any results. Try different search terms.");
+      } else {
+        setSearchResults(results);
+        setShowSearchResults(true);
+      }
+    } catch {
+      Alert.alert("Search failed", "Something went wrong searching. Please try again.");
+    } finally {
+      setSearching(false);
+    }
+  };
+
+  const handlePickSearchResult = async (result: WebSearchResult) => {
+    setFetchingResult(result.url);
+    try {
+      const product = await fetchSearchResult(result);
+      setShowSearchResults(false);
+      setSearchResults([]);
+      if (product) {
+        if (product.name) setName(product.name);
+        if (product.brand) setBrand(product.brand);
+        if (product.category) setCategory(product.category);
+        if (product.subCategory) setSubCategory(product.subCategory);
+        if (product.fabricType) setFabricType(product.fabricType);
+        if (product.colorIndex !== undefined) {
+          setColorIdx(product.colorIndex);
+          const preset = PRESET_COLORS[product.colorIndex];
+          setHslAdjust({ h: preset.hue, s: preset.saturation, l: preset.lightness });
+        }
+        if (product.imageUri) {
+          setImageUris((prev) => [product.imageUri!, ...prev]);
+        }
+        if (product.cost != null) {
+          setCost(String(product.cost));
+        }
+        setProductUrl(result.url);
+        Alert.alert("Auto-filled!", "Product info has been applied. Review and adjust as needed.");
+      } else {
+        Alert.alert("Could not parse", "We found the page but couldn't extract product info. The URL has been saved — you can fill in the rest manually.");
+        setProductUrl(result.url);
+      }
+    } catch {
+      Alert.alert("Fetch failed", "Something went wrong loading that product. Please try again.");
+    } finally {
+      setFetchingResult(null);
     }
   };
 
@@ -500,8 +568,42 @@ export default function AddItemScreen() {
           <Ionicons name="chevron-forward" size={16} color={theme.colors.textLight} />
         </Pressable>
 
+        {/* Product Search */}
+        <Text style={[styles.sectionTitle, { fontSize: theme.fontSize.md, color: theme.colors.text, marginBottom: theme.spacing.sm, marginTop: theme.spacing.md }]}>Search Product (optional)</Text>
+        <Text style={[styles.urlHint, { fontSize: theme.fontSize.xs, color: theme.colors.textLight, marginBottom: theme.spacing.sm }]}>Search by brand and item name to auto-fill details</Text>
+        <View style={styles.urlRow}>
+          <TextInput
+            style={[styles.input, { flex: 1, backgroundColor: theme.colors.surface, borderRadius: theme.borderRadius.sm, paddingHorizontal: theme.spacing.md, fontSize: theme.fontSize.md, color: theme.colors.text, borderColor: theme.colors.border }]}
+            placeholder='e.g. "aritzia effortless pant"'
+            placeholderTextColor={theme.colors.textLight}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            autoCapitalize="none"
+            returnKeyType="search"
+            onSubmitEditing={handleWebSearch}
+          />
+          <Pressable
+            style={[styles.urlFetchBtn, { backgroundColor: theme.colors.primary, borderRadius: theme.borderRadius.sm }, searching && styles.autoFillBtnDisabled]}
+            onPress={handleWebSearch}
+            disabled={searching}
+          >
+            {searching ? (
+              <ActivityIndicator size="small" color="#FFFFFF" />
+            ) : (
+              <Ionicons name="search-outline" size={20} color="#FFFFFF" />
+            )}
+          </Pressable>
+        </View>
+
+        {/* OR divider */}
+        <View style={{ flexDirection: "row", alignItems: "center", marginTop: theme.spacing.md, marginBottom: theme.spacing.xs }}>
+          <View style={{ flex: 1, height: 1, backgroundColor: theme.colors.border }} />
+          <Text style={{ marginHorizontal: 12, fontSize: theme.fontSize.xs, color: theme.colors.textLight, fontWeight: "600" }}>OR</Text>
+          <View style={{ flex: 1, height: 1, backgroundColor: theme.colors.border }} />
+        </View>
+
         {/* Product URL */}
-        <Text style={[styles.sectionTitle, { fontSize: theme.fontSize.md, color: theme.colors.text, marginBottom: theme.spacing.sm, marginTop: theme.spacing.md }]}>Product URL (optional)</Text>
+        <Text style={[styles.sectionTitle, { fontSize: theme.fontSize.md, color: theme.colors.text, marginBottom: theme.spacing.sm, marginTop: theme.spacing.xs }]}>Product URL (optional)</Text>
         <Text style={[styles.urlHint, { fontSize: theme.fontSize.xs, color: theme.colors.textLight, marginBottom: theme.spacing.sm }]}>Paste a product link from your browser to auto-fill details</Text>
         <View style={styles.urlRow}>
           <TextInput
@@ -1027,6 +1129,78 @@ export default function AddItemScreen() {
           <Text style={[styles.saveBtnText, { fontSize: theme.fontSize.lg }]}>Add to Wardrobe</Text>
         </Pressable>
       </ScrollView>
+
+      {/* Search Results Modal */}
+      <Modal
+        visible={showSearchResults}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => { setShowSearchResults(false); setSearchResults([]); }}
+      >
+        <View style={[styles.modalContainer, { backgroundColor: theme.colors.background, paddingTop: theme.spacing.md }]}>
+          <View style={[styles.modalHeader, { paddingHorizontal: theme.spacing.md, paddingBottom: theme.spacing.sm }]}>
+            <Text style={[styles.modalTitle, { fontSize: theme.fontSize.xl, color: theme.colors.text }]}>Search Results</Text>
+            <Pressable onPress={() => { setShowSearchResults(false); setSearchResults([]); }}>
+              <Ionicons name="close" size={24} color={theme.colors.text} />
+            </Pressable>
+          </View>
+          <Text style={{ paddingHorizontal: theme.spacing.md, marginBottom: theme.spacing.md, fontSize: theme.fontSize.sm, color: theme.colors.textLight }}>
+            Tap a result to auto-fill your item details
+          </Text>
+          <ScrollView contentContainerStyle={{ paddingHorizontal: theme.spacing.md, paddingBottom: 40 }}>
+            {searchResults.map((r, i) => {
+              const isFetching = fetchingResult === r.url;
+              return (
+                <Pressable
+                  key={`${r.url}-${i}`}
+                  style={{
+                    backgroundColor: theme.colors.surface,
+                    borderRadius: theme.borderRadius.md,
+                    padding: theme.spacing.md,
+                    marginBottom: theme.spacing.sm,
+                    borderWidth: 1,
+                    borderColor: theme.colors.border,
+                    opacity: fetchingResult && !isFetching ? 0.5 : 1,
+                  }}
+                  onPress={() => handlePickSearchResult(r)}
+                  disabled={!!fetchingResult}
+                >
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: theme.fontSize.md, fontWeight: "600", color: theme.colors.text }} numberOfLines={2}>
+                        {r.title}
+                      </Text>
+                      <Text style={{ fontSize: theme.fontSize.xs, color: theme.colors.primary, marginTop: 2 }} numberOfLines={1}>
+                        {r.url.replace(/^https?:\/\/(www\.)?/, "").split("/")[0]}
+                      </Text>
+                      {r.snippet ? (
+                        <Text style={{ fontSize: theme.fontSize.sm, color: theme.colors.textSecondary, marginTop: 4 }} numberOfLines={2}>
+                          {r.snippet}
+                        </Text>
+                      ) : null}
+                    </View>
+                    {isFetching ? (
+                      <ActivityIndicator size="small" color={theme.colors.primary} />
+                    ) : (
+                      <Ionicons name="chevron-forward" size={20} color={theme.colors.textLight} />
+                    )}
+                  </View>
+                </Pressable>
+              );
+            })}
+            <Pressable
+              style={{
+                alignItems: "center",
+                paddingVertical: theme.spacing.md,
+                marginTop: theme.spacing.sm,
+              }}
+              onPress={() => { setShowSearchResults(false); setSearchResults([]); }}
+            >
+              <Text style={{ fontSize: theme.fontSize.md, color: theme.colors.textLight, fontWeight: "600" }}>Skip — fill in manually</Text>
+            </Pressable>
+          </ScrollView>
+        </View>
+      </Modal>
 
       {/* Color Picker Modal */}
       <Modal

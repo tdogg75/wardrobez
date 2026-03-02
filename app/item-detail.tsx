@@ -9,6 +9,7 @@ import {
   Alert,
   Modal,
   Linking,
+  Dimensions,
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -560,8 +561,8 @@ function makeStyles(theme: ReturnType<typeof useTheme>["theme"]) {
       marginBottom: theme.spacing.md,
     },
     photo: {
-      width: 280,
-      height: 360,
+      width: Dimensions.get("window").width,
+      aspectRatio: 3 / 4,
       borderRadius: 0,
       marginRight: 2,
     },

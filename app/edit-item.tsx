@@ -1247,32 +1247,30 @@ export default function EditItemScreen() {
         />
         <Text style={{ textAlign: "right", fontSize: 11, color: theme.colors.textLight, marginTop: 2 }}>{notes.length}/500</Text>
 
-        {/* Save / Archive / Delete buttons - large, spread out, always visible */}
+        {/* Delete / Archive / Save buttons - spread out, always visible */}
         <Pressable
-          style={[styles.saveBtn, { backgroundColor: theme.colors.primary }]}
+          style={[styles.deleteBtn, { borderColor: theme.colors.error, marginTop: 32 }]}
+          onPress={handleDelete}
+        >
+          <Ionicons name="trash-outline" size={18} color={theme.colors.error} />
+          <Text style={[styles.deleteBtnText, { color: theme.colors.error }]}>Delete Item</Text>
+        </Pressable>
+
+        <Pressable
+          style={[styles.archiveBtn, { borderColor: theme.colors.warning, marginTop: 16 }]}
+          onPress={() => setShowArchiveModal(true)}
+        >
+          <Ionicons name="archive-outline" size={18} color={theme.colors.warning} />
+          <Text style={[styles.archiveBtnText, { color: theme.colors.warning }]}>Archive</Text>
+        </Pressable>
+
+        <Pressable
+          style={[styles.saveBtn, { backgroundColor: theme.colors.primary, marginTop: 16, marginBottom: 40 }]}
           onPress={handleSave}
         >
           <Ionicons name="save-outline" size={20} color="#FFFFFF" />
           <Text style={styles.saveBtnText}>Save Changes</Text>
         </Pressable>
-
-        <View style={styles.dangerRow}>
-          <Pressable
-            style={[styles.archiveBtn, { borderColor: theme.colors.warning }]}
-            onPress={() => setShowArchiveModal(true)}
-          >
-            <Ionicons name="archive-outline" size={18} color={theme.colors.warning} />
-            <Text style={[styles.archiveBtnText, { color: theme.colors.warning }]}>Archive</Text>
-          </Pressable>
-
-          <Pressable
-            style={[styles.deleteBtn, { borderColor: theme.colors.error }]}
-            onPress={handleDelete}
-          >
-            <Ionicons name="trash-outline" size={18} color={theme.colors.error} />
-            <Text style={[styles.deleteBtnText, { color: theme.colors.error }]}>Delete</Text>
-          </Pressable>
-        </View>
 
       </ScrollView>
 
@@ -1532,7 +1530,7 @@ export default function EditItemScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  content: { padding: 16, paddingBottom: 48 },
+  content: { padding: 16, paddingBottom: 80 },
   photoScroll: {
     marginBottom: 8,
   },
@@ -1759,20 +1757,11 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     justifyContent: "center",
     alignItems: "center",
-    marginTop: 32,
     flexDirection: "row",
     gap: 8,
   },
   saveBtnText: { color: "#FFFFFF", fontSize: 18, fontWeight: "700" },
-  dangerRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    gap: 16,
-    marginTop: 16,
-    marginBottom: 24,
-  },
   archiveBtn: {
-    flex: 1,
     flexDirection: "row",
     justifyContent: "center",
     alignItems: "center",
@@ -1787,7 +1776,6 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   deleteBtn: {
-    flex: 1,
     flexDirection: "row",
     justifyContent: "center",
     alignItems: "center",
