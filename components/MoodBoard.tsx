@@ -250,7 +250,7 @@ const styles = StyleSheet.create({
   cellImage: {
     width: "100%",
     height: "100%",
-    resizeMode: "cover",
+    resizeMode: "contain",
   },
   cellPlaceholder: {
     flex: 1,
