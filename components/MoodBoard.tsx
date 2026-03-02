@@ -4,134 +4,40 @@ import { Ionicons } from "@expo/vector-icons";
 import type { ClothingItem, ClothingCategory } from "@/models/types";
 import { useTheme } from "@/hooks/useTheme";
 
-interface MoodBoardProps {
+export interface MoodBoardProps {
   items: ClothingItem[];
   size?: number;
   onItemPress?: (item: ClothingItem) => void;
   onOverflowPress?: () => void;
 }
 
-// Body-like layout positions — items arranged as they'd appear on a person:
-// Hats/hair on top, tops in upper-middle, bottoms/skirts in lower-middle,
-// shoes at bottom, accessories/jewelry/purse overlaid to the sides
+/**
+ * Flat-lay mood board layout.
+ *
+ * Items are grouped into visual tiers (outerwear → tops → bottoms → shoes →
+ * accessories) and laid out in a clean, non-overlapping grid.  Items in the
+ * same tier sit side-by-side.
+ */
 
-type CellPos = { top: number; left: number; w: number; h: number; rotate: number; z: number };
+type Tier = "outerwear" | "upper" | "onepiece" | "lower" | "footwear" | "extras";
 
-// Priority order for body placement
-const BODY_ORDER: ClothingCategory[] = [
-  "accessories", // hats, scarves, etc. — top area
-  "tops",
-  "blazers",
-  "jackets",
-  "dresses",
-  "jumpsuits",
-  "bottoms",
-  "shorts",
-  "skirts",
-  "shoes",
-  "jewelry",
-  "purse",
-  "swimwear",
-];
+const TIER_MAP: Record<ClothingCategory, Tier> = {
+  jackets: "outerwear",
+  blazers: "outerwear",
+  tops: "upper",
+  dresses: "onepiece",
+  jumpsuits: "onepiece",
+  bottoms: "lower",
+  shorts: "lower",
+  skirts: "lower",
+  shoes: "footwear",
+  swimwear: "lower",
+  accessories: "extras",
+  jewelry: "extras",
+  purse: "extras",
+};
 
-function getBodyPosition(item: ClothingItem, idx: number, total: number): CellPos {
-  const cat = item.category;
-  const sub = item.subCategory ?? "";
-
-  // Hat — top center
-  if (cat === "accessories" && (sub === "hats" || sub === "hair_pieces")) {
-    return { top: 0, left: 28, w: 44, h: 22, rotate: -2, z: 8 };
-  }
-
-  // Sunglasses / scarves — top accessory area
-  if (cat === "accessories" && (sub === "sunglasses" || sub === "scarves")) {
-    return { top: 18, left: 55, w: 35, h: 18, rotate: 3, z: 9 };
-  }
-
-  // Jewelry — overlaid in upper area
-  if (cat === "jewelry") {
-    if (sub === "earrings") return { top: 14, left: 5, w: 20, h: 16, rotate: -5, z: 10 };
-    if (sub === "necklaces") return { top: 22, left: 20, w: 25, h: 16, rotate: 0, z: 9 };
-    if (sub === "watches" || sub === "bracelets") return { top: 40, left: 68, w: 24, h: 16, rotate: 5, z: 10 };
-    return { top: 20, left: 65, w: 22, h: 16, rotate: 3, z: 10 };
-  }
-
-  // Purse — to the side
-  if (cat === "purse") {
-    return { top: 42, left: 70, w: 30, h: 30, rotate: -8, z: 7 };
-  }
-
-  // Belt — waist area
-  if (cat === "accessories" && sub === "belts") {
-    return { top: 48, left: 10, w: 60, h: 10, rotate: 0, z: 8 };
-  }
-
-  // Stockings — leg area
-  if (cat === "accessories" && sub === "stockings") {
-    return { top: 58, left: 15, w: 30, h: 24, rotate: 0, z: 3 };
-  }
-
-  // Tops — upper body
-  if (cat === "tops") {
-    return { top: 18, left: 8, w: 56, h: 34, rotate: -1, z: 4 };
-  }
-
-  // Blazers — slightly larger, overlaid on top
-  if (cat === "blazers") {
-    return { top: 16, left: 4, w: 62, h: 36, rotate: 1, z: 5 };
-  }
-
-  // Jackets — outermost layer
-  if (cat === "jackets") {
-    return { top: 14, left: 2, w: 66, h: 38, rotate: -1, z: 6 };
-  }
-
-  // Dresses — spanning upper to lower body
-  if (cat === "dresses") {
-    return { top: 18, left: 12, w: 52, h: 52, rotate: 0, z: 4 };
-  }
-
-  // Jumpsuits — full body span
-  if (cat === "jumpsuits") {
-    return { top: 18, left: 10, w: 54, h: 56, rotate: 0, z: 4 };
-  }
-
-  // Bottoms — lower body
-  if (cat === "bottoms") {
-    return { top: 48, left: 12, w: 50, h: 32, rotate: 0, z: 3 };
-  }
-
-  // Shorts — shorter lower body
-  if (cat === "shorts") {
-    return { top: 50, left: 14, w: 46, h: 22, rotate: 0, z: 3 };
-  }
-
-  // Skirts — lower body with slight angle
-  if (cat === "skirts") {
-    return { top: 48, left: 10, w: 52, h: 28, rotate: 1, z: 3 };
-  }
-
-  // Shoes — bottom
-  if (cat === "shoes") {
-    return { top: 78, left: 14, w: 48, h: 20, rotate: 0, z: 2 };
-  }
-
-  // Swimwear
-  if (cat === "swimwear") {
-    if (sub === "one_piece") return { top: 20, left: 14, w: 48, h: 46, rotate: 0, z: 4 };
-    if (sub === "top") return { top: 20, left: 16, w: 44, h: 24, rotate: 0, z: 4 };
-    if (sub === "bottom") return { top: 46, left: 18, w: 40, h: 20, rotate: 0, z: 3 };
-    return { top: 20, left: 14, w: 48, h: 46, rotate: 0, z: 4 };
-  }
-
-  // Fallback for other accessories
-  if (cat === "accessories") {
-    return { top: 42, left: 66, w: 28, h: 22, rotate: 5, z: 7 };
-  }
-
-  // Default
-  return { top: 30, left: 15, w: 50, h: 40, rotate: 0, z: idx + 1 };
-}
+const TIER_ORDER: Tier[] = ["outerwear", "upper", "onepiece", "lower", "footwear", "extras"];
 
 const CATEGORY_ICONS: Partial<Record<ClothingCategory, string>> = {
   tops: "shirt-outline",
@@ -149,78 +55,161 @@ const CATEGORY_ICONS: Partial<Record<ClothingCategory, string>> = {
   jewelry: "sparkles-outline",
 };
 
-export function MoodBoard({ items, size = 280, onItemPress, onOverflowPress }: MoodBoardProps) {
-  const { theme } = useTheme();
+type CellLayout = { top: number; left: number; w: number; h: number };
 
-  // Sort items by body position order
-  const sortedItems = [...items].sort((a, b) => {
-    const aIdx = BODY_ORDER.indexOf(a.category);
-    const bIdx = BODY_ORDER.indexOf(b.category);
-    return (aIdx === -1 ? 99 : aIdx) - (bIdx === -1 ? 99 : bIdx);
+/**
+ * Given items, group them into tier-based rows and compute a flat-lay grid.
+ * Returns one CellLayout (in %) per item, in the same order as the input.
+ */
+function computeFlatLayout(items: ClothingItem[]): CellLayout[] {
+  if (items.length === 0) return [];
+
+  const GAP = 2; // gap between cells in %
+
+  // Build rows: each row is an array of indices into `items`
+  const tierIndices = new Map<Tier, number[]>();
+  items.forEach((item, idx) => {
+    const tier = TIER_MAP[item.category] ?? "extras";
+    const list = tierIndices.get(tier) ?? [];
+    list.push(idx);
+    tierIndices.set(tier, list);
   });
 
-  // Show up to 7 items in body layout
-  const displayItems = sortedItems.slice(0, 7);
+  // Merge outerwear + upper into one row if both exist and total ≤ 3
+  const outerwear = tierIndices.get("outerwear") ?? [];
+  const upper = tierIndices.get("upper") ?? [];
+  if (outerwear.length > 0 && upper.length > 0 && outerwear.length + upper.length <= 3) {
+    tierIndices.set("upper", [...outerwear, ...upper]);
+    tierIndices.delete("outerwear");
+  }
 
-  if (displayItems.length === 0) {
+  // Merge footwear + extras into one row if both exist and total ≤ 3
+  const footwear = tierIndices.get("footwear") ?? [];
+  const extras = tierIndices.get("extras") ?? [];
+  if (footwear.length > 0 && extras.length > 0 && footwear.length + extras.length <= 3) {
+    tierIndices.set("footwear", [...footwear, ...extras]);
+    tierIndices.delete("extras");
+  }
+
+  // Collect non-empty rows in tier order
+  const rows: number[][] = [];
+  for (const tier of TIER_ORDER) {
+    const indices = tierIndices.get(tier);
+    if (indices && indices.length > 0) rows.push(indices);
+  }
+
+  if (rows.length === 0) return items.map(() => ({ top: 0, left: 0, w: 100, h: 100 }));
+
+  // Distribute height evenly among rows
+  const totalGapY = GAP * (rows.length - 1);
+  const rowHeight = (100 - totalGapY - GAP * 2) / rows.length; // GAP*2 for top/bottom padding
+
+  const layouts: CellLayout[] = new Array(items.length);
+
+  rows.forEach((rowIndices, rowIdx) => {
+    const top = GAP + rowIdx * (rowHeight + GAP);
+    const cols = rowIndices.length;
+    const totalGapX = GAP * (cols - 1);
+    const cellWidth = (100 - totalGapX - GAP * 2) / cols; // GAP*2 for left/right padding
+
+    rowIndices.forEach((itemIdx, colIdx) => {
+      layouts[itemIdx] = {
+        top,
+        left: GAP + colIdx * (cellWidth + GAP),
+        w: cellWidth,
+        h: rowHeight,
+      };
+    });
+  });
+
+  return layouts;
+}
+
+export const MoodBoard = React.forwardRef<View, MoodBoardProps>(
+  function MoodBoard({ items, size = 280, onItemPress, onOverflowPress }, ref) {
+    const { theme } = useTheme();
+
+    // Show up to 8 items
+    const displayItems = items.slice(0, 8);
+
+    if (displayItems.length === 0) {
+      return (
+        <View
+          ref={ref}
+          style={[styles.board, { width: size, height: size, backgroundColor: theme.colors.surfaceAlt }]}
+        >
+          <Text style={[styles.emptyText, { color: theme.colors.textLight }]}>
+            Add items to see your mood board
+          </Text>
+        </View>
+      );
+    }
+
+    const cellLayouts = computeFlatLayout(displayItems);
+
     return (
-      <View style={[styles.board, { width: size, height: size, backgroundColor: theme.colors.surfaceAlt }]}>
-        <Text style={[styles.emptyText, { color: theme.colors.textLight }]}>Add items to see your mood board</Text>
+      <View
+        ref={ref}
+        style={[styles.board, { width: size, height: size, backgroundColor: theme.colors.surfaceAlt }]}
+        collapsable={false}
+      >
+        {displayItems.map((item, idx) => {
+          const cell = cellLayouts[idx];
+          if (!cell) return null;
+          const iconName = CATEGORY_ICONS[item.category] ?? "shirt-outline";
+          const CellWrapper = onItemPress ? Pressable : View;
+
+          return (
+            <CellWrapper
+              key={item.id}
+              onPress={onItemPress ? () => onItemPress(item) : undefined}
+              style={[
+                styles.cell,
+                {
+                  top: `${cell.top}%`,
+                  left: `${cell.left}%`,
+                  width: `${cell.w}%`,
+                  height: `${cell.h}%`,
+                },
+              ]}
+            >
+              {item.imageUris?.length > 0 ? (
+                <Image
+                  source={{ uri: item.imageUris[0] }}
+                  style={styles.cellImage}
+                  resizeMode="contain"
+                />
+              ) : (
+                <View style={[styles.cellPlaceholder, { backgroundColor: item.color + "40" }]}>
+                  <Ionicons
+                    name={iconName as any}
+                    size={Math.max(16, Math.round(size * 0.06))}
+                    color={item.color}
+                  />
+                </View>
+              )}
+              <View style={styles.cellLabel}>
+                <View style={[styles.labelDot, { backgroundColor: item.color }]} />
+                <Text style={styles.labelText} numberOfLines={1}>
+                  {item.name}
+                </Text>
+              </View>
+            </CellWrapper>
+          );
+        })}
+
+        {items.length > 8 && (
+          <Pressable
+            style={[styles.overflowBadge, { backgroundColor: theme.colors.primary }]}
+            onPress={onOverflowPress}
+          >
+            <Text style={styles.overflowText}>+{items.length - 8}</Text>
+          </Pressable>
+        )}
       </View>
     );
   }
-
-  return (
-    <View style={[styles.board, { width: size, height: size, backgroundColor: theme.colors.surfaceAlt }]}>
-      {displayItems.map((item, idx) => {
-        const pos = getBodyPosition(item, idx, displayItems.length);
-        const iconName = CATEGORY_ICONS[item.category] ?? "shirt-outline";
-        const CellWrapper = onItemPress ? Pressable : View;
-
-        return (
-          <CellWrapper
-            key={item.id}
-            onPress={onItemPress ? () => onItemPress(item) : undefined}
-            style={[
-              styles.cell,
-              {
-                top: `${pos.top}%`,
-                left: `${pos.left}%`,
-                width: `${pos.w}%`,
-                height: `${pos.h}%`,
-                transform: [{ rotate: `${pos.rotate}deg` }],
-                zIndex: pos.z,
-              },
-            ]}
-          >
-            {item.imageUris?.length > 0 ? (
-              <Image source={{ uri: item.imageUris[0] }} style={styles.cellImage} />
-            ) : (
-              <View style={[styles.cellPlaceholder, { backgroundColor: item.color + "40" }]}>
-                <Ionicons name={iconName as any} size={Math.round(size * 0.07)} color={item.color} />
-              </View>
-            )}
-            <View style={styles.cellLabel}>
-              <View style={[styles.labelDot, { backgroundColor: item.color }]} />
-              <Text style={styles.labelText} numberOfLines={1}>
-                {item.name}
-              </Text>
-            </View>
-          </CellWrapper>
-        );
-      })}
-
-      {items.length > 7 && (
-        <Pressable
-          style={[styles.overflowBadge, { backgroundColor: theme.colors.primary }]}
-          onPress={onOverflowPress}
-        >
-          <Text style={styles.overflowText}>+{items.length - 7}</Text>
-        </Pressable>
-      )}
-    </View>
-  );
-}
+);
 
 const styles = StyleSheet.create({
   board: {
@@ -239,18 +228,18 @@ const styles = StyleSheet.create({
   },
   cell: {
     position: "absolute",
-    borderRadius: 8,
+    borderRadius: 10,
     overflow: "hidden",
+    backgroundColor: "#FFFFFF",
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 6,
-    elevation: 4,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
   cellImage: {
     width: "100%",
     height: "100%",
-    resizeMode: "cover",
   },
   cellPlaceholder: {
     flex: 1,

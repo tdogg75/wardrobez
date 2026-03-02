@@ -57,6 +57,8 @@ export default function DesignerScreen() {
   // Template state
   const [templates, setTemplates] = useState<OutfitTemplate[]>([]);
   const [templateModalVisible, setTemplateModalVisible] = useState(false);
+  const [saveTemplateModalVisible, setSaveTemplateModalVisible] = useState(false);
+  const [templateNameInput, setTemplateNameInput] = useState("");
 
   useEffect(() => {
     loadTemplates();
@@ -155,35 +157,37 @@ export default function DesignerScreen() {
       Alert.alert("No items", "Select at least one item to create a template.");
       return;
     }
+    setTemplateNameInput(outfitName.trim() || generateOutfitName(selectedItems));
+    setSaveTemplateModalVisible(true);
+  };
 
-    Alert.prompt(
-      "Template Name",
-      "Enter a name for this outfit template",
-      async (templateName) => {
-        if (!templateName || !templateName.trim()) return;
+  const confirmSaveTemplate = async () => {
+    const name = templateNameInput.trim();
+    if (!name) return;
 
-        // Build category slots from the selected items
-        const categorySlots = selectedItems.map((item) => ({
-          category: item.category,
-          subCategory: item.subCategory,
-        }));
+    try {
+      const categorySlots = selectedItems.map((item) => ({
+        category: item.category,
+        subCategory: item.subCategory,
+      }));
 
-        const template: OutfitTemplate = {
-          id: generateId(),
-          name: templateName.trim(),
-          categorySlots,
-          occasions,
-          seasons,
-          createdAt: Date.now(),
-        };
+      const template: OutfitTemplate = {
+        id: generateId(),
+        name,
+        categorySlots,
+        occasions,
+        seasons,
+        createdAt: Date.now(),
+      };
 
-        await saveOutfitTemplate(template);
-        await loadTemplates();
-        Alert.alert("Template Saved!", `"${template.name}" has been saved as a template.`);
-      },
-      "plain-text",
-      outfitName.trim() || generateOutfitName(selectedItems)
-    );
+      await saveOutfitTemplate(template);
+      await loadTemplates();
+      setSaveTemplateModalVisible(false);
+      setTemplateNameInput("");
+      Alert.alert("Template Saved!", `"${template.name}" has been saved as a template.`);
+    } catch {
+      Alert.alert("Error", "Failed to save template. Please try again.");
+    }
   };
 
   const handleLoadTemplate = (template: OutfitTemplate) => {
@@ -394,6 +398,46 @@ export default function DesignerScreen() {
           <Text style={styles.saveBtnText}>Save Outfit</Text>
         </Pressable>
       </View>
+
+      {/* Save Template Name Modal */}
+      <Modal
+        visible={saveTemplateModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setSaveTemplateModalVisible(false)}
+      >
+        <View style={styles.saveTemplateOverlay}>
+          <View style={styles.saveTemplateContent}>
+            <Text style={styles.saveTemplateTitle}>Template Name</Text>
+            <Text style={styles.saveTemplateSubtitle}>Enter a name for this outfit template</Text>
+            <TextInput
+              style={styles.saveTemplateInput}
+              value={templateNameInput}
+              onChangeText={setTemplateNameInput}
+              placeholder="Template name"
+              placeholderTextColor={theme.colors.textLight}
+              autoFocus
+              returnKeyType="done"
+              onSubmitEditing={confirmSaveTemplate}
+            />
+            <View style={styles.saveTemplateBtnRow}>
+              <Pressable
+                style={styles.saveTemplateCancelBtn}
+                onPress={() => setSaveTemplateModalVisible(false)}
+              >
+                <Text style={styles.saveTemplateCancelText}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.saveTemplateSaveBtn, !templateNameInput.trim() && { opacity: 0.4 }]}
+                onPress={confirmSaveTemplate}
+                disabled={!templateNameInput.trim()}
+              >
+                <Text style={styles.saveTemplateSaveText}>Save</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* Load Template Modal */}
       <Modal
@@ -746,6 +790,68 @@ function createStyles(theme: ReturnType<typeof useTheme>["theme"]) {
     },
     templateDeleteBtn: {
       padding: 8,
+    },
+    // Save template modal
+    saveTemplateOverlay: {
+      flex: 1,
+      backgroundColor: "rgba(0,0,0,0.5)",
+      justifyContent: "center",
+      alignItems: "center",
+      padding: theme.spacing.xl,
+    },
+    saveTemplateContent: {
+      width: "100%",
+      backgroundColor: theme.colors.background,
+      borderRadius: theme.borderRadius.md,
+      padding: theme.spacing.lg,
+    },
+    saveTemplateTitle: {
+      fontSize: theme.fontSize.lg,
+      fontWeight: "700",
+      color: theme.colors.text,
+    },
+    saveTemplateSubtitle: {
+      fontSize: theme.fontSize.sm,
+      color: theme.colors.textSecondary,
+      marginTop: 4,
+      marginBottom: theme.spacing.md,
+    },
+    saveTemplateInput: {
+      height: 44,
+      backgroundColor: theme.colors.surface,
+      borderRadius: theme.borderRadius.sm,
+      paddingHorizontal: theme.spacing.md,
+      fontSize: theme.fontSize.md,
+      color: theme.colors.text,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+    },
+    saveTemplateBtnRow: {
+      flexDirection: "row",
+      justifyContent: "flex-end",
+      gap: 12,
+      marginTop: theme.spacing.lg,
+    },
+    saveTemplateCancelBtn: {
+      paddingVertical: 10,
+      paddingHorizontal: 20,
+      borderRadius: theme.borderRadius.sm,
+    },
+    saveTemplateCancelText: {
+      fontSize: theme.fontSize.md,
+      fontWeight: "600",
+      color: theme.colors.textSecondary,
+    },
+    saveTemplateSaveBtn: {
+      paddingVertical: 10,
+      paddingHorizontal: 24,
+      borderRadius: theme.borderRadius.sm,
+      backgroundColor: theme.colors.primary,
+    },
+    saveTemplateSaveText: {
+      fontSize: theme.fontSize.md,
+      fontWeight: "700",
+      color: "#FFFFFF",
     },
   });
 }

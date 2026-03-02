@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -17,6 +17,7 @@ import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import * as Sharing from "expo-sharing";
 import * as FileSystem from "expo-file-system";
+import ViewShot from "react-native-view-shot";
 import { useOutfits } from "@/hooks/useOutfits";
 import { useClothingItems } from "@/hooks/useClothingItems";
 import { useTheme } from "@/hooks/useTheme";
@@ -57,6 +58,7 @@ export default function OutfitDetailScreen() {
   const [logNote, setLogNote] = useState("");
   const [showAllWornDates, setShowAllWornDates] = useState(false);
   const [showStyleAnalysis, setShowStyleAnalysis] = useState(false);
+  const moodBoardRef = useRef<any>(null);
 
   // Build dynamic styles based on the current theme
   const styles = useMemo(() => makeStyles(theme), [theme]);
@@ -478,7 +480,9 @@ export default function OutfitDetailScreen() {
         <>
           <Text style={styles.sectionTitle}>Mood Board</Text>
           <View style={styles.moodBoardWrap}>
-            <MoodBoard items={outfitItems} size={300} />
+            <ViewShot ref={moodBoardRef} options={{ format: "png", quality: 1 }}>
+              <MoodBoard items={outfitItems} size={300} />
+            </ViewShot>
           </View>
         </>
       )}
@@ -722,38 +726,27 @@ export default function OutfitDetailScreen() {
         style={styles.shareBtn}
         onPress={async () => {
           try {
-            // Build outfit text description
             const itemNames = outfitItems.map((i) => `  - ${i.name} (${CATEGORY_LABELS[i.category]})`).join("\n");
             const text = `${outfit.name}\n\nItems:\n${itemNames}\n\nTotal: ${fmt(totalCost)}`;
 
-            // Find the best image to share: selfie > first item image
-            const latestSelfie = (outfit.wornEntries ?? []).find((e) => e.selfieUri)?.selfieUri;
-            const firstItemImage = outfitItems.find((i) => i.imageUris?.length > 0)?.imageUris[0];
-            const imageUri = latestSelfie ?? firstItemImage;
-
-            if (imageUri && (await Sharing.isAvailableAsync())) {
-              // Copy to a sharable location if it's a local file
-              const ext = imageUri.match(/\.(jpg|jpeg|png|webp)/i)?.[1] ?? "jpg";
-              const shareFile = `${FileSystem.cacheDirectory}outfit-share.${ext}`;
+            // Try to capture the full mood board as an image
+            if (moodBoardRef.current?.capture && (await Sharing.isAvailableAsync())) {
               try {
-                if (imageUri.startsWith("file://") || imageUri.startsWith("/")) {
-                  await FileSystem.copyAsync({ from: imageUri, to: shareFile });
-                } else {
-                  const dl = await FileSystem.downloadAsync(imageUri, shareFile);
-                  if (dl.status !== 200) throw new Error("download failed");
-                }
+                const uri = await moodBoardRef.current.capture();
+                const shareFile = `${FileSystem.cacheDirectory}outfit-moodboard.png`;
+                await FileSystem.copyAsync({ from: uri, to: shareFile });
                 await Sharing.shareAsync(shareFile, {
-                  mimeType: `image/${ext === "jpg" ? "jpeg" : ext}`,
+                  mimeType: "image/png",
                   dialogTitle: outfit.name,
                 });
+                return;
               } catch {
-                // Fall back to text share
-                await Share.share({ message: text, title: outfit.name });
+                // Fall through to text share
               }
-            } else {
-              // No image available — share as text
-              await Share.share({ message: text, title: outfit.name });
             }
+
+            // Fallback: share as text
+            await Share.share({ message: text, title: outfit.name });
           } catch {}
         }}
       >
