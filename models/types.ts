@@ -44,17 +44,7 @@ export type CareInstruction =
   | "machine_wash"
   | "hand_wash"
   | "dry_clean_only"
-  | "spot_clean"
-  | "delicate_cycle"
-  | "tumble_dry"
-  | "hang_dry"
-  | "line_dry"
-  | "do_not_bleach"
-  | "iron_low"
-  | "iron_medium"
-  | "iron_high"
-  | "do_not_iron"
-  | "steam_only";
+  | "hang_dry";
 
 export type ArchiveReason = "donated" | "sold" | "worn_out" | "given_away";
 
@@ -67,13 +57,10 @@ export type Pattern =
   | "floral"
   | "polka_dot"
   | "graphic"
-  | "camo"
-  | "abstract"
   | "animal_print"
   | "checkered"
   | "paisley"
   | "houndstooth"
-  | "tie_dye"
   | "color_block";
 
 export type ItemFlag =
@@ -134,10 +121,29 @@ export interface ClothingItem {
   tags?: string[];
 }
 
-/** Common sizes for quick selection */
-export const COMMON_SIZES = ["XXS", "XS", "S", "M", "L", "XL", "XXL", "One Size"] as const;
-export const NUMERIC_SIZES = ["0", "2", "4", "6", "8", "10", "12", "14", "16"] as const;
+/** Sizing system types */
+export type SizeSystem = "letter" | "waist" | "us" | "uk";
+
+/** Common sizes for quick selection by system */
+export const LETTER_SIZES = ["XS", "S", "M", "L", "XL"] as const;
+export const WAIST_SIZES = ["24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "36", "38"] as const;
+export const US_SIZES = ["0", "2", "4", "6", "8", "10", "12", "14", "16"] as const;
+export const UK_SIZES = ["4", "6", "8", "10", "12", "14", "16", "18"] as const;
 export const SHOE_SIZES = ["5", "5.5", "6", "6.5", "7", "7.5", "8", "8.5", "9", "9.5", "10", "10.5", "11", "11.5", "12", "13"] as const;
+
+/** Backwards compat aliases */
+export const COMMON_SIZES = LETTER_SIZES;
+export const NUMERIC_SIZES = US_SIZES;
+
+/** Categories that should NOT show size options */
+export const NO_SIZE_CATEGORIES: ClothingCategory[] = ["jewelry", "accessories", "purse"];
+
+export const SIZE_SYSTEM_LABELS: Record<SizeSystem, string> = {
+  letter: "XS / S / M / L / XL",
+  waist: "Waist",
+  us: "US",
+  uk: "UK",
+};
 
 /** A single wear-log entry for an outfit, optionally with a selfie + note */
 export interface WornEntry {
@@ -249,17 +255,17 @@ export const CATEGORY_LABELS: Record<ClothingCategory, string> = {
 
 export const SUBCATEGORIES: Record<ClothingCategory, { value: string; label: string }[]> = {
   tops: [
-    { value: "blouse", label: "Blouse" },
-    { value: "long_sleeve", label: "Long Sleeve" },
-    { value: "tshirt", label: "T-Shirt" },
     { value: "tank_top", label: "Tank Top" },
-    { value: "sweater", label: "Sweater" },
+    { value: "tshirt", label: "T-Shirt" },
+    { value: "long_sleeve", label: "Long Sleeve" },
+    { value: "blouse", label: "Blouse" },
     { value: "cardigan", label: "Cardigan" },
+    { value: "sweater", label: "Sweater" },
+    { value: "lounge_shirt", label: "Lounge" },
+    { value: "sport", label: "Sport" },
+    { value: "zip_up", label: "Zip-Up" },
     { value: "sweatshirt", label: "Sweatshirt" },
     { value: "hoodie", label: "Hoodie" },
-    { value: "zip_up", label: "Zip-Up" },
-    { value: "lounge_shirt", label: "Lounge Shirt" },
-    { value: "sport", label: "Sport" },
   ],
   bottoms: [
     { value: "trousers", label: "Trousers" },
@@ -273,15 +279,15 @@ export const SUBCATEGORIES: Record<ClothingCategory, { value: string; label: str
     { value: "athletic_shorts", label: "Athletic" },
   ],
   skirts: [
+    { value: "skort", label: "Skort" },
     { value: "mini_skirt", label: "Mini" },
     { value: "midi_skirt", label: "Midi" },
     { value: "maxi_skirt", label: "Maxi" },
-    { value: "skort", label: "Skort" },
   ],
   dresses: [
     { value: "work_dress", label: "Work" },
-    { value: "casual_dress", label: "Casual" },
     { value: "party_dress", label: "Party" },
+    { value: "casual_dress", label: "Casual" },
     { value: "sundress", label: "Sundress" },
     { value: "cover_up", label: "Cover-Up" },
   ],
@@ -294,25 +300,24 @@ export const SUBCATEGORIES: Record<ClothingCategory, { value: string; label: str
     { value: "formal_blazer", label: "Formal" },
   ],
   jackets: [
-    { value: "spring_jacket", label: "Spring Jacket" },
-    { value: "jean_jacket", label: "Jean Jacket" },
-    { value: "work_jacket", label: "Work Jacket" },
-    { value: "raincoat", label: "Raincoat" },
+    { value: "spring_jacket", label: "Spring" },
+    { value: "raincoat", label: "Rain" },
+    { value: "jean_jacket", label: "Jean" },
+    { value: "ski_jacket", label: "Ski" },
     { value: "parka", label: "Parka" },
-    { value: "ski_jacket", label: "Ski Jacket" },
+    { value: "work_jacket", label: "Work" },
   ],
   shoes: [
     { value: "flats", label: "Flats" },
-    { value: "loafers", label: "Loafers" },
     { value: "heels", label: "Heels" },
-    { value: "casual_sandals", label: "Casual Sandals" },
-    { value: "sandals", label: "Sandals" },
+    { value: "loafers", label: "Loafers" },
     { value: "birks", label: "Birks" },
+    { value: "sandals", label: "Sandals" },
+    { value: "running_shoes", label: "Sneakers" },
     { value: "ankle_boots", label: "Ankle Boots" },
-    { value: "knee_boots", label: "Knee-High Boots" },
+    { value: "knee_boots", label: "High Boots" },
     { value: "winter_boots", label: "Winter Boots" },
-    { value: "running_shoes", label: "Running Shoes" },
-    { value: "soccer_shoes", label: "Soccer Shoes" },
+    { value: "soccer_shoes", label: "Soccer" },
   ],
   accessories: [
     { value: "belts", label: "Belts" },
@@ -323,12 +328,12 @@ export const SUBCATEGORIES: Record<ClothingCategory, { value: string; label: str
     { value: "stockings", label: "Stockings/Tights" },
   ],
   purse: [
-    { value: "beach_bag", label: "Beach Bag" },
-    { value: "backpack", label: "Backpack" },
-    { value: "handbag", label: "Handbag" },
-    { value: "crossbody", label: "Crossbody" },
     { value: "clutch", label: "Clutch" },
+    { value: "crossbody", label: "Crossbody" },
+    { value: "handbag", label: "Handbag" },
+    { value: "backpack", label: "Backpack" },
     { value: "tote", label: "Tote" },
+    { value: "beach_bag", label: "Beach Bag" },
   ],
   jewelry: [
     { value: "earrings", label: "Earrings" },
@@ -338,9 +343,9 @@ export const SUBCATEGORIES: Record<ClothingCategory, { value: string; label: str
     { value: "watches", label: "Watches" },
   ],
   swimwear: [
-    { value: "one_piece", label: "One Piece" },
     { value: "top", label: "Top" },
     { value: "bottom", label: "Bottom" },
+    { value: "one_piece", label: "One Piece" },
   ],
 };
 
@@ -377,18 +382,8 @@ export const FABRIC_TYPE_LABELS: Record<FabricType, string> = {
 export const CARE_INSTRUCTION_LABELS: Record<CareInstruction, string> = {
   machine_wash: "Machine Wash",
   hand_wash: "Hand Wash",
-  dry_clean_only: "Dry Clean Only",
-  spot_clean: "Spot Clean",
-  delicate_cycle: "Delicate Cycle",
-  tumble_dry: "Tumble Dry",
+  dry_clean_only: "Dry Clean",
   hang_dry: "Hang Dry",
-  line_dry: "Line Dry",
-  do_not_bleach: "Do Not Bleach",
-  iron_low: "Iron Low",
-  iron_medium: "Iron Medium",
-  iron_high: "Iron High",
-  do_not_iron: "Do Not Iron",
-  steam_only: "Steam Only",
 };
 
 export const ARCHIVE_REASON_LABELS: Record<ArchiveReason, string> = {
@@ -414,13 +409,10 @@ export const PATTERN_LABELS: Record<Pattern, string> = {
   floral: "Floral",
   polka_dot: "Polka Dot",
   graphic: "Graphic",
-  camo: "Camo",
-  abstract: "Abstract",
   animal_print: "Animal Print",
   checkered: "Checkered",
   paisley: "Paisley",
   houndstooth: "Houndstooth",
-  tie_dye: "Tie-Dye",
   color_block: "Colour Block",
 };
 

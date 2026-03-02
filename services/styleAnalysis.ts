@@ -191,7 +191,7 @@ function analyzeStyleCoherence(items: ClothingItem[]): { score: number; note: st
   // Pattern coherence
   const patterns = items.map((i) => i.pattern ?? "solid");
   const nonSolid = patterns.filter((p) => p !== "solid");
-  const boldPatterns = ["floral", "plaid", "animal_print", "camo", "paisley", "houndstooth", "tie_dye"];
+  const boldPatterns = ["floral", "plaid", "animal_print", "paisley", "houndstooth"];
   const boldCount = nonSolid.filter((p) => boldPatterns.includes(p)).length;
   if (boldCount >= 2) {
     return { score: 40, note: "Multiple bold patterns compete — simplify to one statement pattern." };
