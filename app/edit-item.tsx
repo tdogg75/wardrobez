@@ -505,6 +505,37 @@ export default function EditItemScreen() {
     return unsubscribe;
   }, [navigation, hasChanges, handleSave]);
 
+  // Set header actions: Save, Archive, Delete
+  useEffect(() => {
+    navigation.setOptions({
+      headerRight: () => (
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+          <Pressable
+            onPress={handleSave}
+            hitSlop={10}
+            style={{ padding: 8 }}
+          >
+            <Ionicons name="save-outline" size={22} color={theme.colors.primary} />
+          </Pressable>
+          <Pressable
+            onPress={() => setShowArchiveModal(true)}
+            hitSlop={10}
+            style={{ padding: 8 }}
+          >
+            <Ionicons name="archive-outline" size={22} color={theme.colors.warning} />
+          </Pressable>
+          <Pressable
+            onPress={handleDelete}
+            hitSlop={10}
+            style={{ padding: 8 }}
+          >
+            <Ionicons name="trash-outline" size={22} color={theme.colors.error} />
+          </Pressable>
+        </View>
+      ),
+    });
+  }, [navigation, handleSave, handleDelete, theme]);
+
   const subcats = SUBCATEGORIES[category];
 
   return (

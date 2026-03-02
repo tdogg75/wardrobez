@@ -266,21 +266,15 @@ function cropImage(sx,sy,sw,sh) {
     if (!webViewRef.current || naturalSize.w === 0 || imgSize.w === 0) return;
     setApplying(true);
 
+    // Scale from display coordinates to natural image coordinates
     const scaleX = naturalSize.w / imgSize.w;
     const scaleY = naturalSize.h / imgSize.h;
     const sx = Math.round(crop.x * scaleX);
     const sy = Math.round(crop.y * scaleY);
-    let sw = Math.round(crop.w * scaleX);
-    let sh = Math.round(crop.h * scaleY);
+    const sw = Math.round(crop.w * scaleX);
+    const sh = Math.round(crop.h * scaleY);
 
-    // Limit output canvas size to avoid WebView canvas limits on mobile
-    const MAX_CANVAS = 2048;
-    if (sw > MAX_CANVAS || sh > MAX_CANVAS) {
-      const downscale = MAX_CANVAS / Math.max(sw, sh);
-      sw = Math.round(sw * downscale);
-      sh = Math.round(sh * downscale);
-    }
-
+    // Send real source coordinates — the JS side handles output capping
     webViewRef.current.injectJavaScript(`cropImage(${sx},${sy},${sw},${sh}); true;`);
   }, [crop, imgSize, naturalSize]);
 
@@ -295,7 +289,7 @@ function cropImage(sx,sy,sw,sh) {
   );
 
   return (
-    <Modal visible={visible} animationType="fade" onRequestClose={onCancel}>
+    <Modal visible={visible} animationType="fade" presentationStyle="overFullScreen" onRequestClose={onCancel}>
       <View style={styles.root}>
         {dataUri ? (
           <WebView
