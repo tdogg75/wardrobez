@@ -1,7 +1,7 @@
 import React from "react";
 import { View, Text, Pressable, Image, StyleSheet } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import type { ClothingItem, ItemFlag } from "@/models/types";
+import type { ClothingItem, ItemFlag, LaundryStatus } from "@/models/types";
 import { CATEGORY_LABELS, SUBCATEGORIES, ITEM_FLAG_LABELS } from "@/models/types";
 import { ColorDot } from "./ColorDot";
 import { useTheme } from "@/hooks/useTheme";
@@ -142,6 +142,21 @@ export function ClothingCard({ item, onPress, onToggleFavorite, onQuickLogWear, 
           </View>
         )}
 
+        {/* Laundry status badge */}
+        {item.laundryStatus && item.laundryStatus !== "clean" && (
+          <View style={[
+            styles.laundryBadge,
+            { backgroundColor: item.laundryStatus === "in_wash" ? "#3B82F6" : item.laundryStatus === "dry_cleaning" ? "#8B5CF6" : "#F59E0B" },
+            item.sustainable ? { bottom: 32 } : undefined,
+          ]}>
+            <Ionicons
+              name={item.laundryStatus === "in_wash" ? "water" : item.laundryStatus === "dry_cleaning" ? "storefront" : "shirt"}
+              size={10}
+              color="#FFFFFF"
+            />
+          </View>
+        )}
+
         {/* Sustainable badge */}
         {item.sustainable && (
           <View style={styles.sustainableBadge}>
@@ -277,6 +292,16 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontSize: 8,
     fontWeight: "600",
+  },
+  laundryBadge: {
+    position: "absolute",
+    bottom: 8,
+    left: 8,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    justifyContent: "center",
+    alignItems: "center",
   },
   sustainableBadge: {
     position: "absolute",

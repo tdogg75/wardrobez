@@ -25,7 +25,7 @@ import { ColorDot } from "@/components/ColorDot";
 import { MoodBoard } from "@/components/MoodBoard";
 import { Chip } from "@/components/Chip";
 import { CATEGORY_LABELS, OCCASION_LABELS, SEASON_LABELS } from "@/models/types";
-import { generateOutfitName } from "@/services/outfitEngine";
+import { generateOutfitName, colorCompatibility } from "@/services/outfitEngine";
 import { analyzeOutfitStyle } from "@/services/styleAnalysis";
 import type { StyleAnalysisResult } from "@/services/styleAnalysis";
 import type { ClothingItem, Occasion, Season, WornEntry } from "@/models/types";
@@ -58,6 +58,8 @@ export default function OutfitDetailScreen() {
   const [logNote, setLogNote] = useState("");
   const [showAllWornDates, setShowAllWornDates] = useState(false);
   const [showStyleAnalysis, setShowStyleAnalysis] = useState(false);
+  const [showRemixModal, setShowRemixModal] = useState(false);
+  const [remixItemId, setRemixItemId] = useState<string | null>(null);
   const moodBoardRef = useRef<any>(null);
 
   // Build dynamic styles based on the current theme
@@ -571,7 +573,23 @@ export default function OutfitDetailScreen() {
       )}
 
       {/* Items */}
-      <Text style={styles.sectionTitle}>Items</Text>
+      <View style={styles.sectionTitleRow}>
+        <Text style={styles.sectionTitle}>Items</Text>
+        <Pressable
+          style={styles.remixHeaderBtn}
+          onPress={() => {
+            // Pick a random item to swap
+            if (outfitItems.length > 0) {
+              const randomItem = outfitItems[Math.floor(Math.random() * outfitItems.length)];
+              setRemixItemId(randomItem.id);
+              setShowRemixModal(true);
+            }
+          }}
+        >
+          <Ionicons name="shuffle-outline" size={16} color={theme.colors.primary} />
+          <Text style={styles.remixHeaderBtnText}>Remix</Text>
+        </Pressable>
+      </View>
       {outfitItems.map((item) => (
         <Pressable
           key={item.id}
@@ -593,6 +611,16 @@ export default function OutfitDetailScreen() {
               {item.cost ? ` · ${fmt(item.cost)}` : ""}
             </Text>
           </View>
+          <Pressable
+            style={styles.swapBtn}
+            onPress={() => {
+              setRemixItemId(item.id);
+              setShowRemixModal(true);
+            }}
+            hitSlop={8}
+          >
+            <Ionicons name="swap-horizontal-outline" size={18} color={theme.colors.primary} />
+          </Pressable>
           <Ionicons name="chevron-forward" size={16} color={theme.colors.textLight} />
         </Pressable>
       ))}
@@ -852,6 +880,122 @@ export default function OutfitDetailScreen() {
                 <Text style={styles.renameSaveText}>Save</Text>
               </Pressable>
             </View>
+          </View>
+        </View>
+      </Modal>
+      {/* Remix / Swap Modal */}
+      <Modal
+        visible={showRemixModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowRemixModal(false)}
+      >
+        <View style={styles.remixOverlay}>
+          <View style={[styles.remixSheet, { backgroundColor: theme.colors.surface }]}>
+            <View style={styles.remixHeader}>
+              <Text style={styles.remixTitle}>
+                Swap Item
+              </Text>
+              <Pressable onPress={() => setShowRemixModal(false)} hitSlop={10}>
+                <Ionicons name="close" size={22} color={theme.colors.textSecondary} />
+              </Pressable>
+            </View>
+            {(() => {
+              const swapItem = remixItemId ? getById(remixItemId) : null;
+              if (!swapItem) return null;
+
+              // Find alternatives: same category, not already in outfit, available (clean)
+              const otherItemIds = new Set(outfit.itemIds.filter((iid) => iid !== remixItemId));
+              const otherItems = Array.from(otherItemIds)
+                .map((iid) => getById(iid))
+                .filter(Boolean) as ClothingItem[];
+
+              const alternatives = allItems
+                .filter((i) => {
+                  if (i.id === remixItemId) return false;
+                  if (otherItemIds.has(i.id)) return false;
+                  if (i.category !== swapItem.category) return false;
+                  const status = i.laundryStatus ?? "clean";
+                  if (status !== "clean") return false;
+                  return true;
+                })
+                .map((alt) => {
+                  // Score how well this alternative fits with the rest of the outfit
+                  let score = 0;
+                  for (const other of otherItems) {
+                    score += colorCompatibility(alt.color, other.color);
+                  }
+                  return { item: alt, score: otherItems.length > 0 ? score / otherItems.length : 0 };
+                })
+                .sort((a, b) => b.score - a.score)
+                .slice(0, 10);
+
+              return (
+                <>
+                  <View style={styles.remixCurrentRow}>
+                    <Text style={styles.remixSubtitle}>
+                      Replacing: <Text style={{ fontWeight: "700" }}>{swapItem.name}</Text>
+                    </Text>
+                    <Text style={styles.remixCategory}>
+                      {CATEGORY_LABELS[swapItem.category]}
+                    </Text>
+                  </View>
+                  {alternatives.length === 0 ? (
+                    <Text style={styles.remixEmpty}>No alternatives available in this category.</Text>
+                  ) : (
+                    <FlatList
+                      data={alternatives}
+                      keyExtractor={(a) => a.item.id}
+                      style={{ maxHeight: 400 }}
+                      renderItem={({ item: alt }) => (
+                        <Pressable
+                          style={styles.remixAltCard}
+                          onPress={async () => {
+                            // Swap the item in the outfit
+                            const newItemIds = outfit.itemIds.map((iid) =>
+                              iid === remixItemId ? alt.item.id : iid
+                            );
+                            await addOrUpdate({
+                              ...outfit,
+                              itemIds: newItemIds,
+                            });
+                            setShowRemixModal(false);
+                            setRemixItemId(null);
+                          }}
+                        >
+                          {alt.item.imageUris?.length > 0 ? (
+                            <Image source={{ uri: alt.item.imageUris[0] }} style={styles.remixAltThumb} />
+                          ) : (
+                            <View style={[styles.remixAltColorDot, { backgroundColor: alt.item.color }]} />
+                          )}
+                          <View style={styles.remixAltInfo}>
+                            <Text style={styles.remixAltName}>{alt.item.name}</Text>
+                            <Text style={styles.remixAltMeta}>
+                              {alt.item.brand ? `${alt.item.brand} · ` : ""}
+                              {alt.item.colorName}
+                              {alt.score > 0.8 ? " · Great match" : alt.score > 0.6 ? " · Good match" : ""}
+                            </Text>
+                          </View>
+                          <View style={[
+                            styles.remixMatchBadge,
+                            {
+                              backgroundColor: alt.score > 0.8 ? "#10B981" + "20" : alt.score > 0.6 ? "#F59E0B" + "20" : theme.colors.surfaceAlt,
+                            },
+                          ]}>
+                            <Text style={[
+                              styles.remixMatchText,
+                              { color: alt.score > 0.8 ? "#10B981" : alt.score > 0.6 ? "#F59E0B" : theme.colors.textSecondary },
+                            ]}>
+                              {Math.round(alt.score * 100)}%
+                            </Text>
+                          </View>
+                        </Pressable>
+                      )}
+                    />
+                  )}
+                </>
+              );
+            })()}
           </View>
         </View>
       </Modal>
@@ -1442,6 +1586,124 @@ function makeStyles(theme: ReturnType<typeof useTheme>["theme"]) {
       fontSize: theme.fontSize.sm,
       fontWeight: "600",
       color: theme.colors.primary,
+    },
+    // --- Remix / Swap ---
+    sectionTitleRow: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+    },
+    remixHeaderBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+      paddingHorizontal: 10,
+      paddingVertical: 5,
+      borderRadius: theme.borderRadius.full,
+      backgroundColor: theme.colors.primary + "12",
+    },
+    remixHeaderBtnText: {
+      fontSize: theme.fontSize.xs,
+      fontWeight: "600",
+      color: theme.colors.primary,
+    },
+    swapBtn: {
+      padding: 6,
+      marginRight: 4,
+    },
+    remixOverlay: {
+      flex: 1,
+      backgroundColor: "rgba(0,0,0,0.4)",
+      justifyContent: "flex-end",
+    },
+    remixSheet: {
+      borderTopLeftRadius: 20,
+      borderTopRightRadius: 20,
+      paddingTop: theme.spacing.md,
+      paddingBottom: theme.spacing.xxl,
+      paddingHorizontal: theme.spacing.md,
+      maxHeight: "75%",
+    },
+    remixHeader: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginBottom: theme.spacing.md,
+    },
+    remixTitle: {
+      fontSize: theme.fontSize.lg,
+      fontWeight: "700",
+      color: theme.colors.text,
+    },
+    remixCurrentRow: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginBottom: theme.spacing.md,
+      paddingBottom: theme.spacing.sm,
+      borderBottomWidth: 1,
+      borderBottomColor: theme.colors.border,
+    },
+    remixSubtitle: {
+      fontSize: theme.fontSize.sm,
+      color: theme.colors.textSecondary,
+      flex: 1,
+    },
+    remixCategory: {
+      fontSize: theme.fontSize.xs,
+      fontWeight: "600",
+      color: theme.colors.primary,
+      paddingHorizontal: 8,
+      paddingVertical: 3,
+      borderRadius: theme.borderRadius.full,
+      backgroundColor: theme.colors.primary + "12",
+    },
+    remixEmpty: {
+      fontSize: theme.fontSize.sm,
+      color: theme.colors.textLight,
+      textAlign: "center",
+      paddingVertical: theme.spacing.lg,
+    },
+    remixAltCard: {
+      flexDirection: "row",
+      alignItems: "center",
+      paddingVertical: 10,
+      borderBottomWidth: 1,
+      borderBottomColor: theme.colors.border + "40",
+      gap: 12,
+    },
+    remixAltThumb: {
+      width: 48,
+      height: 48,
+      borderRadius: theme.borderRadius.sm,
+      resizeMode: "cover",
+    },
+    remixAltColorDot: {
+      width: 48,
+      height: 48,
+      borderRadius: theme.borderRadius.sm,
+    },
+    remixAltInfo: {
+      flex: 1,
+    },
+    remixAltName: {
+      fontSize: theme.fontSize.md,
+      fontWeight: "600",
+      color: theme.colors.text,
+    },
+    remixAltMeta: {
+      fontSize: theme.fontSize.xs,
+      color: theme.colors.textSecondary,
+      marginTop: 2,
+    },
+    remixMatchBadge: {
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      borderRadius: theme.borderRadius.full,
+    },
+    remixMatchText: {
+      fontSize: theme.fontSize.xs,
+      fontWeight: "700",
     },
   });
 }

@@ -25,8 +25,9 @@ import {
   ARCHIVE_REASON_LABELS,
   CARE_INSTRUCTION_LABELS,
   PATTERN_LABELS,
+  LAUNDRY_STATUS_LABELS,
 } from "@/models/types";
-import type { ItemFlag, ArchiveReason, CareInstruction, Pattern } from "@/models/types";
+import type { ItemFlag, ArchiveReason, CareInstruction, Pattern, LaundryStatus } from "@/models/types";
 
 const ARCHIVE_REASONS: ArchiveReason[] = ["donated", "sold", "worn_out", "given_away"];
 
@@ -77,7 +78,7 @@ function formatAge(dateInput: string | number): string {
 export default function ItemDetailScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { items: allItems, getById, addOrUpdate, remove, archiveItem, logItemWorn, removeItemWornDate } = useClothingItems();
+  const { items: allItems, getById, addOrUpdate, remove, archiveItem, logItemWorn, removeItemWornDate, updateLaundryStatus } = useClothingItems();
   const { theme } = useTheme();
   const [showArchiveModal, setShowArchiveModal] = useState(false);
   const [showWearLog, setShowWearLog] = useState(false);
@@ -341,6 +342,47 @@ export default function ItemDetailScreen() {
               <Ionicons name="add-circle-outline" size={18} color={theme.colors.primary} />
               <Text style={styles.logWearText}>Log a Wear</Text>
             </Pressable>
+          </View>
+        </View>
+
+        {/* Laundry Status */}
+        <View style={styles.infoRow}>
+          <Text style={styles.infoLabel}>Laundry</Text>
+          <View style={styles.laundryRow}>
+            {(["clean", "worn", "in_wash", "dry_cleaning"] as LaundryStatus[]).map((status) => {
+              const isActive = (item.laundryStatus ?? "clean") === status;
+              const statusColor =
+                status === "clean" ? "#10B981" :
+                status === "worn" ? "#F59E0B" :
+                status === "in_wash" ? "#3B82F6" : "#8B5CF6";
+              return (
+                <Pressable
+                  key={status}
+                  style={[
+                    styles.laundryChip,
+                    { borderColor: isActive ? statusColor : theme.colors.border },
+                    isActive && { backgroundColor: statusColor + "18" },
+                  ]}
+                  onPress={() => updateLaundryStatus(id, status)}
+                >
+                  <Ionicons
+                    name={
+                      status === "clean" ? "checkmark-circle" :
+                      status === "worn" ? "shirt" :
+                      status === "in_wash" ? "water" : "storefront"
+                    }
+                    size={14}
+                    color={isActive ? statusColor : theme.colors.textLight}
+                  />
+                  <Text style={[
+                    styles.laundryChipText,
+                    { color: isActive ? statusColor : theme.colors.textSecondary },
+                  ]}>
+                    {LAUNDRY_STATUS_LABELS[status]}
+                  </Text>
+                </Pressable>
+              );
+            })}
           </View>
         </View>
 
@@ -702,6 +744,25 @@ function makeStyles(theme: ReturnType<typeof useTheme>["theme"]) {
       fontSize: theme.fontSize.sm,
       fontWeight: "600",
       color: theme.colors.primary,
+    },
+    laundryRow: {
+      flex: 1,
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 6,
+    },
+    laundryChip: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+      paddingVertical: 5,
+      paddingHorizontal: 10,
+      borderRadius: theme.borderRadius.full,
+      borderWidth: 1,
+    },
+    laundryChipText: {
+      fontSize: theme.fontSize.xs,
+      fontWeight: "600",
     },
     /* Care instructions & tags */
     careSection: {

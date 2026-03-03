@@ -1,6 +1,6 @@
 import * as FileSystem from "expo-file-system";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import type { ClothingItem, Outfit, FabricType, ArchiveReason, WishlistItem, OutfitTemplate, PlannedOutfit, SavedWeekPlan, InspirationPin, PackingList } from "@/models/types";
+import type { ClothingItem, Outfit, FabricType, ArchiveReason, LaundryStatus, WishlistItem, OutfitTemplate, PlannedOutfit, SavedWeekPlan, InspirationPin, PackingList } from "@/models/types";
 
 // --- File-System Storage Layer ---
 // Data is persisted as JSON files in the app's document directory.
@@ -406,6 +406,8 @@ export async function logOutfitWorn(
         ...item,
         wearCount: item.wearCount + 1,
         wearDates: [...(item.wearDates ?? []), today],
+        laundryStatus: "worn" as LaundryStatus,
+        laundryStatusUpdatedAt: Date.now(),
       };
     }
     return item;
@@ -425,8 +427,49 @@ export async function logItemWorn(itemId: string): Promise<void> {
     ...items[idx],
     wearCount: items[idx].wearCount + 1,
     wearDates: [...(items[idx].wearDates ?? []), today],
+    laundryStatus: "worn" as LaundryStatus,
+    laundryStatusUpdatedAt: Date.now(),
   };
   await writeJsonFile(FILES.CLOTHING_ITEMS, items);
+}
+
+/** Update the laundry status of a clothing item */
+export async function updateLaundryStatus(
+  itemId: string,
+  status: LaundryStatus
+): Promise<void> {
+  const items = await getClothingItems();
+  const idx = items.findIndex((i) => i.id === itemId);
+  if (idx < 0) return;
+  items[idx] = {
+    ...items[idx],
+    laundryStatus: status,
+    laundryStatusUpdatedAt: Date.now(),
+  };
+  await writeJsonFile(FILES.CLOTHING_ITEMS, items);
+}
+
+/** Bulk update laundry status for multiple items */
+export async function bulkUpdateLaundryStatus(
+  itemIds: string[],
+  status: LaundryStatus
+): Promise<void> {
+  const items = await getClothingItems();
+  const idSet = new Set(itemIds);
+  let changed = false;
+  for (let i = 0; i < items.length; i++) {
+    if (idSet.has(items[i].id)) {
+      items[i] = {
+        ...items[i],
+        laundryStatus: status,
+        laundryStatusUpdatedAt: Date.now(),
+      };
+      changed = true;
+    }
+  }
+  if (changed) {
+    await writeJsonFile(FILES.CLOTHING_ITEMS, items);
+  }
 }
 
 /** Remove a wear date from an item's wearDates array */

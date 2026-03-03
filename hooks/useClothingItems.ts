@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import type { ClothingItem, ClothingCategory, ArchiveReason } from "@/models/types";
+import type { ClothingItem, ClothingCategory, ArchiveReason, LaundryStatus } from "@/models/types";
 import {
   getClothingItems,
   saveClothingItem,
@@ -8,6 +8,8 @@ import {
   unarchiveItem as unarchiveStorageItem,
   logItemWorn as logItemWornStorage,
   removeItemWornDate as removeItemWornDateStorage,
+  updateLaundryStatus as updateLaundryStatusStorage,
+  bulkUpdateLaundryStatus as bulkUpdateLaundryStatusStorage,
 } from "@/services/storage";
 
 interface ClothingItemsContextValue {
@@ -22,9 +24,12 @@ interface ClothingItemsContextValue {
   unarchiveItem: (id: string) => Promise<void>;
   logItemWorn: (id: string) => Promise<void>;
   removeItemWornDate: (id: string, dateIndex: number) => Promise<void>;
+  updateLaundryStatus: (id: string, status: LaundryStatus) => Promise<void>;
+  bulkUpdateLaundryStatus: (ids: string[], status: LaundryStatus) => Promise<void>;
   getByCategory: (category: ClothingCategory) => ClothingItem[];
   getById: (id: string) => ClothingItem | null;
   getFavorites: () => ClothingItem[];
+  getAvailableItems: () => ClothingItem[];
 }
 
 const ClothingItemsContext = createContext<ClothingItemsContextValue | null>(null);
@@ -102,6 +107,22 @@ export function ClothingItemsProvider({ children }: { children: React.ReactNode 
     [reload]
   );
 
+  const updateLaundryStatus = useCallback(
+    async (id: string, status: LaundryStatus) => {
+      await updateLaundryStatusStorage(id, status);
+      await reload();
+    },
+    [reload]
+  );
+
+  const bulkUpdateLaundryStatus = useCallback(
+    async (ids: string[], status: LaundryStatus) => {
+      await bulkUpdateLaundryStatusStorage(ids, status);
+      await reload();
+    },
+    [reload]
+  );
+
   const getByCategory = useCallback(
     (category: ClothingCategory) => activeItems.filter((i) => i.category === category),
     [activeItems]
@@ -117,6 +138,14 @@ export function ClothingItemsProvider({ children }: { children: React.ReactNode 
     [activeItems]
   );
 
+  const getAvailableItems = useCallback(
+    () => activeItems.filter((i) => {
+      const status = i.laundryStatus ?? "clean";
+      return status === "clean";
+    }),
+    [activeItems]
+  );
+
   const value: ClothingItemsContextValue = {
     items: activeItems,
     activeItems,
@@ -129,9 +158,12 @@ export function ClothingItemsProvider({ children }: { children: React.ReactNode 
     unarchiveItem,
     logItemWorn,
     removeItemWornDate,
+    updateLaundryStatus,
+    bulkUpdateLaundryStatus,
     getByCategory,
     getById,
     getFavorites,
+    getAvailableItems,
   };
 
   return React.createElement(ClothingItemsContext.Provider, { value }, children);

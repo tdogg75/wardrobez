@@ -48,6 +48,8 @@ export type CareInstruction =
 
 export type ArchiveReason = "donated" | "sold" | "worn_out" | "given_away";
 
+export type LaundryStatus = "clean" | "worn" | "in_wash" | "dry_cleaning";
+
 export type HardwareColour = "gold" | "silver" | "rose_gold" | "black" | "bronze" | "gunmetal";
 
 export type Pattern =
@@ -119,6 +121,10 @@ export interface ClothingItem {
   size?: string;
   // Custom tags
   tags?: string[];
+  // Laundry status tracking
+  laundryStatus?: LaundryStatus;
+  /** Timestamp when laundry status was last changed */
+  laundryStatusUpdatedAt?: number;
 }
 
 /** Sizing system types */
@@ -423,6 +429,20 @@ export const PATTERN_LABELS: Record<Pattern, string> = {
   paisley: "Paisley",
   houndstooth: "Houndstooth",
   color_block: "Colour Block",
+};
+
+export const LAUNDRY_STATUS_LABELS: Record<LaundryStatus, string> = {
+  clean: "Clean",
+  worn: "Worn",
+  in_wash: "In the Wash",
+  dry_cleaning: "At Dry Cleaner",
+};
+
+export const LAUNDRY_STATUS_ICONS: Record<LaundryStatus, string> = {
+  clean: "checkmark-circle",
+  worn: "shirt",
+  in_wash: "water",
+  dry_cleaning: "storefront",
 };
 
 export const ITEM_FLAG_LABELS: Record<ItemFlag, string> = {

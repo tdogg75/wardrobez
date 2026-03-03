@@ -979,9 +979,15 @@ export function suggestOutfits(
     }
   }
 
+  // Filter out items that are not available (in the wash, at dry cleaner, etc.)
+  const availableItems = allItems.filter((item) => {
+    const status = item.laundryStatus ?? "clean";
+    return status === "clean";
+  });
+
   // Group items by category
   const byCategory = new Map<ClothingCategory, ClothingItem[]>();
-  for (const item of allItems) {
+  for (const item of availableItems) {
     const list = byCategory.get(item.category) ?? [];
     list.push(item);
     byCategory.set(item.category, list);
