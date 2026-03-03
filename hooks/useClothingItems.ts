@@ -141,7 +141,7 @@ export function ClothingItemsProvider({ children }: { children: React.ReactNode 
   const getAvailableItems = useCallback(
     () => activeItems.filter((i) => {
       const status = i.laundryStatus ?? "clean";
-      return status === "clean";
+      return status !== "in_wash" && status !== "dry_cleaning";
     }),
     [activeItems]
   );

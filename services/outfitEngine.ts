@@ -979,10 +979,10 @@ export function suggestOutfits(
     }
   }
 
-  // Filter out items that are not available (in the wash, at dry cleaner, etc.)
+  // Filter out items that are physically unavailable (in the wash, at dry cleaner)
   const availableItems = allItems.filter((item) => {
     const status = item.laundryStatus ?? "clean";
-    return status === "clean";
+    return status !== "in_wash" && status !== "dry_cleaning";
   });
 
   // Group items by category

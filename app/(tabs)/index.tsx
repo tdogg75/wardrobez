@@ -277,7 +277,7 @@ export default function WardrobeScreen() {
       if (cancelled) return;
       const available = items.filter((i) => {
         const status = i.laundryStatus ?? "clean";
-        return status === "clean";
+        return status !== "in_wash" && status !== "dry_cleaning";
       });
       if (available.length < 3) return;
       const results = suggestOutfits(available, { maxResults: 1 });
@@ -953,7 +953,7 @@ export default function WardrobeScreen() {
                 // Regenerate with a fresh suggestion
                 const available = items.filter((i) => {
                   const status = i.laundryStatus ?? "clean";
-                  return status === "clean";
+                  return status !== "in_wash" && status !== "dry_cleaning";
                 });
                 const results = suggestOutfits(available, { maxResults: 1 });
                 if (results.length > 0) {

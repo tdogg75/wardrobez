@@ -916,7 +916,7 @@ export default function OutfitDetailScreen() {
                   if (otherItemIds.has(i.id)) return false;
                   if (i.category !== swapItem.category) return false;
                   const status = i.laundryStatus ?? "clean";
-                  if (status !== "clean") return false;
+                  if (status === "in_wash" || status === "dry_cleaning") return false;
                   return true;
                 })
                 .map((alt) => {
