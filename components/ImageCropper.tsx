@@ -307,7 +307,7 @@ function cropImage(sx,sy,sw,sh) {
             style={styles.hidden}
             onMessage={handleWebViewMessage}
             javaScriptEnabled
-            originWhitelist={["*"]}
+            originWhitelist={["about:*", "data:*"]}
           />
         ) : null}
 

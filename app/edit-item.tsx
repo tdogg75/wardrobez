@@ -14,6 +14,7 @@ import {
   Switch,
 } from "react-native";
 import { fetchProductFromUrl } from "@/services/productSearch";
+import { safeOpenURL } from "@/utils/safeOpenURL";
 import { useRouter, useLocalSearchParams, useNavigation } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import { Ionicons } from "@expo/vector-icons";
@@ -639,7 +640,7 @@ export default function EditItemScreen() {
                 styles.refreshUrlBtn,
                 { backgroundColor: theme.colors.primary + "12", borderColor: theme.colors.primary + "30" },
               ]}
-              onPress={() => Linking.openURL(productUrl.trim())}
+              onPress={() => safeOpenURL(productUrl.trim())}
             >
               <Ionicons name="open-outline" size={18} color={theme.colors.textSecondary} />
             </Pressable>

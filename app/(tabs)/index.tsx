@@ -527,7 +527,7 @@ export default function WardrobeScreen() {
     (screenWidth - theme.spacing.md * 2 - photoTileGap * (PHOTO_GRID_COLUMNS - 1)) /
     PHOTO_GRID_COLUMNS;
 
-  const styles = createStyles(theme);
+  const styles = useMemo(() => createStyles(theme), [theme]);
 
   const currentSortLabel =
     SORT_OPTIONS.find((o) => o.value === sortBy)?.label ?? "Newest";

@@ -114,15 +114,29 @@ export async function signInWithGoogle(clientId: string): Promise<string | null>
     clientId,
     redirectUri,
     scopes: SCOPES,
-    responseType: AuthSession.ResponseType.Token,
-    usePKCE: false,
+    responseType: AuthSession.ResponseType.Code,
+    usePKCE: true,
   });
 
   const result = await request.promptAsync(discovery);
 
-  if (result.type === "success" && result.authentication?.accessToken) {
-    cachedToken = result.authentication.accessToken;
-    return cachedToken;
+  if (result.type === "success" && result.params?.code) {
+    // Exchange authorization code for access token
+    const tokenResult = await AuthSession.exchangeCodeAsync(
+      {
+        clientId,
+        code: result.params.code,
+        redirectUri,
+        extraParams: request.codeVerifier
+          ? { code_verifier: request.codeVerifier }
+          : undefined,
+      },
+      discovery
+    );
+    if (tokenResult.accessToken) {
+      cachedToken = tokenResult.accessToken;
+      return cachedToken;
+    }
   }
   return null;
 }

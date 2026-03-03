@@ -15,6 +15,7 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { safeOpenURL } from "@/utils/safeOpenURL";
 import { useTheme } from "@/hooks/useTheme";
 import {
   signInWithGoogle,
@@ -649,7 +650,7 @@ export default function GmailPurchasesScreen() {
                       <Text
                         style={styles.lineItemUrl}
                         numberOfLines={1}
-                        onPress={() => Linking.openURL(item.url)}
+                        onPress={() => safeOpenURL(item.url)}
                       >
                         {item.url}
                       </Text>

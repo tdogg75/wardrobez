@@ -502,9 +502,16 @@ export async function removeWornDate(
   const newDates = [...outfit.wornDates];
   newDates.splice(dateIndex, 1);
 
+  // Also remove the corresponding wornEntries entry to keep them in sync
+  const newEntries = [...(outfit.wornEntries ?? [])];
+  if (dateIndex < newEntries.length) {
+    newEntries.splice(dateIndex, 1);
+  }
+
   outfits[outfitIdx] = {
     ...outfit,
     wornDates: newDates,
+    wornEntries: newEntries,
   };
   await writeJsonFile(FILES.OUTFITS, outfits);
 
@@ -514,12 +521,14 @@ export async function removeWornDate(
   let itemsChanged = false;
   const updatedItems = items.map((item) => {
     if (outfit.itemIds.includes(item.id) && item.wearCount > 0) {
-      itemsChanged = true;
       const itemDates = [...(item.wearDates ?? [])];
-      // Remove the first matching date entry
+      // Only decrement wearCount if the date was actually found and removed
       const dateIdx = itemDates.indexOf(removedDate);
-      if (dateIdx >= 0) itemDates.splice(dateIdx, 1);
-      return { ...item, wearCount: Math.max(0, item.wearCount - 1), wearDates: itemDates };
+      if (dateIdx >= 0) {
+        itemDates.splice(dateIdx, 1);
+        itemsChanged = true;
+        return { ...item, wearCount: Math.max(0, item.wearCount - 1), wearDates: itemDates };
+      }
     }
     return item;
   });
@@ -588,6 +597,7 @@ export async function moveWishlistToWardrobe(wishlistId: string): Promise<Clothi
     cost: item.estimatedPrice,
     favorite: false,
     wearCount: 0,
+    wearDates: [],
     archived: false,
     createdAt: Date.now(),
     notes: item.notes,
@@ -677,10 +687,51 @@ export async function exportAllData(): Promise<string> {
   );
 }
 
+/** Validate that an imported item has the minimum required shape */
+function isValidClothingItem(item: unknown): item is Record<string, unknown> {
+  if (typeof item !== "object" || item === null) return false;
+  const obj = item as Record<string, unknown>;
+  return (
+    typeof obj.id === "string" &&
+    typeof obj.name === "string" &&
+    typeof obj.category === "string" &&
+    typeof obj.color === "string" &&
+    typeof obj.colorName === "string"
+  );
+}
+
+function isValidOutfit(outfit: unknown): outfit is Record<string, unknown> {
+  if (typeof outfit !== "object" || outfit === null) return false;
+  const obj = outfit as Record<string, unknown>;
+  return (
+    typeof obj.id === "string" &&
+    typeof obj.name === "string" &&
+    Array.isArray(obj.itemIds)
+  );
+}
+
+const MAX_IMPORT_SIZE = 50 * 1024 * 1024; // 50 MB
+
 export async function importAllData(jsonString: string): Promise<void> {
+  if (jsonString.length > MAX_IMPORT_SIZE) {
+    throw new Error("Backup file is too large (max 50 MB)");
+  }
+
   const data = JSON.parse(jsonString);
-  if (!data.clothing_items || !data.outfits) {
+  if (!Array.isArray(data.clothing_items) || !Array.isArray(data.outfits)) {
     throw new Error("Invalid backup format");
+  }
+
+  // Validate each item to prevent malformed data from being imported
+  for (const item of data.clothing_items) {
+    if (!isValidClothingItem(item)) {
+      throw new Error("Backup contains invalid clothing item data");
+    }
+  }
+  for (const outfit of data.outfits) {
+    if (!isValidOutfit(outfit)) {
+      throw new Error("Backup contains invalid outfit data");
+    }
   }
 
   // Restore photos if present (version 2+)

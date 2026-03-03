@@ -15,6 +15,7 @@ import {
 import { useRouter } from "expo-router";
 import { useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { safeOpenURL } from "@/utils/safeOpenURL";
 import { useClothingItems } from "@/hooks/useClothingItems";
 import { useOutfits } from "@/hooks/useOutfits";
 import { Chip } from "@/components/Chip";
@@ -1497,7 +1498,7 @@ export default function ProfileScreen() {
                       <Pressable
                         onPress={(e) => {
                           e.stopPropagation?.();
-                          Linking.openURL(wItem.url!);
+                          safeOpenURL(wItem.url!);
                         }}
                         hitSlop={4}
                       >

@@ -16,7 +16,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 import { useClothingItems } from "@/hooks/useClothingItems";
 import { useOutfits } from "@/hooks/useOutfits";
-import { suggestOutfits, generateOutfitName, flagOutfit, detectRepeatOutfit, type SuggestionResult } from "@/services/outfitEngine";
+import { suggestOutfits, generateOutfitName, flagOutfit, detectRepeatOutfit, preloadFlags, type SuggestionResult } from "@/services/outfitEngine";
 import {
   getCurrentWeather,
   weatherToSeason,
@@ -83,9 +83,10 @@ export default function SuggestScreen() {
   // Track locked names per suggestion index (generated names locked on first generation)
   const [lockedNames, setLockedNames] = useState<Record<number, string>>({});
 
-  // Load last used filters from AsyncStorage on mount
+  // Load last used filters from AsyncStorage on mount and warm the flags cache
   useEffect(() => {
     let mounted = true;
+    preloadFlags();
     (async () => {
       try {
         const [savedSeason, savedOccasion] = await Promise.all([

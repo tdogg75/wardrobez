@@ -13,6 +13,7 @@ import {
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { safeOpenURL } from "@/utils/safeOpenURL";
 import { useClothingItems } from "@/hooks/useClothingItems";
 import { ColorDot } from "@/components/ColorDot";
 import { useTheme } from "@/hooks/useTheme";
@@ -285,7 +286,7 @@ export default function ItemDetailScreen() {
         {item.productUrl ? (
           <View style={styles.infoRow}>
             <Text style={styles.infoLabel}>URL</Text>
-            <Pressable onPress={() => Linking.openURL(item.productUrl!)}>
+            <Pressable onPress={() => safeOpenURL(item.productUrl!)}>
               <Text style={[styles.infoValue, { color: theme.colors.primary, textDecorationLine: "underline" }]} numberOfLines={1}>
                 {item.productUrl.replace(/^https?:\/\/(www\.)?/, "").slice(0, 40)}...
               </Text>

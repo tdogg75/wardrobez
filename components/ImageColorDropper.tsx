@@ -252,7 +252,7 @@ img.src = ${JSON.stringify(dataUri)};
             style={styles.hiddenWebView}
             onMessage={handleWebViewMessage}
             javaScriptEnabled
-            originWhitelist={["*"]}
+            originWhitelist={["about:*", "data:*"]}
           />
         ) : null}
 

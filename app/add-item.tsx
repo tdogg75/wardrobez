@@ -15,6 +15,7 @@ import {
 import { useRouter, useLocalSearchParams } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import { Ionicons } from "@expo/vector-icons";
+import { safeOpenURL } from "@/utils/safeOpenURL";
 import { useClothingItems } from "@/hooks/useClothingItems";
 import { Chip } from "@/components/Chip";
 import { ColorDot } from "@/components/ColorDot";
@@ -102,7 +103,7 @@ export default function AddItemScreen() {
     if (items.length === 0) return "tops" as ClothingCategory;
     const sorted = [...items].sort((a, b) => b.createdAt - a.createdAt);
     return sorted[0].category;
-  }, []);
+  }, [items]);
   const [category, setCategory] = useState<ClothingCategory>(lastCategory);
   const [subCategory, setSubCategory] = useState<string | undefined>(undefined);
   const [colorIdx, setColorIdx] = useState(0);
@@ -618,7 +619,7 @@ export default function AddItemScreen() {
           {productUrl.trim().startsWith("http") && (
             <Pressable
               style={styles.urlOpenBtn}
-              onPress={() => Linking.openURL(productUrl.trim())}
+              onPress={() => safeOpenURL(productUrl.trim())}
             >
               <Ionicons name="open-outline" size={18} color={theme.colors.textSecondary} />
             </Pressable>
