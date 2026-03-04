@@ -89,6 +89,8 @@ export default function BarcodeScannerScreen() {
           <Pressable
             style={[styles.backBtn, { backgroundColor: theme.colors.primary }]}
             onPress={() => router.back()}
+            accessibilityRole="button"
+            accessibilityLabel="Go back"
           >
             <Text style={styles.backBtnText}>Go Back</Text>
           </Pressable>
@@ -112,6 +114,8 @@ export default function BarcodeScannerScreen() {
           <Pressable
             style={[styles.backBtn, { backgroundColor: theme.colors.primary }]}
             onPress={requestPermission}
+            accessibilityRole="button"
+            accessibilityLabel="Grant camera permission"
           >
             <Text style={styles.backBtnText}>Grant Permission</Text>
           </Pressable>
@@ -142,7 +146,7 @@ export default function BarcodeScannerScreen() {
       <View style={styles.overlay}>
         {/* Top bar */}
         <View style={styles.topBar}>
-          <Pressable onPress={() => router.back()} hitSlop={12}>
+          <Pressable onPress={() => router.back()} hitSlop={12} accessibilityRole="button" accessibilityLabel="Close scanner">
             <Ionicons name="close" size={28} color="#FFF" />
           </Pressable>
           <Text style={styles.topTitle}>Scan Barcode</Text>

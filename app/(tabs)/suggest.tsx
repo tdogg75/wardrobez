@@ -16,7 +16,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 import { useClothingItems } from "@/hooks/useClothingItems";
 import { useOutfits } from "@/hooks/useOutfits";
-import { suggestOutfits, generateOutfitName, flagOutfit, detectRepeatOutfit, type SuggestionResult } from "@/services/outfitEngine";
+import { suggestOutfits, generateOutfitName, flagOutfit, detectRepeatOutfit, preloadFlags, type SuggestionResult } from "@/services/outfitEngine";
 import {
   getCurrentWeather,
   weatherToSeason,
@@ -83,9 +83,10 @@ export default function SuggestScreen() {
   // Track locked names per suggestion index (generated names locked on first generation)
   const [lockedNames, setLockedNames] = useState<Record<number, string>>({});
 
-  // Load last used filters from AsyncStorage on mount
+  // Load last used filters from AsyncStorage on mount and warm the flags cache
   useEffect(() => {
     let mounted = true;
+    preloadFlags();
     (async () => {
       try {
         const [savedSeason, savedOccasion] = await Promise.all([
@@ -764,7 +765,7 @@ export default function SuggestScreen() {
       </View>
 
       {/* Morning Routine Quick Pick (#16) */}
-      <Pressable style={dynamicStyles.quickPickBtn} onPress={handleQuickPick}>
+      <Pressable style={dynamicStyles.quickPickBtn} onPress={handleQuickPick} accessibilityRole="button" accessibilityLabel="Quick pick outfit">
         <Ionicons name="flash" size={20} color={theme.colors.accent} />
         <Text style={dynamicStyles.quickPickBtnText}>Quick Pick</Text>
       </Pressable>
@@ -836,6 +837,8 @@ export default function SuggestScreen() {
                   <Pressable
                     style={dynamicStyles.quickPickSelectBtn}
                     onPress={() => handleQuickPickSelect(pick, idx + 1000)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Pick outfit ${idx + 1}`}
                   >
                     <Ionicons name="checkmark-circle" size={20} color="#FFFFFF" />
                     <Text style={dynamicStyles.quickPickSelectText}>
@@ -866,6 +869,8 @@ export default function SuggestScreen() {
               setQuickPickMode(false);
               setQuickPicks([]);
             }}
+            accessibilityRole="button"
+            accessibilityLabel="Dismiss quick picks"
           >
             <Text style={dynamicStyles.quickPickDismissText}>Dismiss</Text>
           </Pressable>
@@ -874,11 +879,11 @@ export default function SuggestScreen() {
 
       {/* Action Buttons */}
       <View style={dynamicStyles.buttonRow}>
-        <Pressable style={dynamicStyles.generateBtn} onPress={handleGenerate}>
+        <Pressable style={dynamicStyles.generateBtn} onPress={handleGenerate} accessibilityRole="button" accessibilityLabel="Generate outfit suggestions">
           <Ionicons name="sparkles" size={20} color="#FFFFFF" />
           <Text style={dynamicStyles.generateBtnText}>Generate</Text>
         </Pressable>
-        <Pressable style={dynamicStyles.surpriseBtn} onPress={handleSurpriseMe}>
+        <Pressable style={dynamicStyles.surpriseBtn} onPress={handleSurpriseMe} accessibilityRole="button" accessibilityLabel="Surprise me with a random outfit">
           <Ionicons name="shuffle" size={20} color={theme.colors.primary} />
           <Text style={dynamicStyles.surpriseBtnText}>Surprise Me</Text>
         </Pressable>
@@ -901,10 +906,10 @@ export default function SuggestScreen() {
               {getSuggestedName(suggestion, idx)}
             </Text>
             <View style={dynamicStyles.nameActions}>
-              <Pressable hitSlop={8} onPress={() => handleRegenerateName(suggestion, idx)}>
+              <Pressable hitSlop={8} onPress={() => handleRegenerateName(suggestion, idx)} accessibilityRole="button" accessibilityLabel="Regenerate outfit name">
                 <Ionicons name="refresh-outline" size={16} color={theme.colors.primary} />
               </Pressable>
-              <Pressable hitSlop={8} onPress={() => handleResetName(idx)}>
+              <Pressable hitSlop={8} onPress={() => handleResetName(idx)} accessibilityRole="button" accessibilityLabel="Reset outfit name">
                 <Ionicons name="text-outline" size={14} color={theme.colors.textLight} />
               </Pressable>
             </View>
@@ -968,6 +973,8 @@ export default function SuggestScreen() {
             <Pressable
               style={[dynamicStyles.saveOutfitBtn, { flex: 1 }]}
               onPress={() => handleSave(suggestion, idx)}
+              accessibilityRole="button"
+              accessibilityLabel={`Save outfit ${idx + 1}`}
             >
               <Ionicons name="bookmark-outline" size={16} color={theme.colors.primary} />
               <Text style={dynamicStyles.saveOutfitText}>Save Outfit</Text>
@@ -982,6 +989,8 @@ export default function SuggestScreen() {
                 alignItems: "center",
               }}
               onPress={() => openFlagModal(suggestion)}
+              accessibilityRole="button"
+              accessibilityLabel={`Flag outfit ${idx + 1}`}
             >
               <Ionicons name="flag-outline" size={16} color={theme.colors.error} />
             </Pressable>
@@ -992,8 +1001,8 @@ export default function SuggestScreen() {
 
       {/* Save Modal — pick occasions + seasons before saving */}
       <Modal visible={saveModalVisible} transparent animationType="fade" onRequestClose={() => setSaveModalVisible(false)}>
-        <Pressable style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.4)", justifyContent: "flex-end" }} onPress={() => setSaveModalVisible(false)}>
-          <Pressable style={{ backgroundColor: theme.colors.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, paddingBottom: 40 }} onPress={() => {}}>
+        <Pressable style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.4)", justifyContent: "flex-end" }} onPress={() => setSaveModalVisible(false)} accessibilityRole="button" accessibilityLabel="Close save modal">
+          <Pressable style={{ backgroundColor: theme.colors.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, paddingBottom: 40 }} onPress={() => {}} accessibilityRole="button" accessibilityLabel="Save modal content">
             <Text style={{ fontSize: 18, fontWeight: "700", color: theme.colors.text, marginBottom: 16 }}>Save Outfit</Text>
 
             <Text style={{ fontSize: 14, fontWeight: "600", color: theme.colors.text, marginBottom: 8 }}>Occasions</Text>
@@ -1023,6 +1032,8 @@ export default function SuggestScreen() {
             <Pressable
               style={{ backgroundColor: theme.colors.primary, borderRadius: 12, paddingVertical: 14, alignItems: "center" }}
               onPress={handleConfirmSave}
+              accessibilityRole="button"
+              accessibilityLabel="Confirm save outfit"
             >
               <Text style={{ color: "#FFF", fontWeight: "700", fontSize: 16 }}>Save</Text>
             </Pressable>
@@ -1032,8 +1043,8 @@ export default function SuggestScreen() {
 
       {/* Flag Modal — explain why an outfit doesn't work */}
       <Modal visible={flagModalVisible} transparent animationType="fade" onRequestClose={() => setFlagModalVisible(false)}>
-        <Pressable style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.4)", justifyContent: "flex-end" }} onPress={() => setFlagModalVisible(false)}>
-          <Pressable style={{ backgroundColor: theme.colors.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, paddingBottom: 40 }} onPress={() => {}}>
+        <Pressable style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.4)", justifyContent: "flex-end" }} onPress={() => setFlagModalVisible(false)} accessibilityRole="button" accessibilityLabel="Close flag modal">
+          <Pressable style={{ backgroundColor: theme.colors.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, paddingBottom: 40 }} onPress={() => {}} accessibilityRole="button" accessibilityLabel="Flag modal content">
             <Text style={{ fontSize: 18, fontWeight: "700", color: theme.colors.text, marginBottom: 8 }}>Flag Outfit</Text>
             <Text style={{ fontSize: 14, color: theme.colors.textSecondary, marginBottom: 16 }}>
               Tell us why this outfit doesn't work and we won't suggest it again.
@@ -1066,12 +1077,15 @@ export default function SuggestScreen() {
               value={flagReason}
               onChangeText={setFlagReason}
               multiline
+              accessibilityLabel="Reason for flagging outfit"
             />
 
             <View style={{ flexDirection: "row", gap: 12 }}>
               <Pressable
                 style={{ flex: 1, borderRadius: 12, paddingVertical: 14, alignItems: "center", borderWidth: 1, borderColor: theme.colors.border }}
                 onPress={() => setFlagModalVisible(false)}
+                accessibilityRole="button"
+                accessibilityLabel="Cancel flagging"
               >
                 <Text style={{ color: theme.colors.text, fontWeight: "600", fontSize: 15 }}>Cancel</Text>
               </Pressable>
@@ -1079,6 +1093,8 @@ export default function SuggestScreen() {
                 style={{ flex: 1, backgroundColor: theme.colors.error, borderRadius: 12, paddingVertical: 14, alignItems: "center", opacity: flagReason.trim() ? 1 : 0.4 }}
                 onPress={handleConfirmFlag}
                 disabled={!flagReason.trim()}
+                accessibilityRole="button"
+                accessibilityLabel="Confirm flag outfit"
               >
                 <Text style={{ color: "#FFF", fontWeight: "700", fontSize: 15 }}>Flag</Text>
               </Pressable>

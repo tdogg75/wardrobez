@@ -17,6 +17,8 @@ export function Chip({ label, selected = false, onPress }: ChipProps) {
         { backgroundColor: selected ? theme.colors.primary : theme.colors.surfaceAlt },
       ]}
       onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={label}
     >
       <Text style={[styles.label, { color: selected ? "#FFFFFF" : theme.colors.textSecondary }]}>
         {label}

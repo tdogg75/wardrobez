@@ -15,6 +15,7 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { safeOpenURL } from "@/utils/safeOpenURL";
 import { useTheme } from "@/hooks/useTheme";
 import {
   signInWithGoogle,
@@ -168,7 +169,7 @@ export default function GmailPurchasesScreen() {
 
     setScanState("signing_in");
 
-    let token = getCachedToken();
+    let token = await getCachedToken();
     if (!token) {
       token = await signInWithGoogle(id);
     }
@@ -188,7 +189,7 @@ export default function GmailPurchasesScreen() {
       Alert.alert("Enter a token", "Please paste a valid Gmail API access token.");
       return;
     }
-    setManualToken(token);
+    await setManualToken(token);
     await runScanWithToken(token);
   }, [manualTokenInput, runScanWithToken]);
 
@@ -218,7 +219,7 @@ export default function GmailPurchasesScreen() {
     Alert.alert(
       "Scanning Complete",
       `Added ${totalItemsAdded} items from ${importedEmailCount} emails.`,
-      [{ text: "OK", onPress: () => { clearToken(); router.back(); } }]
+      [{ text: "OK", onPress: () => { clearToken().then(() => router.back()); } }]
     );
   };
 
@@ -363,6 +364,8 @@ export default function GmailPurchasesScreen() {
         <Pressable
           style={[styles.primaryBtn, { backgroundColor: theme.colors.textSecondary }]}
           onPress={() => Linking.openURL("https://console.cloud.google.com/apis/credentials")}
+          accessibilityRole="button"
+          accessibilityLabel="Open Google Cloud Console"
         >
           <Ionicons name="open-outline" size={18} color="#FFFFFF" />
           <Text style={styles.primaryBtnText}>Open Google Cloud Console</Text>
@@ -377,12 +380,13 @@ export default function GmailPurchasesScreen() {
             placeholderTextColor={theme.colors.textLight}
             autoCapitalize="none"
             autoCorrect={false}
+            accessibilityLabel="OAuth Client ID"
           />
-          <Pressable style={styles.primaryBtn} onPress={handleSaveClientId}>
+          <Pressable style={styles.primaryBtn} onPress={handleSaveClientId} accessibilityRole="button" accessibilityLabel="Save client ID and continue">
             <Text style={styles.primaryBtnText}>Save & Continue</Text>
           </Pressable>
         </View>
-        <Pressable style={styles.secondaryBtn} onPress={() => router.back()}>
+        <Pressable style={styles.secondaryBtn} onPress={() => router.back()} accessibilityRole="button" accessibilityLabel="Cancel">
           <Text style={styles.secondaryBtnText}>Cancel</Text>
         </Pressable>
       </ScrollView>
@@ -423,6 +427,8 @@ export default function GmailPurchasesScreen() {
           onPress={() =>
             Linking.openURL("https://developers.google.com/oauthplayground")
           }
+          accessibilityRole="button"
+          accessibilityLabel="Open OAuth Playground"
         >
           <Ionicons name="open-outline" size={18} color="#FFFFFF" />
           <Text style={styles.primaryBtnText}>Open OAuth Playground</Text>
@@ -438,13 +444,14 @@ export default function GmailPurchasesScreen() {
             autoCapitalize="none"
             autoCorrect={false}
             multiline
+            accessibilityLabel="Gmail access token"
           />
-          <Pressable style={styles.primaryBtn} onPress={handleManualToken}>
+          <Pressable style={styles.primaryBtn} onPress={handleManualToken} accessibilityRole="button" accessibilityLabel="Scan emails with token">
             <Ionicons name="search" size={18} color="#FFFFFF" />
             <Text style={styles.primaryBtnText}>Scan Emails</Text>
           </Pressable>
         </View>
-        <Pressable style={styles.secondaryBtn} onPress={() => setScanState("idle")}>
+        <Pressable style={styles.secondaryBtn} onPress={() => setScanState("idle")} accessibilityRole="button" accessibilityLabel="Go back">
           <Text style={styles.secondaryBtnText}>Back</Text>
         </Pressable>
       </ScrollView>
@@ -465,7 +472,7 @@ export default function GmailPurchasesScreen() {
           purchases from the last 2 years.
         </Text>
         {oauthSupported ? (
-          <Pressable style={styles.primaryBtn} onPress={startScan}>
+          <Pressable style={styles.primaryBtn} onPress={startScan} accessibilityRole="button" accessibilityLabel="Connect Gmail">
             <Ionicons name="logo-google" size={20} color="#FFFFFF" />
             <Text style={styles.primaryBtnText}>Connect Gmail</Text>
           </Pressable>
@@ -484,6 +491,8 @@ export default function GmailPurchasesScreen() {
         <Pressable
           style={[styles.primaryBtn, { backgroundColor: theme.colors.textSecondary }]}
           onPress={() => setScanState("manual_token")}
+          accessibilityRole="button"
+          accessibilityLabel="Enter token manually"
         >
           <Ionicons name="key-outline" size={20} color="#FFFFFF" />
           <Text style={styles.primaryBtnText}>Enter Token Manually</Text>
@@ -496,11 +505,13 @@ export default function GmailPurchasesScreen() {
               setClientIdInput(clientId);
               setScanState("need_client_id");
             }}
+            accessibilityRole="button"
+            accessibilityLabel="Change client ID"
           >
             <Text style={styles.secondaryBtnText}>Change Client ID</Text>
           </Pressable>
         ) : null}
-        <Pressable style={styles.secondaryBtn} onPress={() => router.back()}>
+        <Pressable style={styles.secondaryBtn} onPress={() => router.back()} accessibilityRole="button" accessibilityLabel="Cancel">
           <Text style={styles.secondaryBtnText}>Cancel</Text>
         </Pressable>
       </View>
@@ -536,6 +547,8 @@ export default function GmailPurchasesScreen() {
             abortRef.current.aborted = true;
             setScanningDone(true);
           }}
+          accessibilityRole="button"
+          accessibilityLabel="Done checking emails"
         >
           <Text style={styles.secondaryBtnText}>Done Checking</Text>
         </Pressable>
@@ -550,10 +563,10 @@ export default function GmailPurchasesScreen() {
       <View style={styles.center}>
         <Ionicons name="warning-outline" size={64} color={theme.colors.error} />
         <Text style={styles.title}>Something went wrong</Text>
-        <Pressable style={styles.primaryBtn} onPress={startScan}>
+        <Pressable style={styles.primaryBtn} onPress={startScan} accessibilityRole="button" accessibilityLabel="Try again">
           <Text style={styles.primaryBtnText}>Try Again</Text>
         </Pressable>
-        <Pressable style={styles.secondaryBtn} onPress={() => router.back()}>
+        <Pressable style={styles.secondaryBtn} onPress={() => router.back()} accessibilityRole="button" accessibilityLabel="Go back">
           <Text style={styles.secondaryBtnText}>Go Back</Text>
         </Pressable>
       </View>
@@ -569,7 +582,7 @@ export default function GmailPurchasesScreen() {
       <View style={styles.container}>
         {/* Header */}
         <View style={styles.header}>
-          <Pressable onPress={handleBackToEmails} hitSlop={12}>
+          <Pressable onPress={handleBackToEmails} hitSlop={12} accessibilityRole="button" accessibilityLabel="Back to emails">
             <Ionicons name="arrow-back" size={24} color={theme.colors.text} />
           </Pressable>
           <Text style={styles.headerTitle} numberOfLines={1}>
@@ -589,6 +602,8 @@ export default function GmailPurchasesScreen() {
               onPress={() =>
                 setEditableItems((prev) => prev.map((item) => ({ ...item, selected: true })))
               }
+              accessibilityRole="button"
+              accessibilityLabel="Select all items"
             >
               <Ionicons name="checkbox-outline" size={16} color={theme.colors.primary} />
               <Text style={styles.selectionBtnText}>Select All</Text>
@@ -598,6 +613,8 @@ export default function GmailPurchasesScreen() {
               onPress={() =>
                 setEditableItems((prev) => prev.map((item) => ({ ...item, selected: false })))
               }
+              accessibilityRole="button"
+              accessibilityLabel="Uncheck all items"
             >
               <Ionicons name="square-outline" size={16} color={theme.colors.textSecondary} />
               <Text style={[styles.selectionBtnText, { color: theme.colors.textSecondary }]}>Uncheck All</Text>
@@ -618,6 +635,8 @@ export default function GmailPurchasesScreen() {
                   style={styles.checkbox}
                   onPress={() => toggleItemSelected(index)}
                   hitSlop={8}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${item.selected ? "Deselect" : "Select"} ${item.name}`}
                 >
                   <Ionicons
                     name={item.selected ? "checkbox" : "square-outline"}
@@ -649,7 +668,7 @@ export default function GmailPurchasesScreen() {
                       <Text
                         style={styles.lineItemUrl}
                         numberOfLines={1}
-                        onPress={() => Linking.openURL(item.url)}
+                        onPress={() => safeOpenURL(item.url)}
                       >
                         {item.url}
                       </Text>
@@ -664,6 +683,8 @@ export default function GmailPurchasesScreen() {
                     style={styles.fetchBtn}
                     onPress={() => handleFetchDetails(index)}
                     disabled={item.fetchingDetails}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Fetch details for ${item.name}`}
                   >
                     {item.fetchingDetails ? (
                       <ActivityIndicator size="small" color={theme.colors.primary} />
@@ -678,6 +699,8 @@ export default function GmailPurchasesScreen() {
                 <Pressable
                   style={styles.editBtn}
                   onPress={() => openEditModal(index)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Edit ${item.name}`}
                 >
                   <Ionicons name="create-outline" size={16} color={theme.colors.textSecondary} />
                   <Text style={styles.editBtnText}>Edit</Text>
@@ -689,13 +712,13 @@ export default function GmailPurchasesScreen() {
 
         {/* Bottom actions */}
         <View style={styles.bottomBar}>
-          <Pressable style={styles.addSelectedBtn} onPress={handleAddSelectedToWardrobe}>
+          <Pressable style={styles.addSelectedBtn} onPress={handleAddSelectedToWardrobe} accessibilityRole="button" accessibilityLabel="Add selected items to wardrobe">
             <Ionicons name="add" size={20} color="#FFFFFF" />
             <Text style={styles.addSelectedBtnText}>
               Add Selected to Wardrobe ({editableItems.filter((i) => i.selected).length})
             </Text>
           </Pressable>
-          <Pressable style={styles.backToEmailsBtn} onPress={handleBackToEmails}>
+          <Pressable style={styles.backToEmailsBtn} onPress={handleBackToEmails} accessibilityRole="button" accessibilityLabel="Back to emails">
             <Text style={styles.backToEmailsBtnText}>Back to Emails</Text>
           </Pressable>
         </View>
@@ -711,7 +734,7 @@ export default function GmailPurchasesScreen() {
             <View style={styles.modalContent}>
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>Edit Item</Text>
-                <Pressable onPress={() => setEditModalVisible(false)} hitSlop={12}>
+                <Pressable onPress={() => setEditModalVisible(false)} hitSlop={12} accessibilityRole="button" accessibilityLabel="Close edit modal">
                   <Ionicons name="close" size={24} color={theme.colors.text} />
                 </Pressable>
               </View>
@@ -725,6 +748,7 @@ export default function GmailPurchasesScreen() {
                     onChangeText={(v) => updateEditableItem(editingIndex, { name: v })}
                     placeholder="Item name"
                     placeholderTextColor={theme.colors.textLight}
+                    accessibilityLabel="Item name"
                   />
 
                   <Text style={styles.modalLabel}>Brand</Text>
@@ -734,6 +758,7 @@ export default function GmailPurchasesScreen() {
                     onChangeText={(v) => updateEditableItem(editingIndex, { brand: v })}
                     placeholder="Brand"
                     placeholderTextColor={theme.colors.textLight}
+                    accessibilityLabel="Brand"
                   />
 
                   <Text style={styles.modalLabel}>Category</Text>
@@ -746,6 +771,8 @@ export default function GmailPurchasesScreen() {
                           editingItem.category === cat && styles.categoryChipActive,
                         ]}
                         onPress={() => updateEditableItem(editingIndex, { category: cat })}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Select category ${CATEGORY_LABELS[cat]}`}
                       >
                         <Text
                           style={[
@@ -776,6 +803,8 @@ export default function GmailPurchasesScreen() {
                                 subCategory: editingItem.subCategory === sub.value ? undefined : sub.value,
                               })
                             }
+                            accessibilityRole="button"
+                            accessibilityLabel={`Select subcategory ${sub.label}`}
                           >
                             <Text
                               style={[
@@ -805,6 +834,8 @@ export default function GmailPurchasesScreen() {
                         onPress={() =>
                           updateEditableItem(editingIndex, { colorHex: c.hex, colorName: c.name })
                         }
+                        accessibilityRole="button"
+                        accessibilityLabel={`Select colour ${c.name}`}
                       >
                         {editingItem.colorHex === c.hex && (
                           <Ionicons
@@ -835,6 +866,8 @@ export default function GmailPurchasesScreen() {
                             fabricType: editingItem.fabricType === ft ? undefined : ft,
                           })
                         }
+                        accessibilityRole="button"
+                        accessibilityLabel={`Select fabric ${FABRIC_TYPE_LABELS[ft]}`}
                       >
                         <Text
                           style={[
@@ -856,6 +889,7 @@ export default function GmailPurchasesScreen() {
                     placeholder="0.00"
                     placeholderTextColor={theme.colors.textLight}
                     keyboardType="decimal-pad"
+                    accessibilityLabel="Cost"
                   />
 
                   <Text style={styles.modalLabel}>Product URL</Text>
@@ -868,6 +902,7 @@ export default function GmailPurchasesScreen() {
                     autoCapitalize="none"
                     autoCorrect={false}
                     keyboardType="url"
+                    accessibilityLabel="Product URL"
                   />
                 </ScrollView>
               )}
@@ -875,6 +910,8 @@ export default function GmailPurchasesScreen() {
               <Pressable
                 style={styles.modalDoneBtn}
                 onPress={() => setEditModalVisible(false)}
+                accessibilityRole="button"
+                accessibilityLabel="Done editing"
               >
                 <Text style={styles.modalDoneBtnText}>Done</Text>
               </Pressable>
@@ -896,7 +933,7 @@ export default function GmailPurchasesScreen() {
           <Text style={styles.subtitle}>
             We couldn't find any fashion-related purchase emails in the last 2 years.
           </Text>
-          <Pressable style={styles.primaryBtn} onPress={() => router.back()}>
+          <Pressable style={styles.primaryBtn} onPress={() => router.back()} accessibilityRole="button" accessibilityLabel="Go back">
             <Text style={styles.primaryBtnText}>Go Back</Text>
           </Pressable>
         </View>
@@ -913,7 +950,7 @@ export default function GmailPurchasesScreen() {
             <Text style={styles.subtitle}>
               Still scanning{progress.total > 0 ? ` (${progress.loaded}/${progress.total})` : ""}...
             </Text>
-            <Pressable style={styles.primaryBtn} onPress={handleStopScanning}>
+            <Pressable style={styles.primaryBtn} onPress={handleStopScanning} accessibilityRole="button" accessibilityLabel="Stop scanning and finish">
               <Text style={styles.primaryBtnText}>Stop & Finish</Text>
             </Pressable>
           </View>
@@ -930,7 +967,9 @@ export default function GmailPurchasesScreen() {
           </Text>
           <Pressable
             style={styles.primaryBtn}
-            onPress={() => { clearToken(); router.back(); }}
+            onPress={() => { clearToken().then(() => router.back()); }}
+            accessibilityRole="button"
+            accessibilityLabel="Go back"
           >
             <Text style={styles.primaryBtnText}>Go Back</Text>
           </Pressable>
@@ -942,7 +981,7 @@ export default function GmailPurchasesScreen() {
       <View style={styles.container}>
         {/* Header */}
         <View style={styles.header}>
-          <Pressable onPress={handleStopScanning} hitSlop={12}>
+          <Pressable onPress={handleStopScanning} hitSlop={12} accessibilityRole="button" accessibilityLabel="Stop scanning">
             <Ionicons name="close" size={24} color={theme.colors.text} />
           </Pressable>
           <Text style={styles.headerTitle}>Gmail Purchases</Text>
@@ -1055,6 +1094,8 @@ export default function GmailPurchasesScreen() {
               style={[styles.navBtn, currentEmailIndex === 0 && styles.navBtnDisabled]}
               onPress={goToPrevEmail}
               disabled={currentEmailIndex === 0}
+              accessibilityRole="button"
+              accessibilityLabel="Previous email"
             >
               <Ionicons
                 name="chevron-back"
@@ -1082,6 +1123,8 @@ export default function GmailPurchasesScreen() {
                 }
               }}
               disabled={currentEmailIndex >= purchases.length - 1}
+              accessibilityRole="button"
+              accessibilityLabel="Next email"
             >
               <Text
                 style={[
@@ -1105,17 +1148,17 @@ export default function GmailPurchasesScreen() {
 
           {/* Action buttons */}
           <View style={styles.actionRow}>
-            <Pressable style={styles.skipBtn} onPress={handleSkipEmail}>
+            <Pressable style={styles.skipBtn} onPress={handleSkipEmail} accessibilityRole="button" accessibilityLabel="Skip this email">
               <Ionicons name="close" size={20} color={theme.colors.textSecondary} />
               <Text style={styles.skipBtnText}>No - Skip</Text>
             </Pressable>
-            <Pressable style={styles.showItemsBtn} onPress={handleShowItems}>
+            <Pressable style={styles.showItemsBtn} onPress={handleShowItems} accessibilityRole="button" accessibilityLabel="Show items from this email">
               <Ionicons name="checkmark" size={20} color="#FFFFFF" />
               <Text style={styles.showItemsBtnText}>Yes - Show Items</Text>
             </Pressable>
           </View>
 
-          <Pressable style={styles.stopBtn} onPress={handleStopScanning}>
+          <Pressable style={styles.stopBtn} onPress={handleStopScanning} accessibilityRole="button" accessibilityLabel="Stop scanning">
             <Text style={styles.stopBtnText}>Stop Scanning</Text>
           </Pressable>
         </View>

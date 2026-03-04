@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from "react";
+import React, { useState, useMemo, useCallback, useRef } from "react";
 import {
   View,
   Text,
@@ -72,8 +72,8 @@ export default function OutfitsScreen() {
   const [compareIds, setCompareIds] = useState<string[]>([]);
   const [compareModalVisible, setCompareModalVisible] = useState(false);
 
-  // Calendar state
-  const now = new Date();
+  // Calendar state — pin the date on mount so it doesn't go stale after midnight (Q4)
+  const now = useRef(new Date()).current;
   const [calYear, setCalYear] = useState(now.getFullYear());
   const [calMonth, setCalMonth] = useState(now.getMonth());
 
@@ -344,6 +344,8 @@ export default function OutfitsScreen() {
                   setShowSavePlanModal(true);
                 }}
                 hitSlop={12}
+                accessibilityRole="button"
+                accessibilityLabel="Save week plan"
               >
                 <Ionicons name="save-outline" size={20} color={theme.colors.primary} />
               </Pressable>
@@ -353,6 +355,8 @@ export default function OutfitsScreen() {
                   setShowLoadPlanModal(true);
                 }}
                 hitSlop={12}
+                accessibilityRole="button"
+                accessibilityLabel="Load saved plan"
               >
                 <Ionicons name="download-outline" size={20} color={theme.colors.primary} />
               </Pressable>
@@ -364,10 +368,12 @@ export default function OutfitsScreen() {
                   ]);
                 }}
                 hitSlop={12}
+                accessibilityRole="button"
+                accessibilityLabel="Reset week plan"
               >
                 <Ionicons name="refresh-outline" size={20} color={theme.colors.error} />
               </Pressable>
-              <Pressable onPress={() => { setPlannerVisible(false); setPickerDay(null); }} hitSlop={12}>
+              <Pressable onPress={() => { setPlannerVisible(false); setPickerDay(null); }} hitSlop={12} accessibilityRole="button" accessibilityLabel="Close planner">
                 <Ionicons name="close" size={24} color={theme.colors.text} />
               </Pressable>
             </View>
@@ -377,7 +383,7 @@ export default function OutfitsScreen() {
             /* --- Outfit Picker for a specific day --- */
             <View style={{ flex: 1 }}>
               <View style={[styles.pickerHeader, { borderBottomColor: theme.colors.border }]}>
-                <Pressable onPress={() => setPickerDay(null)} hitSlop={12}>
+                <Pressable onPress={() => setPickerDay(null)} hitSlop={12} accessibilityRole="button" accessibilityLabel="Back to week overview">
                   <Ionicons name="arrow-back" size={22} color={theme.colors.text} />
                 </Pressable>
                 <Text style={[styles.pickerDayTitle, { color: theme.colors.text }]}>
@@ -387,6 +393,8 @@ export default function OutfitsScreen() {
                   <Pressable
                     onPress={() => clearDay(pickerDay)}
                     style={[styles.pickerClearBtn, { backgroundColor: theme.colors.error + "15" }]}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Clear outfit for ${pickerDay}`}
                   >
                     <Text style={[styles.pickerClearText, { color: theme.colors.error }]}>Clear</Text>
                   </Pressable>
@@ -444,6 +452,8 @@ export default function OutfitsScreen() {
                         isSelected && { borderColor: theme.colors.primary, borderWidth: 2 },
                       ]}
                       onPress={() => assignOutfit(pickerDay, outfit)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`${isSelected ? "Selected: " : ""}Assign ${outfit.name} to ${pickerDay}`}
                     >
                       <View style={styles.pickerCardBody}>
                         <View style={styles.pickerMoodWrap}>
@@ -503,6 +513,8 @@ export default function OutfitsScreen() {
                       setPickerSeasonFilter(null);
                       setPickerOccasionFilter(null);
                     }}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${day}${isToday ? ", today" : ""}: ${outfit ? outfit.name : "No outfit assigned"}. Tap to ${outfit ? "change" : "assign"}`}
                   >
                     <View style={[styles.plannerDayLabel, isToday && { backgroundColor: theme.colors.primary + "15" }]}>
                       <Text style={[styles.plannerDayText, { color: isToday ? theme.colors.primary : theme.colors.text }]}>
@@ -561,15 +573,18 @@ export default function OutfitsScreen() {
                   autoFocus
                   returnKeyType="done"
                   onSubmitEditing={handleSaveWeekPlan}
+                  accessibilityLabel="Week plan name"
                 />
                 <View style={styles.savePlanBtnRow}>
-                  <Pressable style={styles.savePlanCancelBtn} onPress={() => setShowSavePlanModal(false)}>
+                  <Pressable style={styles.savePlanCancelBtn} onPress={() => setShowSavePlanModal(false)} accessibilityRole="button" accessibilityLabel="Cancel saving plan">
                     <Text style={[styles.savePlanCancelText, { color: theme.colors.textSecondary }]}>Cancel</Text>
                   </Pressable>
                   <Pressable
                     style={[styles.savePlanSaveBtn, { backgroundColor: theme.colors.primary }, !savePlanName.trim() && { opacity: 0.4 }]}
                     onPress={handleSaveWeekPlan}
                     disabled={!savePlanName.trim()}
+                    accessibilityRole="button"
+                    accessibilityLabel="Save week plan"
                   >
                     <Text style={styles.savePlanSaveText}>Save</Text>
                   </Pressable>
@@ -606,6 +621,8 @@ export default function OutfitsScreen() {
                         <Pressable
                           style={[styles.savedPlanCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}
                           onPress={() => applyWeekPlan(plan)}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Load plan: ${plan.name}`}
                         >
                           <View style={{ flex: 1 }}>
                             <Text style={[styles.savedPlanName, { color: theme.colors.text }]}>{plan.name}</Text>
@@ -613,7 +630,7 @@ export default function OutfitsScreen() {
                               {filledDays} day{filledDays !== 1 ? "s" : ""} planned
                             </Text>
                           </View>
-                          <Pressable onPress={() => handleDeleteWeekPlan(plan)} hitSlop={8} style={{ padding: 8 }}>
+                          <Pressable onPress={() => handleDeleteWeekPlan(plan)} hitSlop={8} style={{ padding: 8 }} accessibilityRole="button" accessibilityLabel={`Delete plan: ${plan.name}`}>
                             <Ionicons name="trash-outline" size={18} color={theme.colors.error} />
                           </Pressable>
                         </Pressable>
@@ -621,7 +638,7 @@ export default function OutfitsScreen() {
                     }}
                   />
                 )}
-                <Pressable style={[styles.savePlanCancelBtn, { alignSelf: "center", marginTop: 16 }]} onPress={() => setShowLoadPlanModal(false)}>
+                <Pressable style={[styles.savePlanCancelBtn, { alignSelf: "center", marginTop: 16 }]} onPress={() => setShowLoadPlanModal(false)} accessibilityRole="button" accessibilityLabel="Close load plan modal">
                   <Text style={[styles.savePlanCancelText, { color: theme.colors.textSecondary }]}>Close</Text>
                 </Pressable>
               </View>
@@ -650,7 +667,7 @@ export default function OutfitsScreen() {
             <Text style={[styles.compareTitle, { color: theme.colors.text }]}>
               Compare Outfits
             </Text>
-            <Pressable onPress={() => setCompareModalVisible(false)} hitSlop={12}>
+            <Pressable onPress={() => setCompareModalVisible(false)} hitSlop={12} accessibilityRole="button" accessibilityLabel="Close comparison">
               <Ionicons name="close" size={24} color={theme.colors.text} />
             </Pressable>
           </View>
@@ -786,6 +803,8 @@ export default function OutfitsScreen() {
             <Pressable
               style={[styles.compareDoneBtn, { backgroundColor: theme.colors.primary }]}
               onPress={() => setCompareModalVisible(false)}
+              accessibilityRole="button"
+              accessibilityLabel="Done comparing"
             >
               <Text style={styles.compareDoneBtnText}>Done</Text>
             </Pressable>
@@ -848,13 +867,13 @@ export default function OutfitsScreen() {
       <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.calContainer}>
         {/* Month navigation */}
         <View style={styles.calNav}>
-          <Pressable onPress={() => navigateMonth(-1)} hitSlop={12}>
+          <Pressable onPress={() => navigateMonth(-1)} hitSlop={12} accessibilityRole="button" accessibilityLabel="Previous month">
             <Ionicons name="chevron-back" size={24} color={theme.colors.text} />
           </Pressable>
           <Text style={[styles.calMonthTitle, { color: theme.colors.text }]}>
             {MONTH_NAMES[calMonth]} {calYear}
           </Text>
-          <Pressable onPress={() => navigateMonth(1)} hitSlop={12}>
+          <Pressable onPress={() => navigateMonth(1)} hitSlop={12} accessibilityRole="button" accessibilityLabel="Next month">
             <Ionicons name="chevron-forward" size={24} color={theme.colors.text} />
           </Pressable>
         </View>
@@ -894,6 +913,8 @@ export default function OutfitsScreen() {
                     key={outfit.id}
                     style={[styles.calOutfitRow, { borderBottomColor: theme.colors.border }]}
                     onPress={() => router.push({ pathname: "/outfit-detail", params: { id: outfit.id } })}
+                    accessibilityRole="button"
+                    accessibilityLabel={`View outfit: ${outfit.name}`}
                   >
                     <View style={styles.calOutfitMood}>
                       <MoodBoard items={items} size={50} />
@@ -934,6 +955,8 @@ export default function OutfitsScreen() {
           <Pressable
             style={[styles.viewToggle, { backgroundColor: theme.colors.surfaceAlt }, viewMode === "list" && { backgroundColor: theme.colors.primary + "15" }]}
             onPress={() => setViewMode("list")}
+            accessibilityRole="button"
+            accessibilityLabel={`List view${viewMode === "list" ? ", selected" : ""}`}
           >
             <Ionicons
               name="list-outline"
@@ -944,6 +967,8 @@ export default function OutfitsScreen() {
           <Pressable
             style={[styles.viewToggle, { backgroundColor: theme.colors.surfaceAlt }, viewMode === "calendar" && { backgroundColor: theme.colors.primary + "15" }]}
             onPress={() => setViewMode("calendar")}
+            accessibilityRole="button"
+            accessibilityLabel={`Calendar view${viewMode === "calendar" ? ", selected" : ""}`}
           >
             <Ionicons
               name="calendar-outline"
@@ -956,6 +981,8 @@ export default function OutfitsScreen() {
           <Pressable
             style={[styles.viewToggle, { backgroundColor: theme.colors.surfaceAlt }]}
             onPress={() => setPlannerVisible(true)}
+            accessibilityRole="button"
+            accessibilityLabel="Open weekly planner"
           >
             <Ionicons
               name="today-outline"
@@ -982,6 +1009,8 @@ export default function OutfitsScreen() {
                 setViewMode("list");
               }
             }}
+            accessibilityRole="button"
+            accessibilityLabel={`Compare outfits${compareMode ? ", active" : ""}`}
           >
             <Ionicons
               name="git-compare-outline"
@@ -1021,6 +1050,8 @@ export default function OutfitsScreen() {
                 setSeasonFilter(null);
                 setOccasionFilter(null);
               }}
+              accessibilityRole="button"
+              accessibilityLabel="Clear all filters"
             >
               <Ionicons name="close-circle" size={16} color={theme.colors.error} />
               <Text style={[styles.clearBtnText, { color: theme.colors.error }]}>Clear</Text>
@@ -1041,11 +1072,13 @@ export default function OutfitsScreen() {
               <Pressable
                 style={[styles.compareGoBtn, { backgroundColor: theme.colors.secondary }]}
                 onPress={openCompareModal}
+                accessibilityRole="button"
+                accessibilityLabel={`Compare ${compareIds.length} selected outfits`}
               >
                 <Text style={styles.compareGoBtnText}>Compare</Text>
               </Pressable>
             )}
-            <Pressable onPress={exitCompareMode} hitSlop={8}>
+            <Pressable onPress={exitCompareMode} hitSlop={8} accessibilityRole="button" accessibilityLabel="Exit compare mode">
               <Ionicons name="close-circle" size={22} color={theme.colors.secondary} />
             </Pressable>
           </View>
@@ -1104,6 +1137,8 @@ export default function OutfitsScreen() {
                     });
                   }
                 }}
+                accessibilityRole="button"
+                accessibilityLabel={compareMode ? `${isSelectedForCompare ? "Deselect" : "Select"} ${outfit.name} for comparison` : `View outfit: ${outfit.name}`}
               >
                 {/* Compare selection indicator */}
                 {compareMode && (
@@ -1153,6 +1188,8 @@ export default function OutfitsScreen() {
                             if (!compareMode) updateRating(outfit.id, star);
                           }}
                           hitSlop={4}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Rate ${star} star${star !== 1 ? "s" : ""}`}
                         >
                           <Ionicons
                             name={star <= outfit.rating ? "star" : "star-outline"}
@@ -1214,6 +1251,8 @@ export default function OutfitsScreen() {
                     <Pressable
                       style={[styles.logWornBtn, { backgroundColor: theme.colors.success + "12" }]}
                       onPress={() => handleLogWorn(outfit.id, outfit.name)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Log ${outfit.name} as worn`}
                     >
                       <Ionicons name="checkmark-circle-outline" size={14} color={theme.colors.success} />
                       <Text style={[styles.logWornText, { color: theme.colors.success }]}>Log Worn</Text>
@@ -1230,6 +1269,8 @@ export default function OutfitsScreen() {
                           ]
                         );
                       }}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Delete ${outfit.name}`}
                     >
                       <Ionicons name="trash-outline" size={14} color={theme.colors.error} />
                     </Pressable>

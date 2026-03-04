@@ -15,6 +15,7 @@ import {
 import { useRouter, useLocalSearchParams } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import { Ionicons } from "@expo/vector-icons";
+import { safeOpenURL } from "@/utils/safeOpenURL";
 import { useClothingItems } from "@/hooks/useClothingItems";
 import { Chip } from "@/components/Chip";
 import { ColorDot } from "@/components/ColorDot";
@@ -31,7 +32,10 @@ import {
 } from "@/constants/colors";
 import {
   fetchProductFromUrl,
+  searchWebForProduct,
+  fetchSearchResult,
 } from "@/services/productSearch";
+import type { WebSearchResult } from "@/services/productSearch";
 import type {
   ClothingCategory,
   FabricType,
@@ -99,7 +103,7 @@ export default function AddItemScreen() {
     if (items.length === 0) return "tops" as ClothingCategory;
     const sorted = [...items].sort((a, b) => b.createdAt - a.createdAt);
     return sorted[0].category;
-  }, []);
+  }, [items]);
   const [category, setCategory] = useState<ClothingCategory>(lastCategory);
   const [subCategory, setSubCategory] = useState<string | undefined>(undefined);
   const [colorIdx, setColorIdx] = useState(0);
@@ -177,6 +181,13 @@ export default function AddItemScreen() {
 
   // Image viewer
   const [viewingImageIdx, setViewingImageIdx] = useState<number | null>(null);
+
+  // Web search
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searching, setSearching] = useState(false);
+  const [searchResults, setSearchResults] = useState<WebSearchResult[]>([]);
+  const [showSearchResults, setShowSearchResults] = useState(false);
+  const [fetchingResult, setFetchingResult] = useState<string | null>(null); // URL being fetched
 
   // Computed final color
   const finalColor = useMemo(() => {
@@ -339,6 +350,64 @@ export default function AddItemScreen() {
     }
   };
 
+  const handleWebSearch = async () => {
+    const q = searchQuery.trim();
+    if (!q) {
+      Alert.alert("Enter a search", "Type a brand and item name, e.g. \"aritzia effortless pant\"");
+      return;
+    }
+    setSearching(true);
+    try {
+      const results = await searchWebForProduct(q);
+      if (results.length === 0) {
+        Alert.alert("No results", "Couldn't find any results. Try different search terms.");
+      } else {
+        setSearchResults(results);
+        setShowSearchResults(true);
+      }
+    } catch {
+      Alert.alert("Search failed", "Something went wrong searching. Please try again.");
+    } finally {
+      setSearching(false);
+    }
+  };
+
+  const handlePickSearchResult = async (result: WebSearchResult) => {
+    setFetchingResult(result.url);
+    try {
+      const product = await fetchSearchResult(result);
+      setShowSearchResults(false);
+      setSearchResults([]);
+      if (product) {
+        if (product.name) setName(product.name);
+        if (product.brand) setBrand(product.brand);
+        if (product.category) setCategory(product.category);
+        if (product.subCategory) setSubCategory(product.subCategory);
+        if (product.fabricType) setFabricType(product.fabricType);
+        if (product.colorIndex !== undefined) {
+          setColorIdx(product.colorIndex);
+          const preset = PRESET_COLORS[product.colorIndex];
+          setHslAdjust({ h: preset.hue, s: preset.saturation, l: preset.lightness });
+        }
+        if (product.imageUri) {
+          setImageUris((prev) => [product.imageUri!, ...prev]);
+        }
+        if (product.cost != null) {
+          setCost(String(product.cost));
+        }
+        setProductUrl(result.url);
+        Alert.alert("Auto-filled!", "Product info has been applied. Review and adjust as needed.");
+      } else {
+        Alert.alert("Could not parse", "We found the page but couldn't extract product info. The URL has been saved — you can fill in the rest manually.");
+        setProductUrl(result.url);
+      }
+    } catch {
+      Alert.alert("Fetch failed", "Something went wrong loading that product. Please try again.");
+    } finally {
+      setFetchingResult(null);
+    }
+  };
+
   const handleDropperColorPicked = (hex: string) => {
     const hsl = hexToHSL(hex);
     setOriginalAutoColor(hex);
@@ -430,6 +499,8 @@ export default function AddItemScreen() {
         <Pressable
           style={[styles.quickModeToggle, { backgroundColor: quickMode ? theme.colors.primary + "15" : theme.colors.surfaceAlt }]}
           onPress={() => setQuickMode(!quickMode)}
+          accessibilityRole="button"
+          accessibilityLabel={`Quick add mode, currently ${quickMode ? "on" : "off"}`}
         >
           <Ionicons name={quickMode ? "flash" : "flash-outline"} size={16} color={quickMode ? theme.colors.primary : theme.colors.textLight} />
           <Text style={[styles.quickModeText, { color: quickMode ? theme.colors.primary : theme.colors.textLight }]}>
@@ -445,11 +516,15 @@ export default function AddItemScreen() {
               key={`${uri}-${index}`}
               style={[styles.photoThumb, { borderRadius: theme.borderRadius.sm, marginRight: theme.spacing.sm }]}
               onPress={() => setViewingImageIdx(index)}
+              accessibilityRole="button"
+              accessibilityLabel={`View photo ${index + 1}`}
             >
               <Image source={{ uri }} style={styles.photoThumbImage} />
               <Pressable
                 style={styles.removePhotoBtn}
                 onPress={() => removeImage(index)}
+                accessibilityRole="button"
+                accessibilityLabel={`Remove photo ${index + 1}`}
               >
                 <Ionicons name="close-circle" size={22} color={theme.colors.error} />
               </Pressable>
@@ -463,6 +538,8 @@ export default function AddItemScreen() {
           <Pressable
             style={[styles.addPhotoBtn, { borderRadius: theme.borderRadius.sm, backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border }]}
             onPress={pickImage}
+            accessibilityRole="button"
+            accessibilityLabel="Add photo"
           >
             <Ionicons name="camera-outline" size={28} color={theme.colors.textLight} />
             <Text style={[styles.addPhotoLabel, { fontSize: theme.fontSize.xs, color: theme.colors.textLight }]}>Add Photo</Text>
@@ -478,6 +555,7 @@ export default function AddItemScreen() {
           value={name}
           onChangeText={setName}
           autoCapitalize="words"
+          accessibilityLabel="Item name"
         />
 
         {/* Brand */}
@@ -488,20 +566,60 @@ export default function AddItemScreen() {
           placeholderTextColor={theme.colors.textLight}
           value={brand}
           onChangeText={setBrand}
+          accessibilityLabel="Item brand"
         />
 
         {/* Barcode Scanner */}
         <Pressable
           style={[styles.barcodeBtn, { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border, borderRadius: theme.borderRadius.sm, marginTop: theme.spacing.md }]}
           onPress={() => router.push("/barcode-scanner")}
+          accessibilityRole="button"
+          accessibilityLabel="Scan barcode or QR code"
         >
           <Ionicons name="barcode-outline" size={22} color={theme.colors.primary} />
           <Text style={[styles.barcodeBtnText, { color: theme.colors.primary }]}>Scan Barcode / QR Code</Text>
           <Ionicons name="chevron-forward" size={16} color={theme.colors.textLight} />
         </Pressable>
 
+        {/* Product Search */}
+        <Text style={[styles.sectionTitle, { fontSize: theme.fontSize.md, color: theme.colors.text, marginBottom: theme.spacing.sm, marginTop: theme.spacing.md }]}>Search Product (optional)</Text>
+        <Text style={[styles.urlHint, { fontSize: theme.fontSize.xs, color: theme.colors.textLight, marginBottom: theme.spacing.sm }]}>Search by brand and item name to auto-fill details</Text>
+        <View style={styles.urlRow}>
+          <TextInput
+            style={[styles.input, { flex: 1, backgroundColor: theme.colors.surface, borderRadius: theme.borderRadius.sm, paddingHorizontal: theme.spacing.md, fontSize: theme.fontSize.md, color: theme.colors.text, borderColor: theme.colors.border }]}
+            placeholder='e.g. "aritzia effortless pant"'
+            placeholderTextColor={theme.colors.textLight}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            autoCapitalize="none"
+            returnKeyType="search"
+            onSubmitEditing={handleWebSearch}
+            accessibilityLabel="Search product by name"
+          />
+          <Pressable
+            style={[styles.urlFetchBtn, { backgroundColor: theme.colors.primary, borderRadius: theme.borderRadius.sm }, searching && styles.autoFillBtnDisabled]}
+            onPress={handleWebSearch}
+            disabled={searching}
+            accessibilityRole="button"
+            accessibilityLabel="Search for product"
+          >
+            {searching ? (
+              <ActivityIndicator size="small" color="#FFFFFF" />
+            ) : (
+              <Ionicons name="search-outline" size={20} color="#FFFFFF" />
+            )}
+          </Pressable>
+        </View>
+
+        {/* OR divider */}
+        <View style={{ flexDirection: "row", alignItems: "center", marginTop: theme.spacing.md, marginBottom: theme.spacing.xs }}>
+          <View style={{ flex: 1, height: 1, backgroundColor: theme.colors.border }} />
+          <Text style={{ marginHorizontal: 12, fontSize: theme.fontSize.xs, color: theme.colors.textLight, fontWeight: "600" }}>OR</Text>
+          <View style={{ flex: 1, height: 1, backgroundColor: theme.colors.border }} />
+        </View>
+
         {/* Product URL */}
-        <Text style={[styles.sectionTitle, { fontSize: theme.fontSize.md, color: theme.colors.text, marginBottom: theme.spacing.sm, marginTop: theme.spacing.md }]}>Product URL (optional)</Text>
+        <Text style={[styles.sectionTitle, { fontSize: theme.fontSize.md, color: theme.colors.text, marginBottom: theme.spacing.sm, marginTop: theme.spacing.xs }]}>Product URL (optional)</Text>
         <Text style={[styles.urlHint, { fontSize: theme.fontSize.xs, color: theme.colors.textLight, marginBottom: theme.spacing.sm }]}>Paste a product link from your browser to auto-fill details</Text>
         <View style={styles.urlRow}>
           <TextInput
@@ -512,11 +630,14 @@ export default function AddItemScreen() {
             onChangeText={setProductUrl}
             autoCapitalize="none"
             keyboardType="url"
+            accessibilityLabel="Product URL"
           />
           {productUrl.trim().startsWith("http") && (
             <Pressable
               style={styles.urlOpenBtn}
-              onPress={() => Linking.openURL(productUrl.trim())}
+              onPress={() => safeOpenURL(productUrl.trim())}
+              accessibilityRole="button"
+              accessibilityLabel="Open product URL in browser"
             >
               <Ionicons name="open-outline" size={18} color={theme.colors.textSecondary} />
             </Pressable>
@@ -525,6 +646,8 @@ export default function AddItemScreen() {
             style={[styles.urlFetchBtn, { backgroundColor: theme.colors.primary, borderRadius: theme.borderRadius.sm }, fetchingUrl && styles.autoFillBtnDisabled]}
             onPress={handleFetchUrl}
             disabled={fetchingUrl}
+            accessibilityRole="button"
+            accessibilityLabel="Fetch product details from URL"
           >
             {fetchingUrl ? (
               <ActivityIndicator size="small" color="#FFFFFF" />
@@ -543,6 +666,7 @@ export default function AddItemScreen() {
           value={cost}
           onChangeText={setCost}
           keyboardType="decimal-pad"
+          accessibilityLabel="Item cost"
         />
 
         {/* Purchase Date */}
@@ -553,6 +677,7 @@ export default function AddItemScreen() {
           placeholderTextColor={theme.colors.textLight}
           value={purchaseDate}
           onChangeText={setPurchaseDate}
+          accessibilityLabel="Purchase date"
         />
 
         {/* Category */}
@@ -598,6 +723,8 @@ export default function AddItemScreen() {
           <Pressable
             style={[styles.openToggle, { marginTop: theme.spacing.sm }]}
             onPress={() => setIsOpen(!isOpen)}
+            accessibilityRole="button"
+            accessibilityLabel={`Requires shirt underneath, currently ${isOpen ? "yes" : "no"}`}
           >
             <Ionicons
               name={isOpen ? "checkbox" : "square-outline"}
@@ -631,18 +758,20 @@ export default function AddItemScreen() {
                   setDropperTarget("primary");
                   setShowDropper(true);
                 }}
+                accessibilityRole="button"
+                accessibilityLabel="Pick primary colour from photo"
               >
                 <Ionicons name="eyedrop-outline" size={16} color={theme.colors.primary} />
                 <Text style={[styles.colorPickerBtnText, { fontSize: theme.fontSize.xs, color: theme.colors.primary }]}>Dropper</Text>
               </Pressable>
             )}
             {originalAutoColor && (
-              <Pressable style={[styles.colorPickerBtn, { borderRadius: theme.borderRadius.full, backgroundColor: theme.colors.primary + "12" }]} onPress={handleRevertToOriginalColor}>
+              <Pressable style={[styles.colorPickerBtn, { borderRadius: theme.borderRadius.full, backgroundColor: theme.colors.primary + "12" }]} onPress={handleRevertToOriginalColor} accessibilityRole="button" accessibilityLabel="Revert to original colour">
                 <Ionicons name="refresh-outline" size={16} color={theme.colors.primary} />
                 <Text style={[styles.colorPickerBtnText, { fontSize: theme.fontSize.xs, color: theme.colors.primary }]}>Revert to original colour</Text>
               </Pressable>
             )}
-            <Pressable style={[styles.colorPickerBtn, { borderRadius: theme.borderRadius.full, backgroundColor: theme.colors.primary + "12" }]} onPress={openColorPicker}>
+            <Pressable style={[styles.colorPickerBtn, { borderRadius: theme.borderRadius.full, backgroundColor: theme.colors.primary + "12" }]} onPress={openColorPicker} accessibilityRole="button" accessibilityLabel="Fine-tune colour">
               <View style={[styles.colorPickerSwatch, { backgroundColor: finalColor }]} />
               <Ionicons name="color-palette-outline" size={18} color={theme.colors.primary} />
               <Text style={[styles.colorPickerBtnText, { fontSize: theme.fontSize.xs, color: theme.colors.primary }]}>Fine-tune</Text>
@@ -651,7 +780,7 @@ export default function AddItemScreen() {
         </View>
         <View style={styles.colorGrid}>
           {topColors.map((i) => (
-            <Pressable key={PRESET_COLORS[i].hex + i} onPress={() => handleSelectPresetColor(i)} style={styles.colorBtn}>
+            <Pressable key={PRESET_COLORS[i].hex + i} onPress={() => handleSelectPresetColor(i)} style={styles.colorBtn} accessibilityRole="button" accessibilityLabel={`Select colour ${PRESET_COLORS[i].name}`}>
               <ColorDot color={PRESET_COLORS[i].hex} size={36} selected={colorIdx === i && !hslAdjust} />
             </Pressable>
           ))}
@@ -660,6 +789,8 @@ export default function AddItemScreen() {
             <Pressable
               onPress={() => { const hsl = hexToHSL(dropperColor); setHslAdjust({ h: hsl.h, s: hsl.s, l: hsl.l }); }}
               style={styles.colorBtn}
+              accessibilityRole="button"
+              accessibilityLabel="Select dropper colour"
             >
               <ColorDot color={dropperColor} size={36} selected={hslAdjust !== null && hslToHex(hslAdjust.h, hslAdjust.s, hslAdjust.l) === dropperColor} />
             </Pressable>
@@ -690,6 +821,8 @@ export default function AddItemScreen() {
             setShowSecondaryColor(!showSecondaryColor);
             if (showSecondaryColor) { setSecondaryColorIdx(null); setSecondaryHsl(null); }
           }}
+          accessibilityRole="button"
+          accessibilityLabel={showSecondaryColor ? "Hide secondary colour" : "Add secondary colour"}
         >
           <Ionicons
             name={showSecondaryColor ? "chevron-up" : "chevron-down"}
@@ -714,6 +847,8 @@ export default function AddItemScreen() {
                     setDropperTarget("secondary");
                     setShowDropper(true);
                   }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Pick secondary colour from photo"
                 >
                   <Ionicons name="eyedrop-outline" size={16} color={theme.colors.primary} />
                   <Text style={[styles.colorPickerBtnText, { fontSize: theme.fontSize.xs, color: theme.colors.primary }]}>Dropper</Text>
@@ -726,6 +861,8 @@ export default function AddItemScreen() {
                   key={`sec-${PRESET_COLORS[i].hex}-${i}`}
                   onPress={() => { setSecondaryColorIdx(secondaryColorIdx === i ? null : i); setSecondaryHsl(null); }}
                   style={styles.colorBtn}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Select secondary colour ${PRESET_COLORS[i].name}`}
                 >
                   <ColorDot color={PRESET_COLORS[i].hex} size={36} selected={secondaryColorIdx === i && !secondaryHsl} />
                 </Pressable>
@@ -770,6 +907,8 @@ export default function AddItemScreen() {
           <Pressable
             style={[styles.addPatternBtn, { backgroundColor: theme.colors.border }]}
             onPress={() => setShowPatternAdd(true)}
+            accessibilityRole="button"
+            accessibilityLabel="Add custom pattern"
           >
             <Ionicons name="add" size={16} color={theme.colors.text} />
             <Text style={[styles.addPatternBtnText, { color: theme.colors.text }]}>Add</Text>
@@ -794,6 +933,7 @@ export default function AddItemScreen() {
               }}
               returnKeyType="done"
               autoFocus
+              accessibilityLabel="Custom pattern name"
             />
           </View>
         )}
@@ -916,6 +1056,8 @@ export default function AddItemScreen() {
         <Pressable
           style={[styles.secondaryToggle, { marginTop: theme.spacing.md }]}
           onPress={() => setShowFlags(!showFlags)}
+          accessibilityRole="button"
+          accessibilityLabel={`${showFlags ? "Hide" : "Show"} item flags`}
         >
           <Ionicons
             name={showFlags ? "chevron-up" : "chevron-down"}
@@ -956,6 +1098,8 @@ export default function AddItemScreen() {
             },
           ]}
           onPress={() => setSustainable(!sustainable)}
+          accessibilityRole="button"
+          accessibilityLabel={`Sustainable, currently ${sustainable ? "yes" : "no"}`}
         >
           <Ionicons
             name={sustainable ? "leaf" : "leaf-outline"}
@@ -978,10 +1122,13 @@ export default function AddItemScreen() {
             onChangeText={setTagInput}
             onSubmitEditing={handleAddTag}
             returnKeyType="done"
+            accessibilityLabel="Add a tag"
           />
           <Pressable
             style={[styles.tagAddBtn, { backgroundColor: theme.colors.primary, borderRadius: theme.borderRadius.sm }]}
             onPress={handleAddTag}
+            accessibilityRole="button"
+            accessibilityLabel="Add tag"
           >
             <Ionicons name="add" size={22} color="#FFFFFF" />
           </Pressable>
@@ -993,6 +1140,8 @@ export default function AddItemScreen() {
                 key={tag}
                 style={[styles.tagChip, { backgroundColor: theme.colors.primary + "18", borderRadius: theme.borderRadius.full }]}
                 onPress={() => handleRemoveTag(tag)}
+                accessibilityRole="button"
+                accessibilityLabel={`Remove tag ${tag}`}
               >
                 <Text style={[styles.tagChipText, { fontSize: theme.fontSize.sm, color: theme.colors.primary }]}>{tag}</Text>
                 <Ionicons name="close-circle" size={14} color={theme.colors.primary} />
@@ -1013,6 +1162,7 @@ export default function AddItemScreen() {
           numberOfLines={3}
           textAlignVertical="top"
           maxLength={500}
+          accessibilityLabel="Item notes"
         />
         <Text style={[styles.charCount, { color: theme.colors.textLight }]}>{notes.length}/500</Text>
 
@@ -1023,10 +1173,88 @@ export default function AddItemScreen() {
         <Pressable
           style={[styles.saveBtn, { backgroundColor: theme.colors.primary, borderRadius: theme.borderRadius.md, marginTop: theme.spacing.xl }]}
           onPress={handleSave}
+          accessibilityRole="button"
+          accessibilityLabel="Add to wardrobe"
         >
           <Text style={[styles.saveBtnText, { fontSize: theme.fontSize.lg }]}>Add to Wardrobe</Text>
         </Pressable>
       </ScrollView>
+
+      {/* Search Results Modal */}
+      <Modal
+        visible={showSearchResults}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => { setShowSearchResults(false); setSearchResults([]); }}
+      >
+        <View style={[styles.modalContainer, { backgroundColor: theme.colors.background, paddingTop: theme.spacing.md }]}>
+          <View style={[styles.modalHeader, { paddingHorizontal: theme.spacing.md, paddingBottom: theme.spacing.sm }]}>
+            <Text style={[styles.modalTitle, { fontSize: theme.fontSize.xl, color: theme.colors.text }]}>Search Results</Text>
+            <Pressable onPress={() => { setShowSearchResults(false); setSearchResults([]); }} accessibilityRole="button" accessibilityLabel="Close search results">
+              <Ionicons name="close" size={24} color={theme.colors.text} />
+            </Pressable>
+          </View>
+          <Text style={{ paddingHorizontal: theme.spacing.md, marginBottom: theme.spacing.md, fontSize: theme.fontSize.sm, color: theme.colors.textLight }}>
+            Tap a result to auto-fill your item details
+          </Text>
+          <ScrollView contentContainerStyle={{ paddingHorizontal: theme.spacing.md, paddingBottom: 40 }}>
+            {searchResults.map((r, i) => {
+              const isFetching = fetchingResult === r.url;
+              return (
+                <Pressable
+                  key={`${r.url}-${i}`}
+                  style={{
+                    backgroundColor: theme.colors.surface,
+                    borderRadius: theme.borderRadius.md,
+                    padding: theme.spacing.md,
+                    marginBottom: theme.spacing.sm,
+                    borderWidth: 1,
+                    borderColor: theme.colors.border,
+                    opacity: fetchingResult && !isFetching ? 0.5 : 1,
+                  }}
+                  onPress={() => handlePickSearchResult(r)}
+                  disabled={!!fetchingResult}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Select search result: ${r.title}`}
+                >
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: theme.fontSize.md, fontWeight: "600", color: theme.colors.text }} numberOfLines={2}>
+                        {r.title}
+                      </Text>
+                      <Text style={{ fontSize: theme.fontSize.xs, color: theme.colors.primary, marginTop: 2 }} numberOfLines={1}>
+                        {r.url.replace(/^https?:\/\/(www\.)?/, "").split("/")[0]}
+                      </Text>
+                      {r.snippet ? (
+                        <Text style={{ fontSize: theme.fontSize.sm, color: theme.colors.textSecondary, marginTop: 4 }} numberOfLines={2}>
+                          {r.snippet}
+                        </Text>
+                      ) : null}
+                    </View>
+                    {isFetching ? (
+                      <ActivityIndicator size="small" color={theme.colors.primary} />
+                    ) : (
+                      <Ionicons name="chevron-forward" size={20} color={theme.colors.textLight} />
+                    )}
+                  </View>
+                </Pressable>
+              );
+            })}
+            <Pressable
+              style={{
+                alignItems: "center",
+                paddingVertical: theme.spacing.md,
+                marginTop: theme.spacing.sm,
+              }}
+              onPress={() => { setShowSearchResults(false); setSearchResults([]); }}
+              accessibilityRole="button"
+              accessibilityLabel="Skip and fill in manually"
+            >
+              <Text style={{ fontSize: theme.fontSize.md, color: theme.colors.textLight, fontWeight: "600" }}>Skip — fill in manually</Text>
+            </Pressable>
+          </ScrollView>
+        </View>
+      </Modal>
 
       {/* Color Picker Modal */}
       <Modal
@@ -1038,7 +1266,7 @@ export default function AddItemScreen() {
         <View style={[styles.modalContainer, { backgroundColor: theme.colors.background, paddingTop: theme.spacing.md }]}>
           <View style={[styles.modalHeader, { paddingHorizontal: theme.spacing.md, paddingBottom: theme.spacing.sm }]}>
             <Text style={[styles.modalTitle, { fontSize: theme.fontSize.xl, color: theme.colors.text }]}>Fine-tune Colour</Text>
-            <Pressable onPress={() => setShowColorPicker(false)}>
+            <Pressable onPress={() => setShowColorPicker(false)} accessibilityRole="button" accessibilityLabel="Close colour picker">
               <Ionicons name="close" size={24} color={theme.colors.text} />
             </Pressable>
           </View>
@@ -1072,6 +1300,8 @@ export default function AddItemScreen() {
                   <Pressable
                     style={[styles.sliderBtn, { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border }]}
                     onPress={() => setHslAdjust({ ...hslAdjust, h: Math.max(0, hslAdjust.h - 10) })}
+                    accessibilityRole="button"
+                    accessibilityLabel="Decrease hue"
                   >
                     <Ionicons name="remove" size={16} color={theme.colors.text} />
                   </Pressable>
@@ -1086,6 +1316,8 @@ export default function AddItemScreen() {
                   <Pressable
                     style={[styles.sliderBtn, { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border }]}
                     onPress={() => setHslAdjust({ ...hslAdjust, h: Math.min(360, hslAdjust.h + 10) })}
+                    accessibilityRole="button"
+                    accessibilityLabel="Increase hue"
                   >
                     <Ionicons name="add" size={16} color={theme.colors.text} />
                   </Pressable>
@@ -1096,6 +1328,8 @@ export default function AddItemScreen() {
                   <Pressable
                     style={[styles.sliderBtn, { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border }]}
                     onPress={() => setHslAdjust({ ...hslAdjust, s: Math.max(0, hslAdjust.s - 5) })}
+                    accessibilityRole="button"
+                    accessibilityLabel="Decrease saturation"
                   >
                     <Ionicons name="remove" size={16} color={theme.colors.text} />
                   </Pressable>
@@ -1110,6 +1344,8 @@ export default function AddItemScreen() {
                   <Pressable
                     style={[styles.sliderBtn, { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border }]}
                     onPress={() => setHslAdjust({ ...hslAdjust, s: Math.min(100, hslAdjust.s + 5) })}
+                    accessibilityRole="button"
+                    accessibilityLabel="Increase saturation"
                   >
                     <Ionicons name="add" size={16} color={theme.colors.text} />
                   </Pressable>
@@ -1120,6 +1356,8 @@ export default function AddItemScreen() {
                   <Pressable
                     style={[styles.sliderBtn, { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border }]}
                     onPress={() => setHslAdjust({ ...hslAdjust, l: Math.max(0, hslAdjust.l - 5) })}
+                    accessibilityRole="button"
+                    accessibilityLabel="Decrease lightness"
                   >
                     <Ionicons name="remove" size={16} color={theme.colors.text} />
                   </Pressable>
@@ -1134,12 +1372,14 @@ export default function AddItemScreen() {
                   <Pressable
                     style={[styles.sliderBtn, { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border }]}
                     onPress={() => setHslAdjust({ ...hslAdjust, l: Math.min(100, hslAdjust.l + 5) })}
+                    accessibilityRole="button"
+                    accessibilityLabel="Increase lightness"
                   >
                     <Ionicons name="add" size={16} color={theme.colors.text} />
                   </Pressable>
                   <Text style={[styles.sliderValue, { fontSize: theme.fontSize.xs, color: theme.colors.textSecondary }]}>{hslAdjust.l}%</Text>
                 </View>
-                <Pressable style={styles.resetHslBtn} onPress={() => setHslAdjust(null)}>
+                <Pressable style={styles.resetHslBtn} onPress={() => setHslAdjust(null)} accessibilityRole="button" accessibilityLabel="Reset colour to preset">
                   <Text style={[styles.resetHslText, { fontSize: theme.fontSize.xs, color: theme.colors.primary }]}>Reset to preset</Text>
                 </Pressable>
               </View>
@@ -1149,6 +1389,8 @@ export default function AddItemScreen() {
             <Pressable
               style={[styles.doneBtn, { backgroundColor: theme.colors.primary, borderRadius: theme.borderRadius.md, marginTop: theme.spacing.lg }]}
               onPress={() => setShowColorPicker(false)}
+              accessibilityRole="button"
+              accessibilityLabel="Done selecting colour"
             >
               <Text style={[styles.doneBtnText, { fontSize: theme.fontSize.lg }]}>Done</Text>
             </Pressable>
@@ -1175,7 +1417,7 @@ export default function AddItemScreen() {
       >
         <View style={styles.imageViewerContainer}>
           <View style={[styles.imageViewerHeader, { paddingHorizontal: theme.spacing.md, paddingBottom: theme.spacing.md }]}>
-            <Pressable onPress={() => setViewingImageIdx(null)} hitSlop={12}>
+            <Pressable onPress={() => setViewingImageIdx(null)} hitSlop={12} accessibilityRole="button" accessibilityLabel="Close image viewer">
               <Ionicons name="close" size={28} color="#FFFFFF" />
             </Pressable>
             <Text style={[styles.imageViewerTitle, { fontSize: theme.fontSize.md }]}>
@@ -1198,6 +1440,8 @@ export default function AddItemScreen() {
             <Pressable
               style={[styles.imageViewerBtn, { borderRadius: theme.borderRadius.md, backgroundColor: theme.colors.surface }]}
               onPress={() => viewingImageIdx !== null && recropImage(viewingImageIdx)}
+              accessibilityRole="button"
+              accessibilityLabel="Crop photo"
             >
               <Ionicons name="crop-outline" size={20} color={theme.colors.primary} />
               <Text style={[styles.imageViewerBtnText, { fontSize: theme.fontSize.md, color: theme.colors.primary }]}>Crop</Text>
@@ -1210,6 +1454,8 @@ export default function AddItemScreen() {
                   setViewingImageIdx(null);
                 }
               }}
+              accessibilityRole="button"
+              accessibilityLabel="Delete photo"
             >
               <Ionicons name="trash-outline" size={20} color={theme.colors.error} />
               <Text style={[styles.imageViewerBtnText, { fontSize: theme.fontSize.md, color: theme.colors.error }]}>Delete</Text>

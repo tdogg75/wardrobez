@@ -229,9 +229,31 @@ export async function generateSyncPayload(): Promise<SyncPayload> {
  */
 export async function applySyncPayload(payload: object): Promise<void> {
   const p = payload as Partial<SyncPayload>;
-  if (!p.version) {
-    throw new Error("Invalid sync payload: missing version");
+  if (!p.version || typeof p.version !== "number") {
+    throw new Error("Invalid sync payload: missing or invalid version");
   }
+  if (!p.deviceId || typeof p.deviceId !== "string") {
+    throw new Error("Invalid sync payload: missing deviceId");
+  }
+
+  // Validate that array fields contain objects with required id/createdAt
+  const validateArray = (arr: unknown[] | undefined, label: string) => {
+    if (!arr) return;
+    for (const entry of arr) {
+      if (typeof entry !== "object" || entry === null) {
+        throw new Error(`Invalid sync payload: ${label} contains non-object entry`);
+      }
+      const obj = entry as Record<string, unknown>;
+      if (typeof obj.id !== "string") {
+        throw new Error(`Invalid sync payload: ${label} entry missing id`);
+      }
+    }
+  };
+
+  validateArray(p.clothingItems, "clothingItems");
+  validateArray(p.outfits, "outfits");
+  validateArray(p.wishlistItems, "wishlistItems");
+  validateArray(p.outfitTemplates, "outfitTemplates");
 
   await setSyncStatus("syncing");
 

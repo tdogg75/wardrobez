@@ -252,12 +252,12 @@ img.src = ${JSON.stringify(dataUri)};
             style={styles.hiddenWebView}
             onMessage={handleWebViewMessage}
             javaScriptEnabled
-            originWhitelist={["*"]}
+            originWhitelist={["about:*", "data:*"]}
           />
         ) : null}
 
         <View style={styles.header}>
-          <Pressable onPress={handleCancel} style={styles.headerBtn} hitSlop={12}>
+          <Pressable onPress={handleCancel} style={styles.headerBtn} hitSlop={12} accessibilityRole="button" accessibilityLabel="Close color picker">
             <Ionicons name="close" size={24} color={Theme.colors.text} />
           </Pressable>
           <Text style={styles.headerTitle}>Pick Colour from Image</Text>
@@ -346,13 +346,15 @@ img.src = ${JSON.stringify(dataUri)};
         )}
 
         <View style={styles.actions}>
-          <Pressable style={styles.cancelBtn} onPress={handleCancel}>
+          <Pressable style={styles.cancelBtn} onPress={handleCancel} accessibilityRole="button" accessibilityLabel="Cancel color selection">
             <Text style={styles.cancelBtnText}>Cancel</Text>
           </Pressable>
           <Pressable
             style={[styles.selectBtn, !touchPos && styles.selectBtnDisabled]}
             onPress={handleSelect}
             disabled={!touchPos}
+            accessibilityRole="button"
+            accessibilityLabel="Select color"
           >
             <Ionicons name="color-fill" size={18} color="#FFF" style={{ marginRight: 6 }} />
             <Text style={styles.selectBtnText}>Select</Text>

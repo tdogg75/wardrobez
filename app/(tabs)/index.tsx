@@ -21,16 +21,20 @@ import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useClothingItems } from "@/hooks/useClothingItems";
+import { useOutfits } from "@/hooks/useOutfits";
 import { ClothingCard } from "@/components/ClothingCard";
 import { Chip } from "@/components/Chip";
 import { EmptyState } from "@/components/EmptyState";
 import { useTheme } from "@/hooks/useTheme";
-import type { ClothingCategory, ClothingItem, FabricType } from "@/models/types";
-import { CATEGORY_LABELS } from "@/models/types";
+import { getPlannedOutfits } from "@/services/storage";
+import { suggestOutfits, type SuggestionResult } from "@/services/outfitEngine";
+import type { ClothingCategory, ClothingItem, FabricType, LaundryStatus, PlannedOutfit } from "@/models/types";
+import { CATEGORY_LABELS, LAUNDRY_STATUS_LABELS } from "@/models/types";
 
-const ALL_CATEGORIES: (ClothingCategory | "all" | "favorites")[] = [
+const ALL_CATEGORIES: (ClothingCategory | "all" | "favorites" | "laundry")[] = [
   "all",
   "favorites",
+  "laundry",
   "tops",
   "bottoms",
   "shorts",
@@ -172,10 +176,11 @@ const screenWidth = Dimensions.get("window").width;
 
 export default function WardrobeScreen() {
   const { theme } = useTheme();
-  const { items, loading, addOrUpdate, getFavorites, remove, archiveItem, logItemWorn, reload } =
+  const { items, loading, addOrUpdate, getFavorites, remove, archiveItem, logItemWorn, reload, updateLaundryStatus, bulkUpdateLaundryStatus, getAvailableItems } =
     useClothingItems();
+  const { outfits } = useOutfits();
   const [filter, setFilter] = useState<
-    ClothingCategory | "all" | "favorites"
+    ClothingCategory | "all" | "favorites" | "laundry"
   >("all");
   const [numColumns, setNumColumns] = useState<ColumnCount>(2);
   const [sortBy, setSortBy] = useState<SortOption>("newest");
@@ -193,6 +198,12 @@ export default function WardrobeScreen() {
   // Bulk selection state
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  // OOTD (Outfit of the Day) widget state
+  const [ootdItems, setOotdItems] = useState<ClothingItem[]>([]);
+  const [ootdLabel, setOotdLabel] = useState<string>("");
+  const [ootdDismissed, setOotdDismissed] = useState(false);
+  const [ootdOutfitId, setOotdOutfitId] = useState<string | null>(null);
 
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -235,6 +246,50 @@ export default function WardrobeScreen() {
     ).catch(() => {});
   }, [numColumns, sortBy, filter]);
 
+  // OOTD: Load today's planned outfit or generate a suggestion
+  useEffect(() => {
+    if (loading || items.length < 3) return;
+    let cancelled = false;
+    (async () => {
+      const today = new Date().toISOString().split("T")[0];
+      // Check for a planned outfit first
+      try {
+        const planned = await getPlannedOutfits();
+        const todayPlan = planned.find((p) => p.date === today);
+        if (todayPlan && todayPlan.outfitId) {
+          const outfit = outfits.find((o) => o.id === todayPlan.outfitId);
+          if (outfit && !cancelled) {
+            const outfitItems = outfit.itemIds
+              .map((iid) => items.find((i) => i.id === iid))
+              .filter(Boolean) as ClothingItem[];
+            if (outfitItems.length > 0) {
+              setOotdItems(outfitItems);
+              setOotdLabel(outfit.name || "Today's Planned Outfit");
+              setOotdOutfitId(outfit.id);
+              return;
+            }
+          }
+        }
+      } catch (_) {
+        // ignore
+      }
+      // No planned outfit — generate a quick suggestion
+      if (cancelled) return;
+      const available = items.filter((i) => {
+        const status = i.laundryStatus ?? "clean";
+        return status !== "in_wash" && status !== "dry_cleaning";
+      });
+      if (available.length < 3) return;
+      const results = suggestOutfits(available, { maxResults: 1 });
+      if (results.length > 0 && !cancelled) {
+        setOotdItems(results[0].items);
+        setOotdLabel("Outfit of the Day");
+        setOotdOutfitId(null);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [loading, items.length, outfits.length]);
+
   // Scroll handler for scroll-to-top button (#28)
   const handleScroll = useCallback(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -260,7 +315,12 @@ export default function WardrobeScreen() {
         ? items
         : filter === "favorites"
           ? getFavorites()
-          : items.filter((i) => i.category === filter);
+          : filter === "laundry"
+            ? items.filter((i) => {
+                const status = i.laundryStatus ?? "clean";
+                return status !== "clean";
+              })
+            : items.filter((i) => i.category === filter);
     // Search filter (#36)
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase().trim();
@@ -277,7 +337,14 @@ export default function WardrobeScreen() {
 
   // Item counts per category for filter chips (#5)
   const categoryCounts = useMemo(() => {
-    const counts: Record<string, number> = { all: items.length, favorites: getFavorites().length };
+    const counts: Record<string, number> = {
+      all: items.length,
+      favorites: getFavorites().length,
+      laundry: items.filter((i) => {
+        const status = i.laundryStatus ?? "clean";
+        return status !== "clean";
+      }).length,
+    };
     for (const item of items) {
       counts[item.category] = (counts[item.category] ?? 0) + 1;
     }
@@ -416,6 +483,18 @@ export default function WardrobeScreen() {
     );
   }, [selectedIds, remove, exitSelectionMode]);
 
+  // Bulk laundry status
+  const [bulkLaundryModalVisible, setBulkLaundryModalVisible] = useState(false);
+
+  const handleBulkLaundryStatus = useCallback(async (status: LaundryStatus) => {
+    if (selectedIds.size === 0) return;
+    await bulkUpdateLaundryStatus(Array.from(selectedIds), status);
+    setBulkLaundryModalVisible(false);
+    const label = LAUNDRY_STATUS_LABELS[status];
+    Alert.alert("Done", `${selectedIds.size} item${selectedIds.size !== 1 ? "s" : ""} marked as "${label}"`);
+    exitSelectionMode();
+  }, [selectedIds, bulkUpdateLaundryStatus, exitSelectionMode]);
+
   // Bulk tag editing (#70)
   const [bulkTagModalVisible, setBulkTagModalVisible] = useState(false);
   const [bulkTagInput, setBulkTagInput] = useState("");
@@ -448,7 +527,7 @@ export default function WardrobeScreen() {
     (screenWidth - theme.spacing.md * 2 - photoTileGap * (PHOTO_GRID_COLUMNS - 1)) /
     PHOTO_GRID_COLUMNS;
 
-  const styles = createStyles(theme);
+  const styles = useMemo(() => createStyles(theme), [theme]);
 
   const currentSortLabel =
     SORT_OPTIONS.find((o) => o.value === sortBy)?.label ?? "Newest";
@@ -456,6 +535,8 @@ export default function WardrobeScreen() {
   const renderCard = (item: ClothingItem) => (
     <View style={{ width: cardWidthPct as any }}>
       <Pressable
+        accessibilityLabel={selectionMode ? `Select ${item.name}` : `View ${item.name}`}
+        accessibilityRole="button"
         onPress={() => {
           if (selectionMode) {
             toggleSelection(item.id);
@@ -529,6 +610,8 @@ export default function WardrobeScreen() {
 
   const renderPhotoTile = ({ item }: { item: ClothingItem }) => (
     <Pressable
+      accessibilityLabel={`View ${item.name}`}
+      accessibilityRole="button"
       onPress={() => {
         router.push({
           pathname: "/item-detail",
@@ -599,6 +682,8 @@ export default function WardrobeScreen() {
           <View style={styles.selectionBarActions}>
             {/* Select All / Deselect All (#2) */}
             <Pressable
+              accessibilityLabel={selectedIds.size === filtered.length ? "Deselect all items" : "Select all items"}
+              accessibilityRole="button"
               style={styles.selectionBarBtn}
               onPress={() => {
                 if (selectedIds.size === filtered.length) {
@@ -618,6 +703,8 @@ export default function WardrobeScreen() {
               </Text>
             </Pressable>
             <Pressable
+              accessibilityLabel="Archive selected items"
+              accessibilityRole="button"
               style={styles.selectionBarBtn}
               onPress={handleBulkArchive}
             >
@@ -629,6 +716,8 @@ export default function WardrobeScreen() {
               <Text style={styles.selectionBarBtnText}>Archive</Text>
             </Pressable>
             <Pressable
+              accessibilityLabel="Delete selected items"
+              accessibilityRole="button"
               style={styles.selectionBarBtn}
               onPress={handleBulkDelete}
             >
@@ -647,6 +736,8 @@ export default function WardrobeScreen() {
               </Text>
             </Pressable>
             <Pressable
+              accessibilityLabel="Tag selected items"
+              accessibilityRole="button"
               style={styles.selectionBarBtn}
               onPress={() => setBulkTagModalVisible(true)}
             >
@@ -654,6 +745,17 @@ export default function WardrobeScreen() {
               <Text style={styles.selectionBarBtnText}>Tag</Text>
             </Pressable>
             <Pressable
+              accessibilityLabel="Set laundry status for selected items"
+              accessibilityRole="button"
+              style={styles.selectionBarBtn}
+              onPress={() => setBulkLaundryModalVisible(true)}
+            >
+              <Ionicons name="water-outline" size={18} color={theme.colors.primary} />
+              <Text style={styles.selectionBarBtnText}>Laundry</Text>
+            </Pressable>
+            <Pressable
+              accessibilityLabel="Cancel selection"
+              accessibilityRole="button"
               style={styles.selectionBarBtn}
               onPress={exitSelectionMode}
             >
@@ -682,6 +784,8 @@ export default function WardrobeScreen() {
           <View style={styles.topRowRight}>
             {/* Photo-only browse mode toggle */}
             <Pressable
+              accessibilityLabel={photoOnlyMode ? "Switch to card view" : "Switch to photo grid view"}
+              accessibilityRole="button"
               style={[
                 styles.columnToggle,
                 photoOnlyMode && {
@@ -698,6 +802,8 @@ export default function WardrobeScreen() {
             </Pressable>
             {/* Sort dropdown */}
             <Pressable
+              accessibilityLabel={`Sort by ${currentSortLabel}`}
+              accessibilityRole="button"
               style={styles.sortToggle}
               onPress={() => setShowSortMenu((v) => !v)}
             >
@@ -715,7 +821,7 @@ export default function WardrobeScreen() {
             </Pressable>
             {/* Column toggle (only in card mode) */}
             {!photoOnlyMode && (
-              <Pressable style={styles.columnToggle} onPress={cycleColumns}>
+              <Pressable accessibilityLabel={`Change grid to ${COLUMN_OPTIONS[(COLUMN_OPTIONS.indexOf(numColumns) + 1) % COLUMN_OPTIONS.length]} columns`} accessibilityRole="button" style={styles.columnToggle} onPress={cycleColumns}>
                 <Ionicons
                   name="grid-outline"
                   size={18}
@@ -734,6 +840,8 @@ export default function WardrobeScreen() {
           {SORT_OPTIONS.map((opt) => (
             <Pressable
               key={opt.value}
+              accessibilityLabel={`Sort by ${opt.label}`}
+              accessibilityRole="button"
               style={[
                 styles.sortMenuItem,
                 sortBy === opt.value && styles.sortMenuItemActive,
@@ -777,7 +885,9 @@ export default function WardrobeScreen() {
               ? `All (${count})`
               : cat === "favorites"
                 ? `Favourites (${count})`
-                : `${CATEGORY_LABELS[cat]} (${count})`;
+                : cat === "laundry"
+                  ? `Laundry (${count})`
+                  : `${CATEGORY_LABELS[cat as ClothingCategory]} (${count})`;
             return (
               <Chip
                 label={label}
@@ -793,6 +903,7 @@ export default function WardrobeScreen() {
       <View style={styles.searchRow}>
         <Ionicons name="search-outline" size={18} color={theme.colors.textLight} />
         <TextInput
+          accessibilityLabel="Search items by name, brand, colour, or tag"
           style={styles.searchInput}
           placeholder="Search name, brand, colour, tag..."
           placeholderTextColor={theme.colors.textLight}
@@ -802,13 +913,91 @@ export default function WardrobeScreen() {
           clearButtonMode="while-editing"
         />
         {searchQuery.length > 0 && (
-          <Pressable onPress={() => setSearchQuery("")} hitSlop={10}>
+          <Pressable accessibilityLabel="Clear search" accessibilityRole="button" onPress={() => setSearchQuery("")} hitSlop={10}>
             <Ionicons name="close-circle" size={18} color={theme.colors.textLight} />
           </Pressable>
         )}
       </View>
 
-      {/* Summary banner removed — stats live in Profile > Spending */}
+      {/* Outfit of the Day Widget */}
+      {!loading && !ootdDismissed && ootdItems.length > 0 && !selectionMode && (
+        <View style={styles.ootdCard}>
+          <View style={styles.ootdHeader}>
+            <View style={styles.ootdTitleRow}>
+              <Ionicons name="sparkles" size={16} color={theme.colors.primary} />
+              <Text style={styles.ootdTitle}>{ootdLabel}</Text>
+            </View>
+            <Pressable accessibilityLabel="Dismiss outfit of the day" accessibilityRole="button" onPress={() => setOotdDismissed(true)} hitSlop={10}>
+              <Ionicons name="close" size={18} color={theme.colors.textLight} />
+            </Pressable>
+          </View>
+          <Pressable
+            accessibilityLabel="View outfit details"
+            accessibilityRole="button"
+            style={styles.ootdImageRow}
+            onPress={() => {
+              if (ootdOutfitId) {
+                router.push({ pathname: "/outfit-detail", params: { id: ootdOutfitId } });
+              }
+            }}
+          >
+            {ootdItems.slice(0, 5).map((ootdItem) => (
+              <View key={ootdItem.id} style={styles.ootdImageWrapper}>
+                {ootdItem.imageUris?.length > 0 ? (
+                  <Image source={{ uri: ootdItem.imageUris[0] }} style={styles.ootdImage} resizeMode="cover" />
+                ) : (
+                  <View style={[styles.ootdImagePlaceholder, { backgroundColor: ootdItem.color + "30" }]}>
+                    <Ionicons name="shirt-outline" size={20} color={ootdItem.color} />
+                  </View>
+                )}
+              </View>
+            ))}
+            {ootdItems.length > 5 && (
+              <View style={[styles.ootdImageWrapper, { backgroundColor: theme.colors.surfaceAlt, justifyContent: "center", alignItems: "center" }]}>
+                <Text style={{ color: theme.colors.textSecondary, fontSize: theme.fontSize.xs, fontWeight: "600" }}>+{ootdItems.length - 5}</Text>
+              </View>
+            )}
+          </Pressable>
+          <View style={styles.ootdActions}>
+            <Pressable
+              accessibilityLabel="View outfit"
+              accessibilityRole="button"
+              style={[styles.ootdBtn, { backgroundColor: theme.colors.primary }]}
+              onPress={() => {
+                if (ootdOutfitId) {
+                  router.push({ pathname: "/outfit-detail", params: { id: ootdOutfitId } });
+                } else {
+                  router.push("/(tabs)/suggest");
+                }
+              }}
+            >
+              <Ionicons name="eye-outline" size={14} color="#FFFFFF" />
+              <Text style={styles.ootdBtnText}>View</Text>
+            </Pressable>
+            <Pressable
+              accessibilityLabel="Shuffle outfit suggestion"
+              accessibilityRole="button"
+              style={[styles.ootdBtn, { backgroundColor: theme.colors.surfaceAlt }]}
+              onPress={() => {
+                // Regenerate with a fresh suggestion
+                const available = items.filter((i) => {
+                  const status = i.laundryStatus ?? "clean";
+                  return status !== "in_wash" && status !== "dry_cleaning";
+                });
+                const results = suggestOutfits(available, { maxResults: 1 });
+                if (results.length > 0) {
+                  setOotdItems(results[0].items);
+                  setOotdLabel("Outfit of the Day");
+                  setOotdOutfitId(null);
+                }
+              }}
+            >
+              <Ionicons name="refresh-outline" size={14} color={theme.colors.primary} />
+              <Text style={[styles.ootdBtnText, { color: theme.colors.primary }]}>Shuffle</Text>
+            </Pressable>
+          </View>
+        </View>
+      )}
 
       {/* Seasonal Rotation Banner (#79) */}
       {!loading && !seasonBannerDismissed && seasonalRotation && (
@@ -816,6 +1005,8 @@ export default function WardrobeScreen() {
           <Ionicons name="leaf-outline" size={18} color={theme.colors.warning} style={{ marginRight: 8 }} />
           <Text style={styles.seasonBannerText}>{seasonalRotation.message}</Text>
           <Pressable
+            accessibilityLabel="Dismiss seasonal rotation banner"
+            accessibilityRole="button"
             onPress={() => setSeasonBannerDismissed(true)}
             hitSlop={10}
             style={styles.seasonBannerDismiss}
@@ -833,24 +1024,28 @@ export default function WardrobeScreen() {
         />
       ) : filtered.length === 0 ? (
         <EmptyState
-          icon={searchQuery ? "search-outline" : filter === "favorites" ? "heart-outline" : "shirt-outline"}
+          icon={searchQuery ? "search-outline" : filter === "favorites" ? "heart-outline" : filter === "laundry" ? "water-outline" : "shirt-outline"}
           title={
             searchQuery
               ? "No results"
               : filter === "favorites"
                 ? "No favourites yet"
-                : filter !== "all"
-                  ? `No ${CATEGORY_LABELS[filter as ClothingCategory] ?? filter} items`
-                  : "Your wardrobe is empty"
+                : filter === "laundry"
+                  ? "All clean!"
+                  : filter !== "all"
+                    ? `No ${CATEGORY_LABELS[filter as ClothingCategory] ?? filter} items`
+                    : "Your wardrobe is empty"
           }
           subtitle={
             searchQuery
               ? `Nothing matches "${searchQuery}". Try a different search.`
               : filter === "favorites"
                 ? "Tap the heart icon on items to add them to your favourites!"
-                : filter !== "all"
-                  ? "Add items in this category to see them here."
-                  : "Add your first clothing item to get started with outfit suggestions!"
+                : filter === "laundry"
+                  ? "No items need washing. Everything is fresh and clean!"
+                  : filter !== "all"
+                    ? "Add items in this category to see them here."
+                    : "Add your first clothing item to get started with outfit suggestions!"
           }
         />
       ) : photoOnlyMode ? (
@@ -904,7 +1099,7 @@ export default function WardrobeScreen() {
 
       {/* Scroll to top button (#28) */}
       {showScrollTop && (
-        <Pressable style={styles.scrollTopBtn} onPress={scrollToTop}>
+        <Pressable accessibilityLabel="Scroll to top" accessibilityRole="button" style={styles.scrollTopBtn} onPress={scrollToTop}>
           <Ionicons name="arrow-up" size={20} color="#FFFFFF" />
         </Pressable>
       )}
@@ -912,6 +1107,8 @@ export default function WardrobeScreen() {
       {/* FAB - hidden in selection mode */}
       {!selectionMode && (
         <Pressable
+          accessibilityLabel="Add new item"
+          accessibilityRole="button"
           style={styles.fab}
           onPress={() => router.push("/add-item")}
         >
@@ -926,12 +1123,13 @@ export default function WardrobeScreen() {
         animationType="fade"
         onRequestClose={() => setBulkTagModalVisible(false)}
       >
-        <Pressable style={styles.bulkTagOverlay} onPress={() => setBulkTagModalVisible(false)}>
+        <Pressable accessibilityLabel="Close tag modal" accessibilityRole="button" style={styles.bulkTagOverlay} onPress={() => setBulkTagModalVisible(false)}>
           <View style={[styles.bulkTagSheet, { backgroundColor: theme.colors.surface }]}>
             <Text style={[styles.bulkTagTitle, { color: theme.colors.text }]}>
               Add Tag to {selectedIds.size} Item{selectedIds.size !== 1 ? "s" : ""}
             </Text>
             <TextInput
+              accessibilityLabel="Enter tag name"
               style={[styles.bulkTagInput, { backgroundColor: theme.colors.surfaceAlt, color: theme.colors.text, borderColor: theme.colors.border }]}
               placeholder="Enter tag name..."
               placeholderTextColor={theme.colors.textLight}
@@ -943,18 +1141,75 @@ export default function WardrobeScreen() {
             />
             <View style={styles.bulkTagActions}>
               <Pressable
+                accessibilityLabel="Cancel adding tag"
+                accessibilityRole="button"
                 style={[styles.bulkTagCancelBtn, { borderColor: theme.colors.border }]}
                 onPress={() => setBulkTagModalVisible(false)}
               >
                 <Text style={{ color: theme.colors.textSecondary }}>Cancel</Text>
               </Pressable>
               <Pressable
+                accessibilityLabel="Add tag to selected items"
+                accessibilityRole="button"
                 style={[styles.bulkTagSaveBtn, { backgroundColor: theme.colors.primary }]}
                 onPress={handleBulkAddTag}
               >
                 <Text style={{ color: "#FFF", fontWeight: "600" }}>Add Tag</Text>
               </Pressable>
             </View>
+          </View>
+        </Pressable>
+      </Modal>
+
+      {/* Bulk Laundry Status Modal */}
+      <Modal
+        visible={bulkLaundryModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setBulkLaundryModalVisible(false)}
+      >
+        <Pressable accessibilityLabel="Close laundry status modal" accessibilityRole="button" style={styles.bulkTagOverlay} onPress={() => setBulkLaundryModalVisible(false)}>
+          <View style={[styles.bulkTagSheet, { backgroundColor: theme.colors.surface }]}>
+            <Text style={[styles.bulkTagTitle, { color: theme.colors.text }]}>
+              Set Laundry Status
+            </Text>
+            <Text style={{ color: theme.colors.textSecondary, marginBottom: theme.spacing.md, fontSize: theme.fontSize.sm }}>
+              {selectedIds.size} item{selectedIds.size !== 1 ? "s" : ""} selected
+            </Text>
+            {(["clean", "worn", "in_wash", "dry_cleaning"] as LaundryStatus[]).map((status) => (
+              <Pressable
+                key={status}
+                accessibilityLabel={`Set status to ${LAUNDRY_STATUS_LABELS[status]}`}
+                accessibilityRole="button"
+                style={[styles.laundryOption, { borderColor: theme.colors.border }]}
+                onPress={() => handleBulkLaundryStatus(status)}
+              >
+                <Ionicons
+                  name={
+                    status === "clean" ? "checkmark-circle" :
+                    status === "worn" ? "shirt" :
+                    status === "in_wash" ? "water" : "storefront"
+                  }
+                  size={20}
+                  color={
+                    status === "clean" ? "#10B981" :
+                    status === "worn" ? "#F59E0B" :
+                    status === "in_wash" ? "#3B82F6" : "#8B5CF6"
+                  }
+                />
+                <Text style={[styles.laundryOptionText, { color: theme.colors.text }]}>
+                  {LAUNDRY_STATUS_LABELS[status]}
+                </Text>
+              </Pressable>
+            ))}
+            <Pressable
+              accessibilityLabel="Cancel laundry status change"
+              accessibilityRole="button"
+              style={[styles.bulkTagCancelBtn, { borderColor: theme.colors.border, marginTop: theme.spacing.sm }]}
+              onPress={() => setBulkLaundryModalVisible(false)}
+            >
+              <Text style={{ color: theme.colors.textSecondary }}>Cancel</Text>
+            </Pressable>
           </View>
         </Pressable>
       </Modal>
@@ -1240,6 +1495,89 @@ function createStyles(theme: ReturnType<typeof import("@/hooks/useTheme").useThe
       borderRadius: theme.borderRadius.md,
       paddingVertical: theme.spacing.sm,
       alignItems: "center",
+    },
+    // --- OOTD Widget ---
+    ootdCard: {
+      marginHorizontal: theme.spacing.md,
+      marginTop: theme.spacing.sm,
+      padding: theme.spacing.md,
+      backgroundColor: theme.colors.surface,
+      borderRadius: theme.borderRadius.lg,
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.08,
+      shadowRadius: 8,
+      elevation: 3,
+    },
+    ootdHeader: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginBottom: theme.spacing.sm,
+    },
+    ootdTitleRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+    },
+    ootdTitle: {
+      fontSize: theme.fontSize.md,
+      fontWeight: "700",
+      color: theme.colors.text,
+    },
+    ootdImageRow: {
+      flexDirection: "row",
+      gap: 6,
+      marginBottom: theme.spacing.sm,
+    },
+    ootdImageWrapper: {
+      flex: 1,
+      aspectRatio: 0.8,
+      borderRadius: theme.borderRadius.sm,
+      overflow: "hidden",
+    },
+    ootdImage: {
+      width: "100%",
+      height: "100%",
+    },
+    ootdImagePlaceholder: {
+      width: "100%",
+      height: "100%",
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    ootdActions: {
+      flexDirection: "row",
+      gap: theme.spacing.sm,
+    },
+    ootdBtn: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 6,
+      paddingVertical: 8,
+      borderRadius: theme.borderRadius.md,
+    },
+    ootdBtnText: {
+      fontSize: theme.fontSize.sm,
+      fontWeight: "600",
+      color: "#FFFFFF",
+    },
+    // --- Laundry option styles ---
+    laundryOption: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+      paddingVertical: theme.spacing.sm + 2,
+      paddingHorizontal: theme.spacing.md,
+      borderWidth: 1,
+      borderRadius: theme.borderRadius.md,
+      marginBottom: theme.spacing.xs,
+    },
+    laundryOptionText: {
+      fontSize: theme.fontSize.md,
+      fontWeight: "500",
     },
     // --- Scroll to top button (#28) ---
     scrollTopBtn: {

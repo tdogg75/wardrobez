@@ -9,9 +9,11 @@ import {
   Alert,
   Modal,
   Linking,
+  Dimensions,
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { safeOpenURL } from "@/utils/safeOpenURL";
 import { useClothingItems } from "@/hooks/useClothingItems";
 import { ColorDot } from "@/components/ColorDot";
 import { useTheme } from "@/hooks/useTheme";
@@ -24,8 +26,9 @@ import {
   ARCHIVE_REASON_LABELS,
   CARE_INSTRUCTION_LABELS,
   PATTERN_LABELS,
+  LAUNDRY_STATUS_LABELS,
 } from "@/models/types";
-import type { ItemFlag, ArchiveReason, CareInstruction, Pattern } from "@/models/types";
+import type { ItemFlag, ArchiveReason, CareInstruction, Pattern, LaundryStatus } from "@/models/types";
 
 const ARCHIVE_REASONS: ArchiveReason[] = ["donated", "sold", "worn_out", "given_away"];
 
@@ -76,7 +79,7 @@ function formatAge(dateInput: string | number): string {
 export default function ItemDetailScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { items: allItems, getById, addOrUpdate, remove, archiveItem, logItemWorn, removeItemWornDate } = useClothingItems();
+  const { items: allItems, getById, addOrUpdate, remove, archiveItem, logItemWorn, removeItemWornDate, updateLaundryStatus } = useClothingItems();
   const { theme } = useTheme();
   const [showArchiveModal, setShowArchiveModal] = useState(false);
   const [showWearLog, setShowWearLog] = useState(false);
@@ -193,7 +196,7 @@ export default function ItemDetailScreen() {
         {/* Name + Favorite */}
         <View style={styles.nameRow}>
           <Text style={styles.name}>{item.name}</Text>
-          <Pressable onPress={toggleFavorite} hitSlop={10}>
+          <Pressable onPress={toggleFavorite} hitSlop={10} accessibilityRole="button" accessibilityLabel={item.favorite ? "Remove from favorites" : "Add to favorites"}>
             <Ionicons
               name={item.favorite ? "heart" : "heart-outline"}
               size={26}
@@ -207,6 +210,8 @@ export default function ItemDetailScreen() {
           <Pressable
             style={styles.brandRow}
             onPress={() => router.push({ pathname: "/brand-items", params: { brand: item.brand } })}
+            accessibilityRole="button"
+            accessibilityLabel={`View all ${item.brand} items`}
           >
             <Text style={styles.brandText}>{item.brand}</Text>
             <Ionicons name="chevron-forward" size={16} color={theme.colors.textLight} />
@@ -283,7 +288,7 @@ export default function ItemDetailScreen() {
         {item.productUrl ? (
           <View style={styles.infoRow}>
             <Text style={styles.infoLabel}>URL</Text>
-            <Pressable onPress={() => Linking.openURL(item.productUrl!)}>
+            <Pressable onPress={() => safeOpenURL(item.productUrl!)} accessibilityRole="button" accessibilityLabel="Open product URL">
               <Text style={[styles.infoValue, { color: theme.colors.primary, textDecorationLine: "underline" }]} numberOfLines={1}>
                 {item.productUrl.replace(/^https?:\/\/(www\.)?/, "").slice(0, 40)}...
               </Text>
@@ -336,10 +341,53 @@ export default function ItemDetailScreen() {
             <Text style={styles.infoValue}>
               {item.wearCount ?? 0} time{(item.wearCount ?? 0) !== 1 ? "s" : ""}
             </Text>
-            <Pressable style={styles.logWearBtn} onPress={handleLogWear}>
+            <Pressable style={styles.logWearBtn} onPress={handleLogWear} accessibilityRole="button" accessibilityLabel="Log a wear">
               <Ionicons name="add-circle-outline" size={18} color={theme.colors.primary} />
               <Text style={styles.logWearText}>Log a Wear</Text>
             </Pressable>
+          </View>
+        </View>
+
+        {/* Laundry Status */}
+        <View style={styles.infoRow}>
+          <Text style={styles.infoLabel}>Laundry</Text>
+          <View style={styles.laundryRow}>
+            {(["clean", "worn", "in_wash", "dry_cleaning"] as LaundryStatus[]).map((status) => {
+              const isActive = (item.laundryStatus ?? "clean") === status;
+              const statusColor =
+                status === "clean" ? "#10B981" :
+                status === "worn" ? "#F59E0B" :
+                status === "in_wash" ? "#3B82F6" : "#8B5CF6";
+              return (
+                <Pressable
+                  key={status}
+                  style={[
+                    styles.laundryChip,
+                    { borderColor: isActive ? statusColor : theme.colors.border },
+                    isActive && { backgroundColor: statusColor + "18" },
+                  ]}
+                  onPress={() => updateLaundryStatus(id, status)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Set laundry status to ${LAUNDRY_STATUS_LABELS[status]}`}
+                >
+                  <Ionicons
+                    name={
+                      status === "clean" ? "checkmark-circle" :
+                      status === "worn" ? "shirt" :
+                      status === "in_wash" ? "water" : "storefront"
+                    }
+                    size={14}
+                    color={isActive ? statusColor : theme.colors.textLight}
+                  />
+                  <Text style={[
+                    styles.laundryChipText,
+                    { color: isActive ? statusColor : theme.colors.textSecondary },
+                  ]}>
+                    {LAUNDRY_STATUS_LABELS[status]}
+                  </Text>
+                </Pressable>
+              );
+            })}
           </View>
         </View>
 
@@ -347,6 +395,8 @@ export default function ItemDetailScreen() {
         <Pressable
           style={styles.wornLogToggle}
           onPress={() => setShowWearLog(!showWearLog)}
+          accessibilityRole="button"
+          accessibilityLabel={showWearLog ? "Hide wear history" : "Show wear history"}
         >
           <Ionicons name="calendar-outline" size={18} color={theme.colors.primary} />
           <Text style={styles.wornLogToggleText}>
@@ -384,6 +434,8 @@ export default function ItemDetailScreen() {
                       <Pressable
                         onPress={() => handleRemoveWornDate(origIdx, date)}
                         hitSlop={10}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Remove wear log for ${new Date(date).toLocaleDateString()}`}
                       >
                         <Ionicons name="trash-outline" size={16} color={theme.colors.error} />
                       </Pressable>
@@ -394,6 +446,8 @@ export default function ItemDetailScreen() {
                   <Pressable
                     style={styles.viewAllBtn}
                     onPress={() => setShowAllDates(true)}
+                    accessibilityRole="button"
+                    accessibilityLabel="View all wear dates"
                   >
                     <Text style={styles.viewAllText}>
                       View all {(item.wearDates ?? []).length} dates
@@ -461,6 +515,8 @@ export default function ItemDetailScreen() {
           onPress={() =>
             router.push({ pathname: "/edit-item", params: { id: item.id } })
           }
+          accessibilityRole="button"
+          accessibilityLabel="Edit item"
         >
           <Ionicons name="create-outline" size={20} color="#FFFFFF" />
           <Text style={styles.editBtnText}>Edit Item</Text>
@@ -478,6 +534,8 @@ export default function ItemDetailScreen() {
                   key={si.id}
                   style={styles.similarCard}
                   onPress={() => router.push(`/item-detail?id=${si.id}`)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`View similar item ${si.name}`}
                 >
                   {si.imageUris?.length > 0 ? (
                     <Image source={{ uri: si.imageUris[0] }} style={styles.similarImage} />
@@ -499,13 +557,15 @@ export default function ItemDetailScreen() {
         <Pressable
           style={styles.archiveBtn}
           onPress={() => setShowArchiveModal(true)}
+          accessibilityRole="button"
+          accessibilityLabel="Archive item"
         >
           <Ionicons name="archive-outline" size={18} color={theme.colors.warning} />
           <Text style={styles.archiveBtnText}>Archive Item</Text>
         </Pressable>
 
         {/* Delete Button */}
-        <Pressable style={styles.deleteBtn} onPress={handleDelete}>
+        <Pressable style={styles.deleteBtn} onPress={handleDelete} accessibilityRole="button" accessibilityLabel="Delete item">
           <Ionicons name="trash-outline" size={18} color={theme.colors.error} />
           <Text style={styles.deleteBtnText}>Delete Item</Text>
         </Pressable>
@@ -518,7 +578,7 @@ export default function ItemDetailScreen() {
         transparent
         onRequestClose={() => setShowArchiveModal(false)}
       >
-        <Pressable style={styles.archiveOverlay} onPress={() => setShowArchiveModal(false)}>
+        <Pressable style={styles.archiveOverlay} onPress={() => setShowArchiveModal(false)} accessibilityRole="button" accessibilityLabel="Close archive modal">
           <View style={styles.archiveSheet}>
             <Text style={styles.archiveSheetTitle}>Archive Reason</Text>
             {ARCHIVE_REASONS.map((reason) => (
@@ -526,6 +586,8 @@ export default function ItemDetailScreen() {
                 key={reason}
                 style={styles.archiveOption}
                 onPress={() => handleArchive(reason)}
+                accessibilityRole="button"
+                accessibilityLabel={`Archive as ${ARCHIVE_REASON_LABELS[reason]}`}
               >
                 <Text style={styles.archiveOptionText}>
                   {ARCHIVE_REASON_LABELS[reason]}
@@ -536,6 +598,8 @@ export default function ItemDetailScreen() {
             <Pressable
               style={styles.archiveCancelBtn}
               onPress={() => setShowArchiveModal(false)}
+              accessibilityRole="button"
+              accessibilityLabel="Cancel archive"
             >
               <Text style={styles.archiveCancelText}>Cancel</Text>
             </Pressable>
@@ -560,8 +624,8 @@ function makeStyles(theme: ReturnType<typeof useTheme>["theme"]) {
       marginBottom: theme.spacing.md,
     },
     photo: {
-      width: 280,
-      height: 360,
+      width: Dimensions.get("window").width,
+      aspectRatio: 3 / 4,
       borderRadius: 0,
       marginRight: 2,
     },
@@ -701,6 +765,25 @@ function makeStyles(theme: ReturnType<typeof useTheme>["theme"]) {
       fontSize: theme.fontSize.sm,
       fontWeight: "600",
       color: theme.colors.primary,
+    },
+    laundryRow: {
+      flex: 1,
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 6,
+    },
+    laundryChip: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+      paddingVertical: 5,
+      paddingHorizontal: 10,
+      borderRadius: theme.borderRadius.full,
+      borderWidth: 1,
+    },
+    laundryChipText: {
+      fontSize: theme.fontSize.xs,
+      fontWeight: "600",
     },
     /* Care instructions & tags */
     careSection: {

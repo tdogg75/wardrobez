@@ -1,6 +1,6 @@
 import * as FileSystem from "expo-file-system";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import type { ClothingItem, Outfit, FabricType, ArchiveReason, WishlistItem, OutfitTemplate, PlannedOutfit, SavedWeekPlan, InspirationPin, PackingList } from "@/models/types";
+import type { ClothingItem, Outfit, FabricType, ArchiveReason, LaundryStatus, WishlistItem, OutfitTemplate, PlannedOutfit, SavedWeekPlan, InspirationPin, PackingList } from "@/models/types";
 
 // --- File-System Storage Layer ---
 // Data is persisted as JSON files in the app's document directory.
@@ -37,6 +37,18 @@ async function ensureDataDir(): Promise<void> {
   initialized = true;
 }
 
+// --- Write queue to prevent concurrent read-modify-write data loss (S7/Q1) ---
+// Each file gets its own serialized queue so writes to different files can
+// proceed in parallel, but writes to the *same* file are strictly ordered.
+const writeQueues = new Map<string, Promise<void>>();
+
+function enqueueWrite(path: string, fn: () => Promise<void>): Promise<void> {
+  const prev = writeQueues.get(path) ?? Promise.resolve();
+  const next = prev.then(fn, fn); // run even if the previous write failed
+  writeQueues.set(path, next);
+  return next;
+}
+
 async function readJsonFile<T>(path: string): Promise<T | null> {
   try {
     await ensureDataDir();
@@ -50,8 +62,10 @@ async function readJsonFile<T>(path: string): Promise<T | null> {
 }
 
 async function writeJsonFile(path: string, data: unknown): Promise<void> {
-  await ensureDataDir();
-  await FileSystem.writeAsStringAsync(path, JSON.stringify(data));
+  return enqueueWrite(path, async () => {
+    await ensureDataDir();
+    await FileSystem.writeAsStringAsync(path, JSON.stringify(data));
+  });
 }
 
 /**
@@ -387,9 +401,8 @@ export async function logOutfitWorn(
 
   const outfit = outfits[outfitIdx];
   const wornEntries = [...(outfit.wornEntries ?? [])];
-  if (selfieUri || note) {
-    wornEntries.push({ date: today, selfieUri, note });
-  }
+  // Always push an entry so wornEntries stays in sync with wornDates (Q3)
+  wornEntries.push({ date: today, selfieUri, note });
   outfits[outfitIdx] = {
     ...outfit,
     wornDates: [...outfit.wornDates, today],
@@ -406,6 +419,8 @@ export async function logOutfitWorn(
         ...item,
         wearCount: item.wearCount + 1,
         wearDates: [...(item.wearDates ?? []), today],
+        laundryStatus: "worn" as LaundryStatus,
+        laundryStatusUpdatedAt: Date.now(),
       };
     }
     return item;
@@ -425,8 +440,49 @@ export async function logItemWorn(itemId: string): Promise<void> {
     ...items[idx],
     wearCount: items[idx].wearCount + 1,
     wearDates: [...(items[idx].wearDates ?? []), today],
+    laundryStatus: "worn" as LaundryStatus,
+    laundryStatusUpdatedAt: Date.now(),
   };
   await writeJsonFile(FILES.CLOTHING_ITEMS, items);
+}
+
+/** Update the laundry status of a clothing item */
+export async function updateLaundryStatus(
+  itemId: string,
+  status: LaundryStatus
+): Promise<void> {
+  const items = await getClothingItems();
+  const idx = items.findIndex((i) => i.id === itemId);
+  if (idx < 0) return;
+  items[idx] = {
+    ...items[idx],
+    laundryStatus: status,
+    laundryStatusUpdatedAt: Date.now(),
+  };
+  await writeJsonFile(FILES.CLOTHING_ITEMS, items);
+}
+
+/** Bulk update laundry status for multiple items */
+export async function bulkUpdateLaundryStatus(
+  itemIds: string[],
+  status: LaundryStatus
+): Promise<void> {
+  const items = await getClothingItems();
+  const idSet = new Set(itemIds);
+  let changed = false;
+  for (let i = 0; i < items.length; i++) {
+    if (idSet.has(items[i].id)) {
+      items[i] = {
+        ...items[i],
+        laundryStatus: status,
+        laundryStatusUpdatedAt: Date.now(),
+      };
+      changed = true;
+    }
+  }
+  if (changed) {
+    await writeJsonFile(FILES.CLOTHING_ITEMS, items);
+  }
 }
 
 /** Remove a wear date from an item's wearDates array */
@@ -459,9 +515,16 @@ export async function removeWornDate(
   const newDates = [...outfit.wornDates];
   newDates.splice(dateIndex, 1);
 
+  // Also remove the corresponding wornEntries entry to keep them in sync
+  const newEntries = [...(outfit.wornEntries ?? [])];
+  if (dateIndex < newEntries.length) {
+    newEntries.splice(dateIndex, 1);
+  }
+
   outfits[outfitIdx] = {
     ...outfit,
     wornDates: newDates,
+    wornEntries: newEntries,
   };
   await writeJsonFile(FILES.OUTFITS, outfits);
 
@@ -471,12 +534,14 @@ export async function removeWornDate(
   let itemsChanged = false;
   const updatedItems = items.map((item) => {
     if (outfit.itemIds.includes(item.id) && item.wearCount > 0) {
-      itemsChanged = true;
       const itemDates = [...(item.wearDates ?? [])];
-      // Remove the first matching date entry
+      // Only decrement wearCount if the date was actually found and removed
       const dateIdx = itemDates.indexOf(removedDate);
-      if (dateIdx >= 0) itemDates.splice(dateIdx, 1);
-      return { ...item, wearCount: Math.max(0, item.wearCount - 1), wearDates: itemDates };
+      if (dateIdx >= 0) {
+        itemDates.splice(dateIdx, 1);
+        itemsChanged = true;
+        return { ...item, wearCount: Math.max(0, item.wearCount - 1), wearDates: itemDates };
+      }
     }
     return item;
   });
@@ -545,6 +610,7 @@ export async function moveWishlistToWardrobe(wishlistId: string): Promise<Clothi
     cost: item.estimatedPrice,
     favorite: false,
     wearCount: 0,
+    wearDates: [],
     archived: false,
     createdAt: Date.now(),
     notes: item.notes,
@@ -634,10 +700,51 @@ export async function exportAllData(): Promise<string> {
   );
 }
 
+/** Validate that an imported item has the minimum required shape */
+function isValidClothingItem(item: unknown): item is Record<string, unknown> {
+  if (typeof item !== "object" || item === null) return false;
+  const obj = item as Record<string, unknown>;
+  return (
+    typeof obj.id === "string" &&
+    typeof obj.name === "string" &&
+    typeof obj.category === "string" &&
+    typeof obj.color === "string" &&
+    typeof obj.colorName === "string"
+  );
+}
+
+function isValidOutfit(outfit: unknown): outfit is Record<string, unknown> {
+  if (typeof outfit !== "object" || outfit === null) return false;
+  const obj = outfit as Record<string, unknown>;
+  return (
+    typeof obj.id === "string" &&
+    typeof obj.name === "string" &&
+    Array.isArray(obj.itemIds)
+  );
+}
+
+const MAX_IMPORT_SIZE = 50 * 1024 * 1024; // 50 MB
+
 export async function importAllData(jsonString: string): Promise<void> {
+  if (jsonString.length > MAX_IMPORT_SIZE) {
+    throw new Error("Backup file is too large (max 50 MB)");
+  }
+
   const data = JSON.parse(jsonString);
-  if (!data.clothing_items || !data.outfits) {
+  if (!Array.isArray(data.clothing_items) || !Array.isArray(data.outfits)) {
     throw new Error("Invalid backup format");
+  }
+
+  // Validate each item to prevent malformed data from being imported
+  for (const item of data.clothing_items) {
+    if (!isValidClothingItem(item)) {
+      throw new Error("Backup contains invalid clothing item data");
+    }
+  }
+  for (const outfit of data.outfits) {
+    if (!isValidOutfit(outfit)) {
+      throw new Error("Backup contains invalid outfit data");
+    }
   }
 
   // Restore photos if present (version 2+)

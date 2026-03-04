@@ -25,7 +25,7 @@ import { ColorDot } from "@/components/ColorDot";
 import { MoodBoard } from "@/components/MoodBoard";
 import { Chip } from "@/components/Chip";
 import { CATEGORY_LABELS, OCCASION_LABELS, SEASON_LABELS } from "@/models/types";
-import { generateOutfitName } from "@/services/outfitEngine";
+import { generateOutfitName, colorCompatibility } from "@/services/outfitEngine";
 import { analyzeOutfitStyle } from "@/services/styleAnalysis";
 import type { StyleAnalysisResult } from "@/services/styleAnalysis";
 import type { ClothingItem, Occasion, Season, WornEntry } from "@/models/types";
@@ -58,6 +58,8 @@ export default function OutfitDetailScreen() {
   const [logNote, setLogNote] = useState("");
   const [showAllWornDates, setShowAllWornDates] = useState(false);
   const [showStyleAnalysis, setShowStyleAnalysis] = useState(false);
+  const [showRemixModal, setShowRemixModal] = useState(false);
+  const [remixItemId, setRemixItemId] = useState<string | null>(null);
   const moodBoardRef = useRef<any>(null);
 
   // Build dynamic styles based on the current theme
@@ -256,10 +258,12 @@ export default function OutfitDetailScreen() {
             <Pressable
               style={styles.editCancelBtn}
               onPress={() => setIsEditing(false)}
+              accessibilityRole="button"
+              accessibilityLabel="Cancel editing"
             >
               <Text style={styles.editCancelText}>Cancel</Text>
             </Pressable>
-            <Pressable style={styles.editSaveBtn} onPress={saveEdits}>
+            <Pressable style={styles.editSaveBtn} onPress={saveEdits} accessibilityRole="button" accessibilityLabel="Save outfit edits">
               <Text style={styles.editSaveText}>Save</Text>
             </Pressable>
           </View>
@@ -272,6 +276,7 @@ export default function OutfitDetailScreen() {
           onChangeText={setEditName}
           placeholder="Outfit name"
           placeholderTextColor={theme.colors.textLight}
+          accessibilityLabel="Outfit name"
         />
 
         <Text style={styles.sectionTitle}>Items</Text>
@@ -290,6 +295,8 @@ export default function OutfitDetailScreen() {
               onPress={() => toggleEditItem(item.id)}
               hitSlop={10}
               style={styles.removeItemBtn}
+              accessibilityRole="button"
+              accessibilityLabel={`Remove ${item.name} from outfit`}
             >
               <Ionicons name="close-circle" size={22} color={theme.colors.error} />
             </Pressable>
@@ -299,6 +306,8 @@ export default function OutfitDetailScreen() {
         <Pressable
           style={styles.addItemBtn}
           onPress={() => setShowItemPicker(true)}
+          accessibilityRole="button"
+          accessibilityLabel="Add item to outfit"
         >
           <Ionicons name="add-circle-outline" size={20} color={theme.colors.primary} />
           <Text style={styles.addItemText}>Add Item</Text>
@@ -336,6 +345,7 @@ export default function OutfitDetailScreen() {
           placeholder="Optional notes..."
           placeholderTextColor={theme.colors.textLight}
           multiline
+          accessibilityLabel="Outfit notes"
         />
 
         {/* Item Picker Modal */}
@@ -343,7 +353,7 @@ export default function OutfitDetailScreen() {
           <View style={styles.pickerContainer}>
             <View style={styles.pickerHeader}>
               <Text style={styles.pickerTitle}>Select Items</Text>
-              <Pressable onPress={() => setShowItemPicker(false)}>
+              <Pressable onPress={() => setShowItemPicker(false)} accessibilityRole="button" accessibilityLabel="Close item picker">
                 <Ionicons name="close" size={24} color={theme.colors.text} />
               </Pressable>
             </View>
@@ -359,6 +369,8 @@ export default function OutfitDetailScreen() {
                       selected && styles.pickerItemSelected,
                     ]}
                     onPress={() => toggleEditItem(item.id)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${selected ? "Deselect" : "Select"} ${item.name}`}
                   >
                     {item.imageUris?.length > 0 ? (
                       <Image
@@ -407,6 +419,7 @@ export default function OutfitDetailScreen() {
           onPress={handleRegenerateName}
           hitSlop={8}
           style={styles.regenerateNameBtn}
+          accessibilityRole="button"
           accessibilityLabel="Regenerate outfit name"
         >
           <Ionicons name="refresh-outline" size={18} color={theme.colors.primary} />
@@ -426,6 +439,8 @@ export default function OutfitDetailScreen() {
             key={star}
             onPress={() => updateRating(outfit.id, star)}
             hitSlop={6}
+            accessibilityRole="button"
+            accessibilityLabel={`Rate ${star} star${star !== 1 ? "s" : ""}`}
           >
             <Ionicons
               name={star <= outfit.rating ? "star" : "star-outline"}
@@ -461,15 +476,15 @@ export default function OutfitDetailScreen() {
 
       {/* Action Buttons */}
       <View style={styles.actionButtonRow}>
-        <Pressable style={styles.logWornBtn} onPress={handleLogWorn}>
+        <Pressable style={styles.logWornBtn} onPress={handleLogWorn} accessibilityRole="button" accessibilityLabel="Log wear">
           <Ionicons name="camera-outline" size={18} color={theme.colors.success} />
           <Text style={styles.logWornText}>Log Wear</Text>
         </Pressable>
-        <Pressable style={styles.editBtn} onPress={startEditing}>
+        <Pressable style={styles.editBtn} onPress={startEditing} accessibilityRole="button" accessibilityLabel="Edit outfit">
           <Ionicons name="create-outline" size={18} color={theme.colors.primary} />
           <Text style={styles.editBtnText}>Edit</Text>
         </Pressable>
-        <Pressable style={styles.renameBtn} onPress={handleStartRename}>
+        <Pressable style={styles.renameBtn} onPress={handleStartRename} accessibilityRole="button" accessibilityLabel="Rename outfit">
           <Ionicons name="text-outline" size={18} color={theme.colors.primary} />
           <Text style={styles.renameBtnText}>Rename</Text>
         </Pressable>
@@ -502,6 +517,8 @@ export default function OutfitDetailScreen() {
       <Pressable
         style={styles.analysisToggle}
         onPress={() => setShowStyleAnalysis(!showStyleAnalysis)}
+        accessibilityRole="button"
+        accessibilityLabel={showStyleAnalysis ? "Hide style analysis" : "Show style analysis"}
       >
         <Ionicons name="sparkles" size={18} color={theme.colors.primary} />
         <Text style={styles.analysisToggleText}>
@@ -571,7 +588,25 @@ export default function OutfitDetailScreen() {
       )}
 
       {/* Items */}
-      <Text style={styles.sectionTitle}>Items</Text>
+      <View style={styles.sectionTitleRow}>
+        <Text style={styles.sectionTitle}>Items</Text>
+        <Pressable
+          style={styles.remixHeaderBtn}
+          onPress={() => {
+            // Pick a random item to swap
+            if (outfitItems.length > 0) {
+              const randomItem = outfitItems[Math.floor(Math.random() * outfitItems.length)];
+              setRemixItemId(randomItem.id);
+              setShowRemixModal(true);
+            }
+          }}
+          accessibilityRole="button"
+          accessibilityLabel="Remix outfit"
+        >
+          <Ionicons name="shuffle-outline" size={16} color={theme.colors.primary} />
+          <Text style={styles.remixHeaderBtnText}>Remix</Text>
+        </Pressable>
+      </View>
       {outfitItems.map((item) => (
         <Pressable
           key={item.id}
@@ -579,6 +614,8 @@ export default function OutfitDetailScreen() {
           onPress={() =>
             router.push({ pathname: "/item-detail", params: { id: item.id } })
           }
+          accessibilityRole="button"
+          accessibilityLabel={`View ${item.name}`}
         >
           {item.imageUris?.length > 0 ? (
             <Image source={{ uri: item.imageUris[0] }} style={styles.itemThumb} />
@@ -593,6 +630,18 @@ export default function OutfitDetailScreen() {
               {item.cost ? ` · ${fmt(item.cost)}` : ""}
             </Text>
           </View>
+          <Pressable
+            style={styles.swapBtn}
+            onPress={() => {
+              setRemixItemId(item.id);
+              setShowRemixModal(true);
+            }}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel={`Swap ${item.name}`}
+          >
+            <Ionicons name="swap-horizontal-outline" size={18} color={theme.colors.primary} />
+          </Pressable>
           <Ionicons name="chevron-forward" size={16} color={theme.colors.textLight} />
         </Pressable>
       ))}
@@ -637,6 +686,8 @@ export default function OutfitDetailScreen() {
       <Pressable
         style={styles.wornLogToggle}
         onPress={() => setShowWornLog(!showWornLog)}
+        accessibilityRole="button"
+        accessibilityLabel={showWornLog ? "Hide wear history" : "Show wear history"}
       >
         <Ionicons name="calendar-outline" size={18} color={theme.colors.primary} />
         <Text style={styles.wornLogToggleText}>
@@ -684,6 +735,8 @@ export default function OutfitDetailScreen() {
                           <Pressable
                             onPress={() => handleRemoveWornDate(origIdx, date)}
                             hitSlop={10}
+                            accessibilityRole="button"
+                            accessibilityLabel={`Remove wear log for ${new Date(date).toLocaleDateString()}`}
                           >
                             <Ionicons name="trash-outline" size={16} color={theme.colors.error} />
                           </Pressable>
@@ -710,6 +763,8 @@ export default function OutfitDetailScreen() {
                 <Pressable
                   style={styles.viewAllBtn}
                   onPress={() => setShowAllWornDates(true)}
+                  accessibilityRole="button"
+                  accessibilityLabel="View all wear dates"
                 >
                   <Text style={styles.viewAllBtnText}>
                     View all {outfit.wornDates.length} dates
@@ -724,6 +779,8 @@ export default function OutfitDetailScreen() {
       {/* Share/Export Outfit (#49) */}
       <Pressable
         style={styles.shareBtn}
+        accessibilityRole="button"
+        accessibilityLabel="Share outfit"
         onPress={async () => {
           try {
             const itemNames = outfitItems.map((i) => `  - ${i.name} (${CATEGORY_LABELS[i.category]})`).join("\n");
@@ -755,7 +812,7 @@ export default function OutfitDetailScreen() {
       </Pressable>
 
       {/* Delete */}
-      <Pressable style={styles.deleteBtn} onPress={handleDelete}>
+      <Pressable style={styles.deleteBtn} onPress={handleDelete} accessibilityRole="button" accessibilityLabel="Delete outfit">
         <Ionicons name="trash-outline" size={18} color={theme.colors.error} />
         <Text style={styles.deleteBtnText}>Delete Outfit</Text>
       </Pressable>
@@ -780,17 +837,19 @@ export default function OutfitDetailScreen() {
                 <Pressable
                   style={styles.selfieRemoveBtn}
                   onPress={() => setLogSelfieUri(null)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Remove selfie"
                 >
                   <Ionicons name="close-circle" size={24} color={theme.colors.error} />
                 </Pressable>
               </View>
             ) : (
               <View style={styles.selfieButtonRow}>
-                <Pressable style={styles.takeSelfieBtn} onPress={handleTakeSelfie}>
+                <Pressable style={styles.takeSelfieBtn} onPress={handleTakeSelfie} accessibilityRole="button" accessibilityLabel="Take selfie">
                   <Ionicons name="camera" size={24} color={theme.colors.primary} />
                   <Text style={styles.takeSelfieBtnText}>Take Selfie</Text>
                 </Pressable>
-                <Pressable style={styles.pickPhotoBtn} onPress={handlePickSelfieFromLibrary}>
+                <Pressable style={styles.pickPhotoBtn} onPress={handlePickSelfieFromLibrary} accessibilityRole="button" accessibilityLabel="Choose from gallery">
                   <Ionicons name="images-outline" size={22} color={theme.colors.primary} />
                   <Text style={styles.takeSelfieBtnText}>Gallery</Text>
                 </Pressable>
@@ -804,16 +863,19 @@ export default function OutfitDetailScreen() {
               placeholder="Add a note (optional)"
               placeholderTextColor={theme.colors.textLight}
               multiline
+              accessibilityLabel="Wear log note"
             />
 
             <View style={styles.renameActions}>
               <Pressable
                 style={styles.renameCancelBtn}
                 onPress={() => setShowLogWornModal(false)}
+                accessibilityRole="button"
+                accessibilityLabel="Cancel log wear"
               >
                 <Text style={styles.renameCancelText}>Cancel</Text>
               </Pressable>
-              <Pressable style={styles.renameSaveBtn} onPress={handleConfirmLogWorn}>
+              <Pressable style={styles.renameSaveBtn} onPress={handleConfirmLogWorn} accessibilityRole="button" accessibilityLabel="Confirm log wear">
                 <Text style={styles.renameSaveText}>Log It</Text>
               </Pressable>
             </View>
@@ -840,18 +902,139 @@ export default function OutfitDetailScreen() {
               autoFocus
               selectTextOnFocus
               onSubmitEditing={handleSaveRename}
+              accessibilityLabel="New outfit name"
             />
             <View style={styles.renameActions}>
               <Pressable
                 style={styles.renameCancelBtn}
                 onPress={() => setShowRenameModal(false)}
+                accessibilityRole="button"
+                accessibilityLabel="Cancel rename"
               >
                 <Text style={styles.renameCancelText}>Cancel</Text>
               </Pressable>
-              <Pressable style={styles.renameSaveBtn} onPress={handleSaveRename}>
+              <Pressable style={styles.renameSaveBtn} onPress={handleSaveRename} accessibilityRole="button" accessibilityLabel="Save new name">
                 <Text style={styles.renameSaveText}>Save</Text>
               </Pressable>
             </View>
+          </View>
+        </View>
+      </Modal>
+      {/* Remix / Swap Modal */}
+      <Modal
+        visible={showRemixModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowRemixModal(false)}
+      >
+        <View style={styles.remixOverlay}>
+          <View style={[styles.remixSheet, { backgroundColor: theme.colors.surface }]}>
+            <View style={styles.remixHeader}>
+              <Text style={styles.remixTitle}>
+                Swap Item
+              </Text>
+              <Pressable onPress={() => setShowRemixModal(false)} hitSlop={10} accessibilityRole="button" accessibilityLabel="Close swap modal">
+                <Ionicons name="close" size={22} color={theme.colors.textSecondary} />
+              </Pressable>
+            </View>
+            {(() => {
+              const swapItem = remixItemId ? getById(remixItemId) : null;
+              if (!swapItem) return null;
+
+              // Find alternatives: same category, not already in outfit, available (clean)
+              const otherItemIds = new Set(outfit.itemIds.filter((iid) => iid !== remixItemId));
+              const otherItems = Array.from(otherItemIds)
+                .map((iid) => getById(iid))
+                .filter(Boolean) as ClothingItem[];
+
+              const alternatives = allItems
+                .filter((i) => {
+                  if (i.id === remixItemId) return false;
+                  if (otherItemIds.has(i.id)) return false;
+                  if (i.category !== swapItem.category) return false;
+                  const status = i.laundryStatus ?? "clean";
+                  if (status === "in_wash" || status === "dry_cleaning") return false;
+                  return true;
+                })
+                .map((alt) => {
+                  // Score how well this alternative fits with the rest of the outfit
+                  let score = 0;
+                  for (const other of otherItems) {
+                    score += colorCompatibility(alt.color, other.color);
+                  }
+                  return { item: alt, score: otherItems.length > 0 ? score / otherItems.length : 0 };
+                })
+                .sort((a, b) => b.score - a.score)
+                .slice(0, 10);
+
+              return (
+                <>
+                  <View style={styles.remixCurrentRow}>
+                    <Text style={styles.remixSubtitle}>
+                      Replacing: <Text style={{ fontWeight: "700" }}>{swapItem.name}</Text>
+                    </Text>
+                    <Text style={styles.remixCategory}>
+                      {CATEGORY_LABELS[swapItem.category]}
+                    </Text>
+                  </View>
+                  {alternatives.length === 0 ? (
+                    <Text style={styles.remixEmpty}>No alternatives available in this category.</Text>
+                  ) : (
+                    <FlatList
+                      data={alternatives}
+                      keyExtractor={(a) => a.item.id}
+                      style={{ maxHeight: 400 }}
+                      renderItem={({ item: alt }) => (
+                        <Pressable
+                          style={styles.remixAltCard}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Swap with ${alt.item.name}`}
+                          onPress={async () => {
+                            // Swap the item in the outfit
+                            const newItemIds = outfit.itemIds.map((iid) =>
+                              iid === remixItemId ? alt.item.id : iid
+                            );
+                            await addOrUpdate({
+                              ...outfit,
+                              itemIds: newItemIds,
+                            });
+                            setShowRemixModal(false);
+                            setRemixItemId(null);
+                          }}
+                        >
+                          {alt.item.imageUris?.length > 0 ? (
+                            <Image source={{ uri: alt.item.imageUris[0] }} style={styles.remixAltThumb} />
+                          ) : (
+                            <View style={[styles.remixAltColorDot, { backgroundColor: alt.item.color }]} />
+                          )}
+                          <View style={styles.remixAltInfo}>
+                            <Text style={styles.remixAltName}>{alt.item.name}</Text>
+                            <Text style={styles.remixAltMeta}>
+                              {alt.item.brand ? `${alt.item.brand} · ` : ""}
+                              {alt.item.colorName}
+                              {alt.score > 0.8 ? " · Great match" : alt.score > 0.6 ? " · Good match" : ""}
+                            </Text>
+                          </View>
+                          <View style={[
+                            styles.remixMatchBadge,
+                            {
+                              backgroundColor: alt.score > 0.8 ? "#10B981" + "20" : alt.score > 0.6 ? "#F59E0B" + "20" : theme.colors.surfaceAlt,
+                            },
+                          ]}>
+                            <Text style={[
+                              styles.remixMatchText,
+                              { color: alt.score > 0.8 ? "#10B981" : alt.score > 0.6 ? "#F59E0B" : theme.colors.textSecondary },
+                            ]}>
+                              {Math.round(alt.score * 100)}%
+                            </Text>
+                          </View>
+                        </Pressable>
+                      )}
+                    />
+                  )}
+                </>
+              );
+            })()}
           </View>
         </View>
       </Modal>
@@ -1442,6 +1625,124 @@ function makeStyles(theme: ReturnType<typeof useTheme>["theme"]) {
       fontSize: theme.fontSize.sm,
       fontWeight: "600",
       color: theme.colors.primary,
+    },
+    // --- Remix / Swap ---
+    sectionTitleRow: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+    },
+    remixHeaderBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+      paddingHorizontal: 10,
+      paddingVertical: 5,
+      borderRadius: theme.borderRadius.full,
+      backgroundColor: theme.colors.primary + "12",
+    },
+    remixHeaderBtnText: {
+      fontSize: theme.fontSize.xs,
+      fontWeight: "600",
+      color: theme.colors.primary,
+    },
+    swapBtn: {
+      padding: 6,
+      marginRight: 4,
+    },
+    remixOverlay: {
+      flex: 1,
+      backgroundColor: "rgba(0,0,0,0.4)",
+      justifyContent: "flex-end",
+    },
+    remixSheet: {
+      borderTopLeftRadius: 20,
+      borderTopRightRadius: 20,
+      paddingTop: theme.spacing.md,
+      paddingBottom: theme.spacing.xxl,
+      paddingHorizontal: theme.spacing.md,
+      maxHeight: "75%",
+    },
+    remixHeader: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginBottom: theme.spacing.md,
+    },
+    remixTitle: {
+      fontSize: theme.fontSize.lg,
+      fontWeight: "700",
+      color: theme.colors.text,
+    },
+    remixCurrentRow: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginBottom: theme.spacing.md,
+      paddingBottom: theme.spacing.sm,
+      borderBottomWidth: 1,
+      borderBottomColor: theme.colors.border,
+    },
+    remixSubtitle: {
+      fontSize: theme.fontSize.sm,
+      color: theme.colors.textSecondary,
+      flex: 1,
+    },
+    remixCategory: {
+      fontSize: theme.fontSize.xs,
+      fontWeight: "600",
+      color: theme.colors.primary,
+      paddingHorizontal: 8,
+      paddingVertical: 3,
+      borderRadius: theme.borderRadius.full,
+      backgroundColor: theme.colors.primary + "12",
+    },
+    remixEmpty: {
+      fontSize: theme.fontSize.sm,
+      color: theme.colors.textLight,
+      textAlign: "center",
+      paddingVertical: theme.spacing.lg,
+    },
+    remixAltCard: {
+      flexDirection: "row",
+      alignItems: "center",
+      paddingVertical: 10,
+      borderBottomWidth: 1,
+      borderBottomColor: theme.colors.border + "40",
+      gap: 12,
+    },
+    remixAltThumb: {
+      width: 48,
+      height: 48,
+      borderRadius: theme.borderRadius.sm,
+      resizeMode: "cover",
+    },
+    remixAltColorDot: {
+      width: 48,
+      height: 48,
+      borderRadius: theme.borderRadius.sm,
+    },
+    remixAltInfo: {
+      flex: 1,
+    },
+    remixAltName: {
+      fontSize: theme.fontSize.md,
+      fontWeight: "600",
+      color: theme.colors.text,
+    },
+    remixAltMeta: {
+      fontSize: theme.fontSize.xs,
+      color: theme.colors.textSecondary,
+      marginTop: 2,
+    },
+    remixMatchBadge: {
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      borderRadius: theme.borderRadius.full,
+    },
+    remixMatchText: {
+      fontSize: theme.fontSize.xs,
+      fontWeight: "700",
     },
   });
 }

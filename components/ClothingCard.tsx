@@ -1,7 +1,7 @@
 import React from "react";
 import { View, Text, Pressable, Image, StyleSheet } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import type { ClothingItem, ItemFlag } from "@/models/types";
+import type { ClothingItem, ItemFlag, LaundryStatus } from "@/models/types";
 import { CATEGORY_LABELS, SUBCATEGORIES, ITEM_FLAG_LABELS } from "@/models/types";
 import { ColorDot } from "./ColorDot";
 import { useTheme } from "@/hooks/useTheme";
@@ -99,7 +99,7 @@ export function ClothingCard({ item, onPress, onToggleFavorite, onQuickLogWear, 
 
   if (photoOnly) {
     return (
-      <Pressable style={[styles.card, { backgroundColor: theme.colors.surface }]} onPress={onPress}>
+      <Pressable style={[styles.card, { backgroundColor: theme.colors.surface }]} onPress={onPress} accessibilityRole="button" accessibilityLabel={`View ${item.name}`}>
         <View style={[styles.imageContainer, { height: imageHeight }]}>
           {item.imageUris?.length > 0 ? (
             <Image source={{ uri: item.imageUris[0] }} style={styles.image} />
@@ -114,7 +114,7 @@ export function ClothingCard({ item, onPress, onToggleFavorite, onQuickLogWear, 
   }
 
   return (
-    <Pressable style={[styles.card, { backgroundColor: theme.colors.surface }]} onPress={onPress}>
+    <Pressable style={[styles.card, { backgroundColor: theme.colors.surface }]} onPress={onPress} accessibilityRole="button" accessibilityLabel={`View ${item.name}`}>
       <View style={[styles.imageContainer, { height: imageHeight }]}>
         {item.imageUris?.length > 0 ? (
           <Image source={{ uri: item.imageUris[0] }} style={styles.image} />
@@ -142,6 +142,21 @@ export function ClothingCard({ item, onPress, onToggleFavorite, onQuickLogWear, 
           </View>
         )}
 
+        {/* Laundry status badge */}
+        {item.laundryStatus && item.laundryStatus !== "clean" && (
+          <View style={[
+            styles.laundryBadge,
+            { backgroundColor: item.laundryStatus === "in_wash" ? "#3B82F6" : item.laundryStatus === "dry_cleaning" ? "#8B5CF6" : "#F59E0B" },
+            item.sustainable ? { bottom: 32 } : undefined,
+          ]}>
+            <Ionicons
+              name={item.laundryStatus === "in_wash" ? "water" : item.laundryStatus === "dry_cleaning" ? "storefront" : "shirt"}
+              size={10}
+              color="#FFFFFF"
+            />
+          </View>
+        )}
+
         {/* Sustainable badge */}
         {item.sustainable && (
           <View style={styles.sustainableBadge}>
@@ -153,6 +168,8 @@ export function ClothingCard({ item, onPress, onToggleFavorite, onQuickLogWear, 
           <Pressable
             style={[styles.favoriteBtn, { width: favBtnSize, height: favBtnSize, borderRadius: favBtnSize / 2 }]}
             onPress={onToggleFavorite}
+            accessibilityRole="button"
+            accessibilityLabel={item.favorite ? "Remove from favorites" : "Add to favorites"}
           >
             <Ionicons
               name={item.favorite ? "heart" : "heart-outline"}
@@ -164,7 +181,7 @@ export function ClothingCard({ item, onPress, onToggleFavorite, onQuickLogWear, 
 
         {/* Quick-log wear button (bottom-right, non-compact only) */}
         {!compact && onQuickLogWear && (
-          <Pressable style={[styles.quickLogBtn, { backgroundColor: theme.colors.primary }]} onPress={onQuickLogWear}>
+          <Pressable style={[styles.quickLogBtn, { backgroundColor: theme.colors.primary }]} onPress={onQuickLogWear} accessibilityRole="button" accessibilityLabel="Log wear">
             <Ionicons name="shirt-outline" size={13} color="#FFFFFF" />
             <Text style={styles.quickLogPlus}>+</Text>
           </Pressable>
@@ -277,6 +294,16 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontSize: 8,
     fontWeight: "600",
+  },
+  laundryBadge: {
+    position: "absolute",
+    bottom: 8,
+    left: 8,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    justifyContent: "center",
+    alignItems: "center",
   },
   sustainableBadge: {
     position: "absolute",

@@ -355,7 +355,7 @@ export function BackgroundRemover() {
         style={styles.webview}
         onMessage={handleMessage}
         javaScriptEnabled
-        originWhitelist={["*"]}
+        originWhitelist={["about:*", "data:*"]}
       />
     </View>
   );

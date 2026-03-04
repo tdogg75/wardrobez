@@ -50,6 +50,8 @@ export function ImageCropper({
   cropRef.current = crop;
   const imgSizeRef = useRef(imgSize);
   imgSizeRef.current = imgSize;
+  const naturalSizeRef = useRef(naturalSize);
+  naturalSizeRef.current = naturalSize;
 
   const dragRef = useRef<{
     mode: "move" | "tl" | "tr" | "bl" | "br";
@@ -215,7 +217,7 @@ export function ImageCropper({
 <script>
 var img = new Image();
 img.onload = function() {
-  window.ReactNativeWebView.postMessage(JSON.stringify({type:'ready'}));
+  window.ReactNativeWebView.postMessage(JSON.stringify({type:'ready', naturalWidth: img.naturalWidth, naturalHeight: img.naturalHeight}));
 };
 img.src = ${JSON.stringify(dataUri)};
 
@@ -245,7 +247,11 @@ function cropImage(sx,sy,sw,sh) {
     async (event: any) => {
       try {
         const data = JSON.parse(event.nativeEvent.data);
-        if (data.type === "cropped" && data.data) {
+        if (data.type === "ready" && data.naturalWidth && data.naturalHeight) {
+          // Use the actual natural dimensions from the WebView image element
+          // This is more reliable than Image.getSize for local/processed files
+          setNaturalSize({ w: data.naturalWidth, h: data.naturalHeight });
+        } else if (data.type === "cropped" && data.data) {
           const base64 = data.data.replace(/^data:image\/\w+;base64,/, "");
           const filename = `cropped_${Date.now()}.jpg`;
           const path = `${FileSystem.documentDirectory}${filename}`;
@@ -263,20 +269,23 @@ function cropImage(sx,sy,sw,sh) {
   );
 
   const handleApply = useCallback(() => {
-    if (!webViewRef.current || naturalSize.w === 0 || imgSize.w === 0) return;
+    const ns = naturalSizeRef.current;
+    const is = imgSizeRef.current;
+    const c = cropRef.current;
+    if (!webViewRef.current || ns.w === 0 || is.w === 0) return;
     setApplying(true);
 
     // Scale from display coordinates to natural image coordinates
-    const scaleX = naturalSize.w / imgSize.w;
-    const scaleY = naturalSize.h / imgSize.h;
-    const sx = Math.round(crop.x * scaleX);
-    const sy = Math.round(crop.y * scaleY);
-    const sw = Math.round(crop.w * scaleX);
-    const sh = Math.round(crop.h * scaleY);
+    const scaleX = ns.w / is.w;
+    const scaleY = ns.h / is.h;
+    const sx = Math.max(0, Math.round(c.x * scaleX));
+    const sy = Math.max(0, Math.round(c.y * scaleY));
+    const sw = Math.min(ns.w - sx, Math.round(c.w * scaleX));
+    const sh = Math.min(ns.h - sy, Math.round(c.h * scaleY));
 
     // Send real source coordinates — the JS side handles output capping
     webViewRef.current.injectJavaScript(`cropImage(${sx},${sy},${sw},${sh}); true;`);
-  }, [crop, imgSize, naturalSize]);
+  }, []);
 
   const Handle = ({ left, top }: { left: number; top: number }) => (
     <View
@@ -298,13 +307,13 @@ function cropImage(sx,sy,sw,sh) {
             style={styles.hidden}
             onMessage={handleWebViewMessage}
             javaScriptEnabled
-            originWhitelist={["*"]}
+            originWhitelist={["about:*", "data:*"]}
           />
         ) : null}
 
         {/* Header */}
         <View style={styles.header}>
-          <Pressable onPress={onCancel} hitSlop={12}>
+          <Pressable onPress={onCancel} hitSlop={12} accessibilityRole="button" accessibilityLabel="Close cropper">
             <Ionicons name="close" size={28} color="#FFF" />
           </Pressable>
           <Text style={styles.headerTitle}>Crop Image</Text>
@@ -358,13 +367,15 @@ function cropImage(sx,sy,sw,sh) {
 
         {/* Footer */}
         <View style={styles.footer}>
-          <Pressable style={styles.cancelBtn} onPress={onCancel}>
+          <Pressable style={styles.cancelBtn} onPress={onCancel} accessibilityRole="button" accessibilityLabel="Cancel crop">
             <Text style={styles.cancelText}>Cancel</Text>
           </Pressable>
           <Pressable
             style={[styles.applyBtn, applying && { opacity: 0.5 }]}
             onPress={handleApply}
             disabled={applying}
+            accessibilityRole="button"
+            accessibilityLabel="Apply crop"
           >
             <Ionicons name="checkmark" size={20} color="#FFF" />
             <Text style={styles.applyText}>

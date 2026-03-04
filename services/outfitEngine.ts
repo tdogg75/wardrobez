@@ -597,6 +597,11 @@ async function loadFlags(): Promise<OutfitFlag[]> {
   return cachedFlags;
 }
 
+/** Pre-load outfit flags into cache so suggestOutfits can use them synchronously */
+export async function preloadFlags(): Promise<void> {
+  await loadFlags();
+}
+
 export async function flagOutfit(pattern: string, reason: string): Promise<void> {
   const flag: OutfitFlag = {
     id: Date.now().toString(36) + Math.random().toString(36).slice(2, 9),
@@ -979,9 +984,15 @@ export function suggestOutfits(
     }
   }
 
+  // Filter out items that are physically unavailable (in the wash, at dry cleaner)
+  const availableItems = allItems.filter((item) => {
+    const status = item.laundryStatus ?? "clean";
+    return status !== "in_wash" && status !== "dry_cleaning";
+  });
+
   // Group items by category
   const byCategory = new Map<ClothingCategory, ClothingItem[]>();
-  for (const item of allItems) {
+  for (const item of availableItems) {
     const list = byCategory.get(item.category) ?? [];
     list.push(item);
     byCategory.set(item.category, list);
@@ -1167,8 +1178,9 @@ export function suggestOutfits(
     return { items: combo, score, reasons };
   });
 
-  // Filter out blocked combos
-  const valid = scored.filter((s) => s.score >= 0);
+  // Filter out blocked combos and flagged outfit patterns
+  const flags = cachedFlags ?? [];
+  const valid = scored.filter((s) => s.score >= 0 && !matchesFlagPattern(s.items, flags));
 
   // Sort by score descending
   valid.sort((a, b) => b.score - a.score);
@@ -1250,7 +1262,6 @@ export function validateOutfit(items: ClothingItem[]): string[] {
   // Too many colours warning
   const nonNeutralItems = items.filter((i) => !isNeutral(i.color));
   if (nonNeutralItems.length > 3) {
-    const hues = nonNeutralItems.map((i) => hexToHSL(i.color).h);
     const distinctHues = getDistinctHueCount(nonNeutralItems.map((i) => hexToHSL(i.color)));
     if (distinctHues > 3) {
       warnings.push(`${distinctHues} different colour families — try sticking to 2-3 max for a cohesive look`);

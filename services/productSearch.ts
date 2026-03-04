@@ -698,3 +698,114 @@ export async function searchProduct(
   if (matchCount === 0) return null;
   return result;
 }
+
+// --- Web Search ---
+
+export interface WebSearchResult {
+  title: string;
+  url: string;
+  snippet: string;
+  imageUrl?: string;
+}
+
+/**
+ * Searches the web for a clothing product by query string (e.g. "aritzia effortless pant").
+ * Scrapes Google search results page for titles, URLs, and snippets.
+ * Returns up to `limit` results.
+ */
+export async function searchWebForProduct(
+  query: string,
+  limit: number = 5,
+): Promise<WebSearchResult[]> {
+  try {
+    const encoded = encodeURIComponent(query + " clothing buy");
+    const searchUrl = `https://www.google.com/search?q=${encoded}&num=${limit + 2}`;
+
+    const response = await fetch(searchUrl, {
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/120.0.0.0 Mobile Safari/537.36",
+        Accept: "text/html,application/xhtml+xml",
+      },
+    });
+    if (!response.ok) return [];
+
+    const html = await response.text();
+    const results: WebSearchResult[] = [];
+
+    // Parse search results - Google wraps each result in an anchor with an href
+    // We look for patterns like <a href="/url?q=ACTUAL_URL&..."><h3>TITLE</h3></a>
+    const resultBlocks = html.split(/(?=<a href="\/url\?q=)/);
+
+    for (const block of resultBlocks) {
+      if (results.length >= limit) break;
+
+      // Extract URL
+      const urlMatch = block.match(/<a href="\/url\?q=([^&"]+)/);
+      if (!urlMatch) continue;
+      const url = decodeURIComponent(urlMatch[1]);
+
+      // Skip non-http, google own links, and ads
+      if (!url.startsWith("http")) continue;
+      if (url.includes("google.com") || url.includes("youtube.com")) continue;
+      if (url.includes("webcache.googleusercontent.com")) continue;
+
+      // Extract title from <h3>
+      const titleMatch = block.match(/<h3[^>]*>(.*?)<\/h3>/s);
+      const title = titleMatch
+        ? titleMatch[1].replace(/<[^>]+>/g, "").trim()
+        : "";
+      if (!title) continue;
+
+      // Extract snippet text - look for text content after the link block
+      const snippetMatch = block.match(
+        /<span[^>]*class="[^"]*"[^>]*>((?:(?!<\/span>).)*)<\/span>/gs,
+      );
+      let snippet = "";
+      if (snippetMatch) {
+        for (const s of snippetMatch) {
+          const text = s.replace(/<[^>]+>/g, "").trim();
+          if (text.length > 30 && text.length < 500) {
+            snippet = text;
+            break;
+          }
+        }
+      }
+
+      results.push({ title, url, snippet });
+    }
+
+    // Fallback: try alternate parsing if the above found nothing
+    if (results.length === 0) {
+      // Try extracting from <a href="https://..."><h3>
+      const altBlocks = html.split(/(?=<a href="https?:\/\/)/);
+      for (const block of altBlocks) {
+        if (results.length >= limit) break;
+        const urlMatch = block.match(/<a href="(https?:\/\/[^"]+)"/);
+        if (!urlMatch) continue;
+        const url = urlMatch[1];
+        if (url.includes("google.com") || url.includes("youtube.com")) continue;
+        const titleMatch = block.match(/<h3[^>]*>(.*?)<\/h3>/s);
+        const title = titleMatch
+          ? titleMatch[1].replace(/<[^>]+>/g, "").trim()
+          : "";
+        if (!title) continue;
+        results.push({ title, url, snippet: "" });
+      }
+    }
+
+    return results;
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Given a WebSearchResult, fetch the product page and extract full details.
+ * This reuses the existing fetchProductFromUrl infrastructure.
+ */
+export async function fetchSearchResult(
+  result: WebSearchResult,
+): Promise<ProductSearchResult | null> {
+  return fetchProductFromUrl(result.url);
+}
