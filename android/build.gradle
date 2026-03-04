@@ -27,11 +27,9 @@ apply plugin: "com.facebook.react.rootproject"
 // reject the build due to a Kotlin/Java JVM-target mismatch.
 // (Kotlin 1.9.x defaults to jvmTarget=1.8; modern AGP compiles Java to 17.)
 subprojects {
-    afterEvaluate {
-        tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
-            kotlinOptions {
-                jvmTarget = "17"
-            }
+    tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
+        kotlinOptions {
+            jvmTarget = "17"
         }
     }
 }
