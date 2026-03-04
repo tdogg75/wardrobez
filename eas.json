@@ -7,6 +7,7 @@
     "development": {
       "developmentClient": true,
       "distribution": "internal",
+      "prebuildCommand": "expo prebuild --clean",
       "android": {
         "buildType": "apk",
         "gradleCommand": ":app:assembleDebug"
@@ -14,17 +15,20 @@
     },
     "preview": {
       "distribution": "internal",
+      "prebuildCommand": "expo prebuild --clean",
       "android": {
         "buildType": "apk"
       }
     },
     "production": {
+      "prebuildCommand": "expo prebuild --clean",
       "android": {
         "buildType": "app-bundle"
       }
     },
     "local-apk": {
       "distribution": "internal",
+      "prebuildCommand": "expo prebuild --clean",
       "android": {
         "buildType": "apk"
       },

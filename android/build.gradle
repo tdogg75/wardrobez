@@ -23,6 +23,19 @@ buildscript {
 
 apply plugin: "com.facebook.react.rootproject"
 
+// Align Kotlin JVM target across all subprojects so AGP 8.x doesn't
+// reject the build due to a Kotlin/Java JVM-target mismatch.
+// (Kotlin 1.9.x defaults to jvmTarget=1.8; modern AGP compiles Java to 17.)
+subprojects {
+    afterEvaluate {
+        tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
+            kotlinOptions {
+                jvmTarget = "17"
+            }
+        }
+    }
+}
+
 allprojects {
     repositories {
         maven {

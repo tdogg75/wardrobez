@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import type { Outfit } from "@/models/types";
 import {
   getOutfits,
@@ -88,17 +88,20 @@ export function OutfitsProvider({ children }: { children: React.ReactNode }) {
     [outfits, reload]
   );
 
-  const value: OutfitsContextValue = {
-    outfits,
-    loading,
-    reload,
-    addOrUpdate,
-    remove,
-    logWorn,
-    removeWornDate,
-    markNotified,
-    updateRating,
-  };
+  const value: OutfitsContextValue = useMemo(
+    () => ({
+      outfits,
+      loading,
+      reload,
+      addOrUpdate,
+      remove,
+      logWorn,
+      removeWornDate,
+      markNotified,
+      updateRating,
+    }),
+    [outfits, loading, reload, addOrUpdate, remove, logWorn, removeWornDate, markNotified, updateRating]
+  );
 
   return React.createElement(OutfitsContext.Provider, { value }, children);
 }

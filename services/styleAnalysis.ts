@@ -272,17 +272,20 @@ function analyzeVersatility(items: ClothingItem[]): { score: number; note: strin
 
 function getHueRange(hues: number[]): number {
   if (hues.length < 2) return 0;
-  let minRange = 360;
+  // Return the maximum pairwise circular distance so callers can check
+  // whether ALL hues fall within a given spread (e.g. <= 30° = monochromatic).
+  // Using the minimum would give false positives when one hue is far from others.
+  let maxSpread = 0;
   for (let i = 0; i < hues.length; i++) {
     for (let j = i + 1; j < hues.length; j++) {
       const diff = Math.min(
         Math.abs(hues[i] - hues[j]),
         360 - Math.abs(hues[i] - hues[j])
       );
-      minRange = Math.min(minRange, diff);
+      maxSpread = Math.max(maxSpread, diff);
     }
   }
-  return minRange;
+  return maxSpread;
 }
 
 function getColorSuggestions(items: ClothingItem[]): string[] {

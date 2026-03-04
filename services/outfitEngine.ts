@@ -9,6 +9,7 @@ import type {
 } from "@/models/types";
 import { hexToHSL } from "@/constants/colors";
 import { getOutfitFlags, saveOutfitFlag } from "@/services/storage";
+import { v4 as uuidv4 } from "uuid";
 
 // --- Advanced Color Harmony Rules ---
 
@@ -170,35 +171,40 @@ function getDistinctHueCount(hsls: { h: number; s: number; l: number }[]): numbe
 const FORMAL_FABRICS: FabricType[] = ["silk", "wool", "cashmere", "leather", "satin"];
 const CASUAL_FABRICS: FabricType[] = ["cotton", "denim", "linen", "nylon", "polyester", "fleece"];
 
+// Canonical key for any unordered fabric pair (alphabetical order ensures symmetry)
+function fabricPairKey(a: FabricType, b: FabricType): string {
+  return a < b ? `${a}|${b}` : `${b}|${a}`;
+}
+
 // Great fabric pairings that stylists love
-const ELEVATED_PAIRINGS: [FabricType, FabricType][] = [
-  ["denim", "leather"],   // classic cool combo
-  ["denim", "cotton"],    // casual staple
-  ["silk", "wool"],       // luxe mix
-  ["silk", "denim"],      // high-low contrast (very trendy)
-  ["cashmere", "denim"],  // casual luxury
-  ["linen", "cotton"],    // summer staple
-  ["leather", "wool"],    // winter chic
-  ["satin", "wool"],      // evening elegance
-  ["leather", "silk"],    // edgy meets elegant
-  ["fleece", "denim"],    // cozy casual
-];
+const ELEVATED_PAIRS: Set<string> = new Set([
+  fabricPairKey("denim", "leather"),   // classic cool combo
+  fabricPairKey("denim", "cotton"),    // casual staple
+  fabricPairKey("silk", "wool"),       // luxe mix
+  fabricPairKey("silk", "denim"),      // high-low contrast (very trendy)
+  fabricPairKey("cashmere", "denim"),  // casual luxury
+  fabricPairKey("linen", "cotton"),    // summer staple
+  fabricPairKey("leather", "wool"),    // winter chic
+  fabricPairKey("satin", "wool"),      // evening elegance
+  fabricPairKey("leather", "silk"),    // edgy meets elegant
+  fabricPairKey("fleece", "denim"),    // cozy casual
+]);
 
 // Pairings that usually feel "off"
-const AWKWARD_PAIRINGS: [FabricType, FabricType][] = [
-  ["fleece", "silk"],     // too much contrast
-  ["fleece", "satin"],    // gym meets gala
-  ["nylon", "silk"],      // athletic vs dressy
-  ["nylon", "satin"],     // both shiny but wrong contexts
-  ["polyester", "cashmere"], // cheap meets luxury
-];
+const AWKWARD_PAIRS: Set<string> = new Set([
+  fabricPairKey("fleece", "silk"),     // too much contrast
+  fabricPairKey("fleece", "satin"),    // gym meets gala
+  fabricPairKey("nylon", "silk"),      // athletic vs dressy
+  fabricPairKey("nylon", "satin"),     // both shiny but wrong contexts
+  fabricPairKey("polyester", "cashmere"), // cheap meets luxury
+]);
 
 function fabricCompatibility(items: ClothingItem[]): number {
   const types = items.map((i) => i.fabricType).filter(Boolean);
   const uniqueTypes = new Set(types);
   if (uniqueTypes.size <= 1) return 0.9;
 
-  // Check for specifically elevated or awkward pairings
+  // Check for specifically elevated or awkward pairings (O(1) Set lookup)
   let elevatedPairs = 0;
   let awkwardPairs = 0;
   let totalPairs = 0;
@@ -206,13 +212,9 @@ function fabricCompatibility(items: ClothingItem[]): number {
   for (let i = 0; i < types.length; i++) {
     for (let j = i + 1; j < types.length; j++) {
       totalPairs++;
-      const pair: [FabricType, FabricType] = [types[i], types[j]];
-      if (ELEVATED_PAIRINGS.some(([a, b]) => (pair[0] === a && pair[1] === b) || (pair[0] === b && pair[1] === a))) {
-        elevatedPairs++;
-      }
-      if (AWKWARD_PAIRINGS.some(([a, b]) => (pair[0] === a && pair[1] === b) || (pair[0] === b && pair[1] === a))) {
-        awkwardPairs++;
-      }
+      const key = fabricPairKey(types[i], types[j]);
+      if (ELEVATED_PAIRS.has(key)) elevatedPairs++;
+      if (AWKWARD_PAIRS.has(key)) awkwardPairs++;
     }
   }
 
@@ -604,7 +606,7 @@ export async function preloadFlags(): Promise<void> {
 
 export async function flagOutfit(pattern: string, reason: string): Promise<void> {
   const flag: OutfitFlag = {
-    id: Date.now().toString(36) + Math.random().toString(36).slice(2, 9),
+    id: uuidv4(),
     pattern,
     reason,
     createdAt: Date.now(),

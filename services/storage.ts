@@ -1,5 +1,6 @@
 import * as FileSystem from "expo-file-system";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { v4 as uuidv4 } from "uuid";
 import type { ClothingItem, Outfit, FabricType, ArchiveReason, LaundryStatus, WishlistItem, OutfitTemplate, PlannedOutfit, SavedWeekPlan, InspirationPin, PackingList } from "@/models/types";
 
 // --- File-System Storage Layer ---
@@ -597,7 +598,7 @@ export async function moveWishlistToWardrobe(wishlistId: string): Promise<Clothi
   if (!item) return null;
 
   const clothingItem: ClothingItem = {
-    id: Date.now().toString(36) + Math.random().toString(36).slice(2, 9),
+    id: uuidv4(),
     name: item.name,
     category: item.category || 'tops',
     subCategory: item.subCategory,
@@ -654,37 +655,43 @@ export async function exportAllData(): Promise<string> {
   const outfits = await readJsonFile<any[]>(FILES.OUTFITS) ?? [];
   const wishlist = await readJsonFile<any[]>(FILES.WISHLIST) ?? [];
 
-  // Encode item photos as base64
+  // Collect all encoding tasks and run them in parallel
+  const encodingTasks: Promise<void>[] = [];
   const photos: Record<string, string> = {};
+
   for (const item of items) {
     if (Array.isArray(item.imageUris)) {
       for (let i = 0; i < item.imageUris.length; i++) {
         const uri = item.imageUris[i];
         if (uri && !uri.startsWith("http")) {
-          const b64 = await encodeImageToBase64(uri);
-          if (b64) {
-            const key = `${item.id}_${i}`;
-            photos[key] = b64;
-          }
+          const key = `${item.id}_${i}`;
+          encodingTasks.push(
+            encodeImageToBase64(uri).then((b64) => {
+              if (b64) photos[key] = b64;
+            })
+          );
         }
       }
     }
   }
 
-  // Encode outfit selfies
   for (const outfit of outfits) {
     if (Array.isArray(outfit.wornEntries)) {
       for (let i = 0; i < outfit.wornEntries.length; i++) {
         const entry = outfit.wornEntries[i];
         if (entry.selfieUri && !entry.selfieUri.startsWith("http")) {
-          const b64 = await encodeImageToBase64(entry.selfieUri);
-          if (b64) {
-            photos[`selfie_${outfit.id}_${i}`] = b64;
-          }
+          const key = `selfie_${outfit.id}_${i}`;
+          encodingTasks.push(
+            encodeImageToBase64(entry.selfieUri).then((b64) => {
+              if (b64) photos[key] = b64;
+            })
+          );
         }
       }
     }
   }
+
+  await Promise.all(encodingTasks);
 
   return JSON.stringify(
     {
