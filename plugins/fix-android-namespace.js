@@ -70,26 +70,25 @@ function fixAndroidBuild(config) {
         const isKts = rootGradlePath.endsWith(".kts");
         let rg = fs.readFileSync(rootGradlePath, "utf8");
 
-        // Add subprojects block to force consistent Kotlin JVM target
+        // Add subprojects block to force consistent Kotlin JVM target.
+        // Note: do NOT wrap in afterEvaluate — Gradle 8.x throws
+        // "Cannot run afterEvaluate when project is already evaluated".
+        // tasks.withType().configureEach is already lazy-safe.
         const subprojectsBlock = isKts
           ? `
 subprojects {
-    afterEvaluate {
-        tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
-            kotlinOptions {
-                jvmTarget = "17"
-            }
+    tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
+        kotlinOptions {
+            jvmTarget = "17"
         }
     }
 }
 `
           : `
 subprojects {
-    afterEvaluate {
-        tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
-            kotlinOptions {
-                jvmTarget = "17"
-            }
+    tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
+        kotlinOptions {
+            jvmTarget = "17"
         }
     }
 }
