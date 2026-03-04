@@ -146,25 +146,45 @@ export function ClothingItemsProvider({ children }: { children: React.ReactNode 
     [activeItems]
   );
 
-  const value: ClothingItemsContextValue = {
-    items: activeItems,
-    activeItems,
-    archivedItems,
-    loading,
-    reload,
-    addOrUpdate,
-    remove,
-    archiveItem,
-    unarchiveItem,
-    logItemWorn,
-    removeItemWornDate,
-    updateLaundryStatus,
-    bulkUpdateLaundryStatus,
-    getByCategory,
-    getById,
-    getFavorites,
-    getAvailableItems,
-  };
+  const value: ClothingItemsContextValue = useMemo(
+    () => ({
+      items: activeItems,
+      activeItems,
+      archivedItems,
+      loading,
+      reload,
+      addOrUpdate,
+      remove,
+      archiveItem,
+      unarchiveItem,
+      logItemWorn,
+      removeItemWornDate,
+      updateLaundryStatus,
+      bulkUpdateLaundryStatus,
+      getByCategory,
+      getById,
+      getFavorites,
+      getAvailableItems,
+    }),
+    [
+      activeItems,
+      archivedItems,
+      loading,
+      reload,
+      addOrUpdate,
+      remove,
+      archiveItem,
+      unarchiveItem,
+      logItemWorn,
+      removeItemWornDate,
+      updateLaundryStatus,
+      bulkUpdateLaundryStatus,
+      getByCategory,
+      getById,
+      getFavorites,
+      getAvailableItems,
+    ]
+  );
 
   return React.createElement(ClothingItemsContext.Provider, { value }, children);
 }
