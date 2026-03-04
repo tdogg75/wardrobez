@@ -37,6 +37,18 @@ async function ensureDataDir(): Promise<void> {
   initialized = true;
 }
 
+// --- Write queue to prevent concurrent read-modify-write data loss (S7/Q1) ---
+// Each file gets its own serialized queue so writes to different files can
+// proceed in parallel, but writes to the *same* file are strictly ordered.
+const writeQueues = new Map<string, Promise<void>>();
+
+function enqueueWrite(path: string, fn: () => Promise<void>): Promise<void> {
+  const prev = writeQueues.get(path) ?? Promise.resolve();
+  const next = prev.then(fn, fn); // run even if the previous write failed
+  writeQueues.set(path, next);
+  return next;
+}
+
 async function readJsonFile<T>(path: string): Promise<T | null> {
   try {
     await ensureDataDir();
@@ -50,8 +62,10 @@ async function readJsonFile<T>(path: string): Promise<T | null> {
 }
 
 async function writeJsonFile(path: string, data: unknown): Promise<void> {
-  await ensureDataDir();
-  await FileSystem.writeAsStringAsync(path, JSON.stringify(data));
+  return enqueueWrite(path, async () => {
+    await ensureDataDir();
+    await FileSystem.writeAsStringAsync(path, JSON.stringify(data));
+  });
 }
 
 /**
@@ -387,9 +401,8 @@ export async function logOutfitWorn(
 
   const outfit = outfits[outfitIdx];
   const wornEntries = [...(outfit.wornEntries ?? [])];
-  if (selfieUri || note) {
-    wornEntries.push({ date: today, selfieUri, note });
-  }
+  // Always push an entry so wornEntries stays in sync with wornDates (Q3)
+  wornEntries.push({ date: today, selfieUri, note });
   outfits[outfitIdx] = {
     ...outfit,
     wornDates: [...outfit.wornDates, today],

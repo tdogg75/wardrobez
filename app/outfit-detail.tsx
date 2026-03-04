@@ -258,10 +258,12 @@ export default function OutfitDetailScreen() {
             <Pressable
               style={styles.editCancelBtn}
               onPress={() => setIsEditing(false)}
+              accessibilityRole="button"
+              accessibilityLabel="Cancel editing"
             >
               <Text style={styles.editCancelText}>Cancel</Text>
             </Pressable>
-            <Pressable style={styles.editSaveBtn} onPress={saveEdits}>
+            <Pressable style={styles.editSaveBtn} onPress={saveEdits} accessibilityRole="button" accessibilityLabel="Save outfit edits">
               <Text style={styles.editSaveText}>Save</Text>
             </Pressable>
           </View>
@@ -274,6 +276,7 @@ export default function OutfitDetailScreen() {
           onChangeText={setEditName}
           placeholder="Outfit name"
           placeholderTextColor={theme.colors.textLight}
+          accessibilityLabel="Outfit name"
         />
 
         <Text style={styles.sectionTitle}>Items</Text>
@@ -292,6 +295,8 @@ export default function OutfitDetailScreen() {
               onPress={() => toggleEditItem(item.id)}
               hitSlop={10}
               style={styles.removeItemBtn}
+              accessibilityRole="button"
+              accessibilityLabel={`Remove ${item.name} from outfit`}
             >
               <Ionicons name="close-circle" size={22} color={theme.colors.error} />
             </Pressable>
@@ -301,6 +306,8 @@ export default function OutfitDetailScreen() {
         <Pressable
           style={styles.addItemBtn}
           onPress={() => setShowItemPicker(true)}
+          accessibilityRole="button"
+          accessibilityLabel="Add item to outfit"
         >
           <Ionicons name="add-circle-outline" size={20} color={theme.colors.primary} />
           <Text style={styles.addItemText}>Add Item</Text>
@@ -338,6 +345,7 @@ export default function OutfitDetailScreen() {
           placeholder="Optional notes..."
           placeholderTextColor={theme.colors.textLight}
           multiline
+          accessibilityLabel="Outfit notes"
         />
 
         {/* Item Picker Modal */}
@@ -345,7 +353,7 @@ export default function OutfitDetailScreen() {
           <View style={styles.pickerContainer}>
             <View style={styles.pickerHeader}>
               <Text style={styles.pickerTitle}>Select Items</Text>
-              <Pressable onPress={() => setShowItemPicker(false)}>
+              <Pressable onPress={() => setShowItemPicker(false)} accessibilityRole="button" accessibilityLabel="Close item picker">
                 <Ionicons name="close" size={24} color={theme.colors.text} />
               </Pressable>
             </View>
@@ -361,6 +369,8 @@ export default function OutfitDetailScreen() {
                       selected && styles.pickerItemSelected,
                     ]}
                     onPress={() => toggleEditItem(item.id)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${selected ? "Deselect" : "Select"} ${item.name}`}
                   >
                     {item.imageUris?.length > 0 ? (
                       <Image
@@ -409,6 +419,7 @@ export default function OutfitDetailScreen() {
           onPress={handleRegenerateName}
           hitSlop={8}
           style={styles.regenerateNameBtn}
+          accessibilityRole="button"
           accessibilityLabel="Regenerate outfit name"
         >
           <Ionicons name="refresh-outline" size={18} color={theme.colors.primary} />
@@ -428,6 +439,8 @@ export default function OutfitDetailScreen() {
             key={star}
             onPress={() => updateRating(outfit.id, star)}
             hitSlop={6}
+            accessibilityRole="button"
+            accessibilityLabel={`Rate ${star} star${star !== 1 ? "s" : ""}`}
           >
             <Ionicons
               name={star <= outfit.rating ? "star" : "star-outline"}
@@ -463,15 +476,15 @@ export default function OutfitDetailScreen() {
 
       {/* Action Buttons */}
       <View style={styles.actionButtonRow}>
-        <Pressable style={styles.logWornBtn} onPress={handleLogWorn}>
+        <Pressable style={styles.logWornBtn} onPress={handleLogWorn} accessibilityRole="button" accessibilityLabel="Log wear">
           <Ionicons name="camera-outline" size={18} color={theme.colors.success} />
           <Text style={styles.logWornText}>Log Wear</Text>
         </Pressable>
-        <Pressable style={styles.editBtn} onPress={startEditing}>
+        <Pressable style={styles.editBtn} onPress={startEditing} accessibilityRole="button" accessibilityLabel="Edit outfit">
           <Ionicons name="create-outline" size={18} color={theme.colors.primary} />
           <Text style={styles.editBtnText}>Edit</Text>
         </Pressable>
-        <Pressable style={styles.renameBtn} onPress={handleStartRename}>
+        <Pressable style={styles.renameBtn} onPress={handleStartRename} accessibilityRole="button" accessibilityLabel="Rename outfit">
           <Ionicons name="text-outline" size={18} color={theme.colors.primary} />
           <Text style={styles.renameBtnText}>Rename</Text>
         </Pressable>
@@ -504,6 +517,8 @@ export default function OutfitDetailScreen() {
       <Pressable
         style={styles.analysisToggle}
         onPress={() => setShowStyleAnalysis(!showStyleAnalysis)}
+        accessibilityRole="button"
+        accessibilityLabel={showStyleAnalysis ? "Hide style analysis" : "Show style analysis"}
       >
         <Ionicons name="sparkles" size={18} color={theme.colors.primary} />
         <Text style={styles.analysisToggleText}>
@@ -585,6 +600,8 @@ export default function OutfitDetailScreen() {
               setShowRemixModal(true);
             }
           }}
+          accessibilityRole="button"
+          accessibilityLabel="Remix outfit"
         >
           <Ionicons name="shuffle-outline" size={16} color={theme.colors.primary} />
           <Text style={styles.remixHeaderBtnText}>Remix</Text>
@@ -597,6 +614,8 @@ export default function OutfitDetailScreen() {
           onPress={() =>
             router.push({ pathname: "/item-detail", params: { id: item.id } })
           }
+          accessibilityRole="button"
+          accessibilityLabel={`View ${item.name}`}
         >
           {item.imageUris?.length > 0 ? (
             <Image source={{ uri: item.imageUris[0] }} style={styles.itemThumb} />
@@ -618,6 +637,8 @@ export default function OutfitDetailScreen() {
               setShowRemixModal(true);
             }}
             hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel={`Swap ${item.name}`}
           >
             <Ionicons name="swap-horizontal-outline" size={18} color={theme.colors.primary} />
           </Pressable>
@@ -665,6 +686,8 @@ export default function OutfitDetailScreen() {
       <Pressable
         style={styles.wornLogToggle}
         onPress={() => setShowWornLog(!showWornLog)}
+        accessibilityRole="button"
+        accessibilityLabel={showWornLog ? "Hide wear history" : "Show wear history"}
       >
         <Ionicons name="calendar-outline" size={18} color={theme.colors.primary} />
         <Text style={styles.wornLogToggleText}>
@@ -712,6 +735,8 @@ export default function OutfitDetailScreen() {
                           <Pressable
                             onPress={() => handleRemoveWornDate(origIdx, date)}
                             hitSlop={10}
+                            accessibilityRole="button"
+                            accessibilityLabel={`Remove wear log for ${new Date(date).toLocaleDateString()}`}
                           >
                             <Ionicons name="trash-outline" size={16} color={theme.colors.error} />
                           </Pressable>
@@ -738,6 +763,8 @@ export default function OutfitDetailScreen() {
                 <Pressable
                   style={styles.viewAllBtn}
                   onPress={() => setShowAllWornDates(true)}
+                  accessibilityRole="button"
+                  accessibilityLabel="View all wear dates"
                 >
                   <Text style={styles.viewAllBtnText}>
                     View all {outfit.wornDates.length} dates
@@ -752,6 +779,8 @@ export default function OutfitDetailScreen() {
       {/* Share/Export Outfit (#49) */}
       <Pressable
         style={styles.shareBtn}
+        accessibilityRole="button"
+        accessibilityLabel="Share outfit"
         onPress={async () => {
           try {
             const itemNames = outfitItems.map((i) => `  - ${i.name} (${CATEGORY_LABELS[i.category]})`).join("\n");
@@ -783,7 +812,7 @@ export default function OutfitDetailScreen() {
       </Pressable>
 
       {/* Delete */}
-      <Pressable style={styles.deleteBtn} onPress={handleDelete}>
+      <Pressable style={styles.deleteBtn} onPress={handleDelete} accessibilityRole="button" accessibilityLabel="Delete outfit">
         <Ionicons name="trash-outline" size={18} color={theme.colors.error} />
         <Text style={styles.deleteBtnText}>Delete Outfit</Text>
       </Pressable>
@@ -808,17 +837,19 @@ export default function OutfitDetailScreen() {
                 <Pressable
                   style={styles.selfieRemoveBtn}
                   onPress={() => setLogSelfieUri(null)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Remove selfie"
                 >
                   <Ionicons name="close-circle" size={24} color={theme.colors.error} />
                 </Pressable>
               </View>
             ) : (
               <View style={styles.selfieButtonRow}>
-                <Pressable style={styles.takeSelfieBtn} onPress={handleTakeSelfie}>
+                <Pressable style={styles.takeSelfieBtn} onPress={handleTakeSelfie} accessibilityRole="button" accessibilityLabel="Take selfie">
                   <Ionicons name="camera" size={24} color={theme.colors.primary} />
                   <Text style={styles.takeSelfieBtnText}>Take Selfie</Text>
                 </Pressable>
-                <Pressable style={styles.pickPhotoBtn} onPress={handlePickSelfieFromLibrary}>
+                <Pressable style={styles.pickPhotoBtn} onPress={handlePickSelfieFromLibrary} accessibilityRole="button" accessibilityLabel="Choose from gallery">
                   <Ionicons name="images-outline" size={22} color={theme.colors.primary} />
                   <Text style={styles.takeSelfieBtnText}>Gallery</Text>
                 </Pressable>
@@ -832,16 +863,19 @@ export default function OutfitDetailScreen() {
               placeholder="Add a note (optional)"
               placeholderTextColor={theme.colors.textLight}
               multiline
+              accessibilityLabel="Wear log note"
             />
 
             <View style={styles.renameActions}>
               <Pressable
                 style={styles.renameCancelBtn}
                 onPress={() => setShowLogWornModal(false)}
+                accessibilityRole="button"
+                accessibilityLabel="Cancel log wear"
               >
                 <Text style={styles.renameCancelText}>Cancel</Text>
               </Pressable>
-              <Pressable style={styles.renameSaveBtn} onPress={handleConfirmLogWorn}>
+              <Pressable style={styles.renameSaveBtn} onPress={handleConfirmLogWorn} accessibilityRole="button" accessibilityLabel="Confirm log wear">
                 <Text style={styles.renameSaveText}>Log It</Text>
               </Pressable>
             </View>
@@ -868,15 +902,18 @@ export default function OutfitDetailScreen() {
               autoFocus
               selectTextOnFocus
               onSubmitEditing={handleSaveRename}
+              accessibilityLabel="New outfit name"
             />
             <View style={styles.renameActions}>
               <Pressable
                 style={styles.renameCancelBtn}
                 onPress={() => setShowRenameModal(false)}
+                accessibilityRole="button"
+                accessibilityLabel="Cancel rename"
               >
                 <Text style={styles.renameCancelText}>Cancel</Text>
               </Pressable>
-              <Pressable style={styles.renameSaveBtn} onPress={handleSaveRename}>
+              <Pressable style={styles.renameSaveBtn} onPress={handleSaveRename} accessibilityRole="button" accessibilityLabel="Save new name">
                 <Text style={styles.renameSaveText}>Save</Text>
               </Pressable>
             </View>
@@ -896,7 +933,7 @@ export default function OutfitDetailScreen() {
               <Text style={styles.remixTitle}>
                 Swap Item
               </Text>
-              <Pressable onPress={() => setShowRemixModal(false)} hitSlop={10}>
+              <Pressable onPress={() => setShowRemixModal(false)} hitSlop={10} accessibilityRole="button" accessibilityLabel="Close swap modal">
                 <Ionicons name="close" size={22} color={theme.colors.textSecondary} />
               </Pressable>
             </View>
@@ -950,6 +987,8 @@ export default function OutfitDetailScreen() {
                       renderItem={({ item: alt }) => (
                         <Pressable
                           style={styles.remixAltCard}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Swap with ${alt.item.name}`}
                           onPress={async () => {
                             // Swap the item in the outfit
                             const newItemIds = outfit.itemIds.map((iid) =>

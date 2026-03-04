@@ -515,6 +515,8 @@ export default function EditItemScreen() {
             onPress={handleSave}
             hitSlop={10}
             style={{ padding: 8 }}
+            accessibilityRole="button"
+            accessibilityLabel="Save item"
           >
             <Ionicons name="save-outline" size={22} color={theme.colors.primary} />
           </Pressable>
@@ -522,6 +524,8 @@ export default function EditItemScreen() {
             onPress={() => setShowArchiveModal(true)}
             hitSlop={10}
             style={{ padding: 8 }}
+            accessibilityRole="button"
+            accessibilityLabel="Archive item"
           >
             <Ionicons name="archive-outline" size={22} color={theme.colors.warning} />
           </Pressable>
@@ -529,6 +533,8 @@ export default function EditItemScreen() {
             onPress={handleDelete}
             hitSlop={10}
             style={{ padding: 8 }}
+            accessibilityRole="button"
+            accessibilityLabel="Delete item"
           >
             <Ionicons name="trash-outline" size={22} color={theme.colors.error} />
           </Pressable>
@@ -553,11 +559,15 @@ export default function EditItemScreen() {
               key={`${uri}-${index}`}
               style={styles.photoThumb}
               onPress={() => setViewingImageIdx(index)}
+              accessibilityRole="button"
+              accessibilityLabel={`View photo ${index + 1}`}
             >
               <Image source={{ uri }} style={styles.photoThumbImage} />
               <Pressable
                 style={styles.removePhotoBtn}
                 onPress={() => removeImage(index)}
+                accessibilityRole="button"
+                accessibilityLabel={`Remove photo ${index + 1}`}
               >
                 <Ionicons name="close-circle" size={22} color={theme.colors.error} />
               </Pressable>
@@ -570,12 +580,12 @@ export default function EditItemScreen() {
               {imageUris.length > 1 && (
                 <View style={styles.reorderBtns}>
                   {index > 0 && (
-                    <Pressable onPress={() => moveImage(index, -1)} style={styles.reorderBtn}>
+                    <Pressable onPress={() => moveImage(index, -1)} style={styles.reorderBtn} accessibilityRole="button" accessibilityLabel={`Move photo ${index + 1} left`}>
                       <Ionicons name="chevron-back" size={14} color="#FFF" />
                     </Pressable>
                   )}
                   {index < imageUris.length - 1 && (
-                    <Pressable onPress={() => moveImage(index, 1)} style={styles.reorderBtn}>
+                    <Pressable onPress={() => moveImage(index, 1)} style={styles.reorderBtn} accessibilityRole="button" accessibilityLabel={`Move photo ${index + 1} right`}>
                       <Ionicons name="chevron-forward" size={14} color="#FFF" />
                     </Pressable>
                   )}
@@ -589,6 +599,8 @@ export default function EditItemScreen() {
               { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border },
             ]}
             onPress={pickImage}
+            accessibilityRole="button"
+            accessibilityLabel="Add photo"
           >
             <Ionicons name="camera-outline" size={28} color={theme.colors.textLight} />
             <Text style={[styles.addPhotoLabel, { color: theme.colors.textLight }]}>Add Photo</Text>
@@ -604,6 +616,7 @@ export default function EditItemScreen() {
           value={name}
           onChangeText={setName}
           placeholderTextColor={theme.colors.textLight}
+          accessibilityLabel="Item name"
         />
 
         <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Brand (optional)</Text>
@@ -616,6 +629,7 @@ export default function EditItemScreen() {
           onChangeText={setBrand}
           placeholder="e.g. Zara"
           placeholderTextColor={theme.colors.textLight}
+          accessibilityLabel="Brand"
         />
 
         {/* Product URL */}
@@ -633,6 +647,7 @@ export default function EditItemScreen() {
             placeholderTextColor={theme.colors.textLight}
             autoCapitalize="none"
             keyboardType="url"
+            accessibilityLabel="Product URL"
           />
           {productUrl.trim().startsWith("http") && (
             <Pressable
@@ -641,6 +656,8 @@ export default function EditItemScreen() {
                 { backgroundColor: theme.colors.primary + "12", borderColor: theme.colors.primary + "30" },
               ]}
               onPress={() => safeOpenURL(productUrl.trim())}
+              accessibilityRole="button"
+              accessibilityLabel="Open product URL"
             >
               <Ionicons name="open-outline" size={18} color={theme.colors.textSecondary} />
             </Pressable>
@@ -653,6 +670,8 @@ export default function EditItemScreen() {
             ]}
             onPress={handleRefreshFromUrl}
             disabled={refreshingUrl}
+            accessibilityRole="button"
+            accessibilityLabel="Refresh product details from URL"
           >
             {refreshingUrl ? (
               <ActivityIndicator size="small" color={theme.colors.primary} />
@@ -674,6 +693,7 @@ export default function EditItemScreen() {
           value={cost}
           onChangeText={setCost}
           keyboardType="decimal-pad"
+          accessibilityLabel="Cost"
         />
 
         {/* Purchase Date */}
@@ -688,6 +708,7 @@ export default function EditItemScreen() {
           value={purchaseDate}
           onChangeText={setPurchaseDate}
           keyboardType="default"
+          accessibilityLabel="Purchase date"
         />
 
         {/* Category */}
@@ -746,6 +767,8 @@ export default function EditItemScreen() {
                   }
                 }}
                 disabled={ALWAYS_OPEN_SUBCATEGORIES.includes(subCategory)}
+                accessibilityRole="button"
+                accessibilityLabel="Toggle open top"
               >
                 <Text
                   style={[
@@ -779,12 +802,14 @@ export default function EditItemScreen() {
                   setDropperTarget("primary");
                   setShowDropper(true);
                 }}
+                accessibilityRole="button"
+                accessibilityLabel="Pick colour from image"
               >
                 <Ionicons name="eyedrop-outline" size={16} color={theme.colors.primary} />
                 <Text style={[styles.colorPickerBtnText, { color: theme.colors.primary }]}>Dropper</Text>
               </Pressable>
             )}
-            <Pressable style={[styles.colorPickerBtn, { backgroundColor: theme.colors.primary + "12" }]} onPress={openColorPicker}>
+            <Pressable style={[styles.colorPickerBtn, { backgroundColor: theme.colors.primary + "12" }]} onPress={openColorPicker} accessibilityRole="button" accessibilityLabel="Fine-tune colour">
               <View style={[styles.colorPickerSwatch, { backgroundColor: finalColor }]} />
               <Ionicons name="color-palette-outline" size={18} color={theme.colors.primary} />
               <Text style={[styles.colorPickerBtnText, { color: theme.colors.primary }]}>Fine-tune</Text>
@@ -793,7 +818,7 @@ export default function EditItemScreen() {
         </View>
         <View style={styles.colorGrid}>
           {topColors.map((i) => (
-            <Pressable key={PRESET_COLORS[i].hex + i} onPress={() => { handleSelectPresetColor(i); markChanged(); }} style={styles.colorBtn}>
+            <Pressable key={PRESET_COLORS[i].hex + i} onPress={() => { handleSelectPresetColor(i); markChanged(); }} style={styles.colorBtn} accessibilityRole="button" accessibilityLabel={`Select colour ${PRESET_COLORS[i].name}`}>
               <ColorDot color={PRESET_COLORS[i].hex} size={36} selected={colorIdx === i && !hslAdjust} />
             </Pressable>
           ))}
@@ -802,6 +827,8 @@ export default function EditItemScreen() {
             <Pressable
               onPress={() => { const hsl = hexToHSL(dropperColor); setHslAdjust({ h: hsl.h, s: hsl.s, l: hsl.l }); markChanged(); }}
               style={styles.colorBtn}
+              accessibilityRole="button"
+              accessibilityLabel="Select dropper colour"
             >
               <ColorDot color={dropperColor} size={36} selected={hslAdjust !== null && hslToHex(hslAdjust.h, hslAdjust.s, hslAdjust.l) === dropperColor} />
             </Pressable>
@@ -810,7 +837,7 @@ export default function EditItemScreen() {
 
         {/* Revert to original colour */}
         {originalAutoColor && (
-          <Pressable style={styles.revertBtn} onPress={() => { handleRevertToOriginalColor(); markChanged(); }}>
+          <Pressable style={styles.revertBtn} onPress={() => { handleRevertToOriginalColor(); markChanged(); }} accessibilityRole="button" accessibilityLabel="Revert to original colour">
             <Ionicons name="refresh-outline" size={16} color={theme.colors.primary} />
             <Text style={[styles.revertBtnText, { color: theme.colors.primary }]}>Revert to original colour</Text>
           </Pressable>
@@ -823,6 +850,8 @@ export default function EditItemScreen() {
             setShowSecondaryColor(!showSecondaryColor);
             if (showSecondaryColor) { setSecondaryColorIdx(null); setSecondaryHsl(null); }
           }}
+          accessibilityRole="button"
+          accessibilityLabel={showSecondaryColor ? "Hide secondary colour" : "Add secondary colour"}
         >
           <Ionicons
             name={showSecondaryColor ? "chevron-up" : "chevron-down"}
@@ -847,6 +876,8 @@ export default function EditItemScreen() {
                     setDropperTarget("secondary");
                     setShowDropper(true);
                   }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Pick secondary colour from image"
                 >
                   <Ionicons name="eyedrop-outline" size={16} color={theme.colors.primary} />
                   <Text style={[styles.colorPickerBtnText, { color: theme.colors.primary }]}>Dropper</Text>
@@ -859,6 +890,8 @@ export default function EditItemScreen() {
                   key={`sec-${PRESET_COLORS[i].hex}-${i}`}
                   onPress={() => { setSecondaryColorIdx(secondaryColorIdx === i ? null : i); setSecondaryHsl(null); markChanged(); }}
                   style={styles.colorBtn}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Select secondary colour ${PRESET_COLORS[i].name}`}
                 >
                   <ColorDot color={PRESET_COLORS[i].hex} size={36} selected={secondaryColorIdx === i && !secondaryHsl} />
                 </Pressable>
@@ -902,6 +935,8 @@ export default function EditItemScreen() {
           <Pressable
             style={[styles.addPatternBtn, { backgroundColor: theme.colors.border }]}
             onPress={() => setShowPatternAdd(true)}
+            accessibilityRole="button"
+            accessibilityLabel="Add custom pattern"
           >
             <Ionicons name="add" size={16} color={theme.colors.text} />
             <Text style={[styles.addPatternBtnText, { color: theme.colors.text }]}>Add</Text>
@@ -915,6 +950,7 @@ export default function EditItemScreen() {
               placeholderTextColor={theme.colors.textLight}
               value={patternInput}
               onChangeText={setPatternInput}
+              accessibilityLabel="Custom pattern name"
               onSubmitEditing={() => {
                 const trimmed = patternInput.trim();
                 if (trimmed && !customPatterns.includes(trimmed)) {
@@ -1028,6 +1064,8 @@ export default function EditItemScreen() {
         <Pressable
           style={styles.secondaryToggle}
           onPress={() => setShowFlags(!showFlags)}
+          accessibilityRole="button"
+          accessibilityLabel={showFlags ? "Hide flags" : "Show flags"}
         >
           <Ionicons
             name={showFlags ? "chevron-up" : "chevron-down"}
@@ -1101,10 +1139,13 @@ export default function EditItemScreen() {
             onChangeText={setTagInput}
             onSubmitEditing={handleAddTag}
             returnKeyType="done"
+            accessibilityLabel="Tag name"
           />
           <Pressable
             style={[styles.tagAddBtn, { backgroundColor: theme.colors.primary }]}
             onPress={handleAddTag}
+            accessibilityRole="button"
+            accessibilityLabel="Add tag"
           >
             <Ionicons name="add" size={20} color="#FFFFFF" />
           </Pressable>
@@ -1116,6 +1157,8 @@ export default function EditItemScreen() {
                 key={tag}
                 style={[styles.tagChip, { backgroundColor: theme.colors.primary + "18", borderColor: theme.colors.primary + "40" }]}
                 onPress={() => handleRemoveTag(tag)}
+                accessibilityRole="button"
+                accessibilityLabel={`Remove tag ${tag}`}
               >
                 <Text style={[styles.tagChipText, { color: theme.colors.primary }]}>{tag}</Text>
                 <Ionicons name="close" size={14} color={theme.colors.primary} />
@@ -1140,6 +1183,8 @@ export default function EditItemScreen() {
             ]}
             onPress={() => setWearCount(Math.max(0, wearCount - 1))}
             disabled={wearCount <= 0}
+            accessibilityRole="button"
+            accessibilityLabel="Decrease wear count"
           >
             <Ionicons name="remove" size={20} color={theme.colors.text} />
           </Pressable>
@@ -1152,6 +1197,8 @@ export default function EditItemScreen() {
               { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border },
             ]}
             onPress={() => setWearCount(wearCount + 1)}
+            accessibilityRole="button"
+            accessibilityLabel="Increase wear count"
           >
             <Ionicons name="add" size={20} color={theme.colors.text} />
           </Pressable>
@@ -1163,6 +1210,8 @@ export default function EditItemScreen() {
             <Pressable
               style={styles.wearDatesToggle}
               onPress={() => setShowWearDates(!showWearDates)}
+              accessibilityRole="button"
+              accessibilityLabel={showWearDates ? "Hide wear history" : "Show wear history"}
             >
               <Ionicons
                 name={showWearDates ? "chevron-up" : "chevron-down"}
@@ -1199,6 +1248,8 @@ export default function EditItemScreen() {
                       </Text>
                       <Pressable
                         hitSlop={8}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Remove wear date ${new Date(date).toLocaleDateString()}`}
                         onPress={() => {
                           Alert.alert(
                             "Remove Wear Date",
@@ -1245,6 +1296,7 @@ export default function EditItemScreen() {
           numberOfLines={3}
           textAlignVertical="top"
           maxLength={500}
+          accessibilityLabel="Notes"
         />
         <Text style={{ textAlign: "right", fontSize: 11, color: theme.colors.textLight, marginTop: 2 }}>{notes.length}/500</Text>
 
@@ -1252,6 +1304,8 @@ export default function EditItemScreen() {
         <Pressable
           style={[styles.deleteBtn, { borderColor: theme.colors.error, marginTop: 32 }]}
           onPress={handleDelete}
+          accessibilityRole="button"
+          accessibilityLabel="Delete item"
         >
           <Ionicons name="trash-outline" size={18} color={theme.colors.error} />
           <Text style={[styles.deleteBtnText, { color: theme.colors.error }]}>Delete Item</Text>
@@ -1260,6 +1314,8 @@ export default function EditItemScreen() {
         <Pressable
           style={[styles.archiveBtn, { borderColor: theme.colors.warning, marginTop: 16 }]}
           onPress={() => setShowArchiveModal(true)}
+          accessibilityRole="button"
+          accessibilityLabel="Archive item"
         >
           <Ionicons name="archive-outline" size={18} color={theme.colors.warning} />
           <Text style={[styles.archiveBtnText, { color: theme.colors.warning }]}>Archive</Text>
@@ -1268,6 +1324,8 @@ export default function EditItemScreen() {
         <Pressable
           style={[styles.saveBtn, { backgroundColor: theme.colors.primary, marginTop: 16, marginBottom: 40 }]}
           onPress={handleSave}
+          accessibilityRole="button"
+          accessibilityLabel="Save changes"
         >
           <Ionicons name="save-outline" size={20} color="#FFFFFF" />
           <Text style={styles.saveBtnText}>Save Changes</Text>
@@ -1285,7 +1343,7 @@ export default function EditItemScreen() {
         <View style={[styles.modalContainer, { backgroundColor: theme.colors.background }]}>
           <View style={styles.modalHeader}>
             <Text style={[styles.modalTitle, { color: theme.colors.text }]}>Fine-tune Colour</Text>
-            <Pressable onPress={() => setShowColorPicker(false)}>
+            <Pressable onPress={() => setShowColorPicker(false)} accessibilityRole="button" accessibilityLabel="Close colour picker">
               <Ionicons name="close" size={24} color={theme.colors.text} />
             </Pressable>
           </View>
@@ -1324,6 +1382,8 @@ export default function EditItemScreen() {
                       { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border },
                     ]}
                     onPress={() => setHslAdjust({ ...hslAdjust, h: Math.max(0, hslAdjust.h - 10) })}
+                    accessibilityRole="button"
+                    accessibilityLabel="Decrease hue"
                   >
                     <Ionicons name="remove" size={16} color={theme.colors.text} />
                   </Pressable>
@@ -1341,6 +1401,8 @@ export default function EditItemScreen() {
                       { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border },
                     ]}
                     onPress={() => setHslAdjust({ ...hslAdjust, h: Math.min(360, hslAdjust.h + 10) })}
+                    accessibilityRole="button"
+                    accessibilityLabel="Increase hue"
                   >
                     <Ionicons name="add" size={16} color={theme.colors.text} />
                   </Pressable>
@@ -1354,6 +1416,8 @@ export default function EditItemScreen() {
                       { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border },
                     ]}
                     onPress={() => setHslAdjust({ ...hslAdjust, s: Math.max(0, hslAdjust.s - 5) })}
+                    accessibilityRole="button"
+                    accessibilityLabel="Decrease saturation"
                   >
                     <Ionicons name="remove" size={16} color={theme.colors.text} />
                   </Pressable>
@@ -1371,6 +1435,8 @@ export default function EditItemScreen() {
                       { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border },
                     ]}
                     onPress={() => setHslAdjust({ ...hslAdjust, s: Math.min(100, hslAdjust.s + 5) })}
+                    accessibilityRole="button"
+                    accessibilityLabel="Increase saturation"
                   >
                     <Ionicons name="add" size={16} color={theme.colors.text} />
                   </Pressable>
@@ -1384,6 +1450,8 @@ export default function EditItemScreen() {
                       { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border },
                     ]}
                     onPress={() => setHslAdjust({ ...hslAdjust, l: Math.max(0, hslAdjust.l - 5) })}
+                    accessibilityRole="button"
+                    accessibilityLabel="Decrease lightness"
                   >
                     <Ionicons name="remove" size={16} color={theme.colors.text} />
                   </Pressable>
@@ -1401,12 +1469,14 @@ export default function EditItemScreen() {
                       { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border },
                     ]}
                     onPress={() => setHslAdjust({ ...hslAdjust, l: Math.min(100, hslAdjust.l + 5) })}
+                    accessibilityRole="button"
+                    accessibilityLabel="Increase lightness"
                   >
                     <Ionicons name="add" size={16} color={theme.colors.text} />
                   </Pressable>
                   <Text style={[styles.sliderValue, { color: theme.colors.textSecondary }]}>{hslAdjust.l}%</Text>
                 </View>
-                <Pressable style={styles.resetHslBtn} onPress={() => setHslAdjust(null)}>
+                <Pressable style={styles.resetHslBtn} onPress={() => setHslAdjust(null)} accessibilityRole="button" accessibilityLabel="Reset colour to preset">
                   <Text style={[styles.resetHslText, { color: theme.colors.primary }]}>Reset to preset</Text>
                 </Pressable>
               </View>
@@ -1415,6 +1485,8 @@ export default function EditItemScreen() {
             <Pressable
               style={[styles.doneBtn, { backgroundColor: theme.colors.primary }]}
               onPress={() => setShowColorPicker(false)}
+              accessibilityRole="button"
+              accessibilityLabel="Done with colour picker"
             >
               <Text style={styles.doneBtnText}>Done</Text>
             </Pressable>
@@ -1429,7 +1501,7 @@ export default function EditItemScreen() {
         transparent
         onRequestClose={() => setShowArchiveModal(false)}
       >
-        <Pressable style={styles.archiveOverlay} onPress={() => setShowArchiveModal(false)}>
+        <Pressable style={styles.archiveOverlay} onPress={() => setShowArchiveModal(false)} accessibilityRole="button" accessibilityLabel="Close archive modal">
           <View style={[styles.archiveSheet, { backgroundColor: theme.colors.surface }]}>
             <Text style={[styles.archiveSheetTitle, { color: theme.colors.text }]}>Archive Reason</Text>
             {ARCHIVE_REASONS.map((reason) => (
@@ -1437,6 +1509,8 @@ export default function EditItemScreen() {
                 key={reason}
                 style={[styles.archiveOption, { borderBottomColor: theme.colors.border }]}
                 onPress={() => handleArchive(reason)}
+                accessibilityRole="button"
+                accessibilityLabel={`Archive as ${ARCHIVE_REASON_LABELS[reason]}`}
               >
                 <Text style={[styles.archiveOptionText, { color: theme.colors.text }]}>
                   {ARCHIVE_REASON_LABELS[reason]}
@@ -1447,6 +1521,8 @@ export default function EditItemScreen() {
             <Pressable
               style={styles.archiveCancelBtn}
               onPress={() => setShowArchiveModal(false)}
+              accessibilityRole="button"
+              accessibilityLabel="Cancel archive"
             >
               <Text style={[styles.archiveCancelText, { color: theme.colors.textSecondary }]}>Cancel</Text>
             </Pressable>
@@ -1473,7 +1549,7 @@ export default function EditItemScreen() {
       >
         <View style={styles.imageViewerContainer}>
           <View style={styles.imageViewerHeader}>
-            <Pressable onPress={() => setViewingImageIdx(null)} hitSlop={12}>
+            <Pressable onPress={() => setViewingImageIdx(null)} hitSlop={12} accessibilityRole="button" accessibilityLabel="Close image viewer">
               <Ionicons name="close" size={28} color="#FFFFFF" />
             </Pressable>
             <Text style={styles.imageViewerTitle}>
@@ -1496,6 +1572,8 @@ export default function EditItemScreen() {
             <Pressable
               style={[styles.imageViewerBtn, { backgroundColor: theme.colors.surface }]}
               onPress={() => viewingImageIdx !== null && recropImage(viewingImageIdx)}
+              accessibilityRole="button"
+              accessibilityLabel="Crop photo"
             >
               <Ionicons name="crop-outline" size={20} color={theme.colors.primary} />
               <Text style={[styles.imageViewerBtnText, { color: theme.colors.primary }]}>Crop</Text>
@@ -1508,6 +1586,8 @@ export default function EditItemScreen() {
                   setViewingImageIdx(null);
                 }
               }}
+              accessibilityRole="button"
+              accessibilityLabel="Delete photo"
             >
               <Ionicons name="trash-outline" size={20} color={theme.colors.error} />
               <Text style={[styles.imageViewerBtnText, { color: theme.colors.error }]}>Delete</Text>

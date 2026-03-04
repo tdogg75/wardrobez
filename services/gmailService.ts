@@ -1,8 +1,12 @@
 import * as AuthSession from "expo-auth-session";
 import * as WebBrowser from "expo-web-browser";
 import * as FileSystem from "expo-file-system";
+import * as SecureStore from "expo-secure-store";
 
 WebBrowser.maybeCompleteAuthSession();
+
+const SECURE_KEY_TOKEN = "wardrobez_oauth_token";
+const SECURE_KEY_CLIENT_ID = "wardrobez_google_client_id";
 
 const SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"];
 
@@ -40,28 +44,40 @@ export interface GmailPurchaseItem {
   previouslyImported?: boolean;
 }
 
-/* ---------- Client ID persistence ---------- */
+/* ---------- Client ID persistence (S3 — migrated to expo-secure-store) ---------- */
 
-const CLIENT_ID_PATH = `${FileSystem.documentDirectory}wardrobez-data/google-client-id.txt`;
+const LEGACY_CLIENT_ID_PATH = `${FileSystem.documentDirectory}wardrobez-data/google-client-id.txt`;
 
 export async function getSavedClientId(): Promise<string | null> {
   try {
-    const info = await FileSystem.getInfoAsync(CLIENT_ID_PATH);
-    if (!info.exists) return null;
-    const id = await FileSystem.readAsStringAsync(CLIENT_ID_PATH);
-    return id.trim() || null;
+    // Read from SecureStore first
+    const stored = await SecureStore.getItemAsync(SECURE_KEY_CLIENT_ID);
+    if (stored) return stored;
+
+    // One-time migration from legacy plain-text file
+    const info = await FileSystem.getInfoAsync(LEGACY_CLIENT_ID_PATH);
+    if (info.exists) {
+      const id = (await FileSystem.readAsStringAsync(LEGACY_CLIENT_ID_PATH)).trim();
+      if (id) {
+        await SecureStore.setItemAsync(SECURE_KEY_CLIENT_ID, id);
+        await FileSystem.deleteAsync(LEGACY_CLIENT_ID_PATH, { idempotent: true });
+        return id;
+      }
+    }
+    return null;
   } catch {
     return null;
   }
 }
 
 export async function saveClientId(clientId: string): Promise<void> {
-  const dir = `${FileSystem.documentDirectory}wardrobez-data/`;
-  const dirInfo = await FileSystem.getInfoAsync(dir);
-  if (!dirInfo.exists) {
-    await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
+  await SecureStore.setItemAsync(SECURE_KEY_CLIENT_ID, clientId.trim());
+  // Clean up legacy file if it exists
+  try {
+    await FileSystem.deleteAsync(LEGACY_CLIENT_ID_PATH, { idempotent: true });
+  } catch {
+    // Non-critical
   }
-  await FileSystem.writeAsStringAsync(CLIENT_ID_PATH, clientId.trim());
 }
 
 /* ---------- Imported email IDs persistence ---------- */
@@ -86,8 +102,9 @@ export async function markEmailImported(id: string): Promise<void> {
   await FileSystem.writeAsStringAsync(IMPORTED_IDS_PATH, JSON.stringify([...ids]));
 }
 
-/* ---------- Auth helpers ---------- */
+/* ---------- Auth helpers (S2 — token now stored in expo-secure-store) ---------- */
 
+// In-memory cache for fast access; backed by SecureStore for persistence
 let cachedToken: string | null = null;
 
 export function getRedirectUri(): string {
@@ -135,22 +152,35 @@ export async function signInWithGoogle(clientId: string): Promise<string | null>
     );
     if (tokenResult.accessToken) {
       cachedToken = tokenResult.accessToken;
+      await SecureStore.setItemAsync(SECURE_KEY_TOKEN, cachedToken);
       return cachedToken;
     }
   }
   return null;
 }
 
-export function getCachedToken(): string | null {
+export async function getCachedToken(): Promise<string | null> {
+  if (cachedToken) return cachedToken;
+  try {
+    cachedToken = await SecureStore.getItemAsync(SECURE_KEY_TOKEN);
+  } catch {
+    cachedToken = null;
+  }
   return cachedToken;
 }
 
-export function clearToken(): void {
+export async function clearToken(): Promise<void> {
   cachedToken = null;
+  try {
+    await SecureStore.deleteItemAsync(SECURE_KEY_TOKEN);
+  } catch {
+    // Non-critical
+  }
 }
 
-export function setManualToken(token: string): void {
+export async function setManualToken(token: string): Promise<void> {
   cachedToken = token;
+  await SecureStore.setItemAsync(SECURE_KEY_TOKEN, token);
 }
 
 /* ---------- Gmail API helpers ---------- */

@@ -535,6 +535,8 @@ export default function WardrobeScreen() {
   const renderCard = (item: ClothingItem) => (
     <View style={{ width: cardWidthPct as any }}>
       <Pressable
+        accessibilityLabel={selectionMode ? `Select ${item.name}` : `View ${item.name}`}
+        accessibilityRole="button"
         onPress={() => {
           if (selectionMode) {
             toggleSelection(item.id);
@@ -608,6 +610,8 @@ export default function WardrobeScreen() {
 
   const renderPhotoTile = ({ item }: { item: ClothingItem }) => (
     <Pressable
+      accessibilityLabel={`View ${item.name}`}
+      accessibilityRole="button"
       onPress={() => {
         router.push({
           pathname: "/item-detail",
@@ -678,6 +682,8 @@ export default function WardrobeScreen() {
           <View style={styles.selectionBarActions}>
             {/* Select All / Deselect All (#2) */}
             <Pressable
+              accessibilityLabel={selectedIds.size === filtered.length ? "Deselect all items" : "Select all items"}
+              accessibilityRole="button"
               style={styles.selectionBarBtn}
               onPress={() => {
                 if (selectedIds.size === filtered.length) {
@@ -697,6 +703,8 @@ export default function WardrobeScreen() {
               </Text>
             </Pressable>
             <Pressable
+              accessibilityLabel="Archive selected items"
+              accessibilityRole="button"
               style={styles.selectionBarBtn}
               onPress={handleBulkArchive}
             >
@@ -708,6 +716,8 @@ export default function WardrobeScreen() {
               <Text style={styles.selectionBarBtnText}>Archive</Text>
             </Pressable>
             <Pressable
+              accessibilityLabel="Delete selected items"
+              accessibilityRole="button"
               style={styles.selectionBarBtn}
               onPress={handleBulkDelete}
             >
@@ -726,6 +736,8 @@ export default function WardrobeScreen() {
               </Text>
             </Pressable>
             <Pressable
+              accessibilityLabel="Tag selected items"
+              accessibilityRole="button"
               style={styles.selectionBarBtn}
               onPress={() => setBulkTagModalVisible(true)}
             >
@@ -733,6 +745,8 @@ export default function WardrobeScreen() {
               <Text style={styles.selectionBarBtnText}>Tag</Text>
             </Pressable>
             <Pressable
+              accessibilityLabel="Set laundry status for selected items"
+              accessibilityRole="button"
               style={styles.selectionBarBtn}
               onPress={() => setBulkLaundryModalVisible(true)}
             >
@@ -740,6 +754,8 @@ export default function WardrobeScreen() {
               <Text style={styles.selectionBarBtnText}>Laundry</Text>
             </Pressable>
             <Pressable
+              accessibilityLabel="Cancel selection"
+              accessibilityRole="button"
               style={styles.selectionBarBtn}
               onPress={exitSelectionMode}
             >
@@ -768,6 +784,8 @@ export default function WardrobeScreen() {
           <View style={styles.topRowRight}>
             {/* Photo-only browse mode toggle */}
             <Pressable
+              accessibilityLabel={photoOnlyMode ? "Switch to card view" : "Switch to photo grid view"}
+              accessibilityRole="button"
               style={[
                 styles.columnToggle,
                 photoOnlyMode && {
@@ -784,6 +802,8 @@ export default function WardrobeScreen() {
             </Pressable>
             {/* Sort dropdown */}
             <Pressable
+              accessibilityLabel={`Sort by ${currentSortLabel}`}
+              accessibilityRole="button"
               style={styles.sortToggle}
               onPress={() => setShowSortMenu((v) => !v)}
             >
@@ -801,7 +821,7 @@ export default function WardrobeScreen() {
             </Pressable>
             {/* Column toggle (only in card mode) */}
             {!photoOnlyMode && (
-              <Pressable style={styles.columnToggle} onPress={cycleColumns}>
+              <Pressable accessibilityLabel={`Change grid to ${COLUMN_OPTIONS[(COLUMN_OPTIONS.indexOf(numColumns) + 1) % COLUMN_OPTIONS.length]} columns`} accessibilityRole="button" style={styles.columnToggle} onPress={cycleColumns}>
                 <Ionicons
                   name="grid-outline"
                   size={18}
@@ -820,6 +840,8 @@ export default function WardrobeScreen() {
           {SORT_OPTIONS.map((opt) => (
             <Pressable
               key={opt.value}
+              accessibilityLabel={`Sort by ${opt.label}`}
+              accessibilityRole="button"
               style={[
                 styles.sortMenuItem,
                 sortBy === opt.value && styles.sortMenuItemActive,
@@ -881,6 +903,7 @@ export default function WardrobeScreen() {
       <View style={styles.searchRow}>
         <Ionicons name="search-outline" size={18} color={theme.colors.textLight} />
         <TextInput
+          accessibilityLabel="Search items by name, brand, colour, or tag"
           style={styles.searchInput}
           placeholder="Search name, brand, colour, tag..."
           placeholderTextColor={theme.colors.textLight}
@@ -890,7 +913,7 @@ export default function WardrobeScreen() {
           clearButtonMode="while-editing"
         />
         {searchQuery.length > 0 && (
-          <Pressable onPress={() => setSearchQuery("")} hitSlop={10}>
+          <Pressable accessibilityLabel="Clear search" accessibilityRole="button" onPress={() => setSearchQuery("")} hitSlop={10}>
             <Ionicons name="close-circle" size={18} color={theme.colors.textLight} />
           </Pressable>
         )}
@@ -904,11 +927,13 @@ export default function WardrobeScreen() {
               <Ionicons name="sparkles" size={16} color={theme.colors.primary} />
               <Text style={styles.ootdTitle}>{ootdLabel}</Text>
             </View>
-            <Pressable onPress={() => setOotdDismissed(true)} hitSlop={10}>
+            <Pressable accessibilityLabel="Dismiss outfit of the day" accessibilityRole="button" onPress={() => setOotdDismissed(true)} hitSlop={10}>
               <Ionicons name="close" size={18} color={theme.colors.textLight} />
             </Pressable>
           </View>
           <Pressable
+            accessibilityLabel="View outfit details"
+            accessibilityRole="button"
             style={styles.ootdImageRow}
             onPress={() => {
               if (ootdOutfitId) {
@@ -935,6 +960,8 @@ export default function WardrobeScreen() {
           </Pressable>
           <View style={styles.ootdActions}>
             <Pressable
+              accessibilityLabel="View outfit"
+              accessibilityRole="button"
               style={[styles.ootdBtn, { backgroundColor: theme.colors.primary }]}
               onPress={() => {
                 if (ootdOutfitId) {
@@ -948,6 +975,8 @@ export default function WardrobeScreen() {
               <Text style={styles.ootdBtnText}>View</Text>
             </Pressable>
             <Pressable
+              accessibilityLabel="Shuffle outfit suggestion"
+              accessibilityRole="button"
               style={[styles.ootdBtn, { backgroundColor: theme.colors.surfaceAlt }]}
               onPress={() => {
                 // Regenerate with a fresh suggestion
@@ -976,6 +1005,8 @@ export default function WardrobeScreen() {
           <Ionicons name="leaf-outline" size={18} color={theme.colors.warning} style={{ marginRight: 8 }} />
           <Text style={styles.seasonBannerText}>{seasonalRotation.message}</Text>
           <Pressable
+            accessibilityLabel="Dismiss seasonal rotation banner"
+            accessibilityRole="button"
             onPress={() => setSeasonBannerDismissed(true)}
             hitSlop={10}
             style={styles.seasonBannerDismiss}
@@ -1068,7 +1099,7 @@ export default function WardrobeScreen() {
 
       {/* Scroll to top button (#28) */}
       {showScrollTop && (
-        <Pressable style={styles.scrollTopBtn} onPress={scrollToTop}>
+        <Pressable accessibilityLabel="Scroll to top" accessibilityRole="button" style={styles.scrollTopBtn} onPress={scrollToTop}>
           <Ionicons name="arrow-up" size={20} color="#FFFFFF" />
         </Pressable>
       )}
@@ -1076,6 +1107,8 @@ export default function WardrobeScreen() {
       {/* FAB - hidden in selection mode */}
       {!selectionMode && (
         <Pressable
+          accessibilityLabel="Add new item"
+          accessibilityRole="button"
           style={styles.fab}
           onPress={() => router.push("/add-item")}
         >
@@ -1090,12 +1123,13 @@ export default function WardrobeScreen() {
         animationType="fade"
         onRequestClose={() => setBulkTagModalVisible(false)}
       >
-        <Pressable style={styles.bulkTagOverlay} onPress={() => setBulkTagModalVisible(false)}>
+        <Pressable accessibilityLabel="Close tag modal" accessibilityRole="button" style={styles.bulkTagOverlay} onPress={() => setBulkTagModalVisible(false)}>
           <View style={[styles.bulkTagSheet, { backgroundColor: theme.colors.surface }]}>
             <Text style={[styles.bulkTagTitle, { color: theme.colors.text }]}>
               Add Tag to {selectedIds.size} Item{selectedIds.size !== 1 ? "s" : ""}
             </Text>
             <TextInput
+              accessibilityLabel="Enter tag name"
               style={[styles.bulkTagInput, { backgroundColor: theme.colors.surfaceAlt, color: theme.colors.text, borderColor: theme.colors.border }]}
               placeholder="Enter tag name..."
               placeholderTextColor={theme.colors.textLight}
@@ -1107,12 +1141,16 @@ export default function WardrobeScreen() {
             />
             <View style={styles.bulkTagActions}>
               <Pressable
+                accessibilityLabel="Cancel adding tag"
+                accessibilityRole="button"
                 style={[styles.bulkTagCancelBtn, { borderColor: theme.colors.border }]}
                 onPress={() => setBulkTagModalVisible(false)}
               >
                 <Text style={{ color: theme.colors.textSecondary }}>Cancel</Text>
               </Pressable>
               <Pressable
+                accessibilityLabel="Add tag to selected items"
+                accessibilityRole="button"
                 style={[styles.bulkTagSaveBtn, { backgroundColor: theme.colors.primary }]}
                 onPress={handleBulkAddTag}
               >
@@ -1130,7 +1168,7 @@ export default function WardrobeScreen() {
         animationType="fade"
         onRequestClose={() => setBulkLaundryModalVisible(false)}
       >
-        <Pressable style={styles.bulkTagOverlay} onPress={() => setBulkLaundryModalVisible(false)}>
+        <Pressable accessibilityLabel="Close laundry status modal" accessibilityRole="button" style={styles.bulkTagOverlay} onPress={() => setBulkLaundryModalVisible(false)}>
           <View style={[styles.bulkTagSheet, { backgroundColor: theme.colors.surface }]}>
             <Text style={[styles.bulkTagTitle, { color: theme.colors.text }]}>
               Set Laundry Status
@@ -1141,6 +1179,8 @@ export default function WardrobeScreen() {
             {(["clean", "worn", "in_wash", "dry_cleaning"] as LaundryStatus[]).map((status) => (
               <Pressable
                 key={status}
+                accessibilityLabel={`Set status to ${LAUNDRY_STATUS_LABELS[status]}`}
+                accessibilityRole="button"
                 style={[styles.laundryOption, { borderColor: theme.colors.border }]}
                 onPress={() => handleBulkLaundryStatus(status)}
               >
@@ -1163,6 +1203,8 @@ export default function WardrobeScreen() {
               </Pressable>
             ))}
             <Pressable
+              accessibilityLabel="Cancel laundry status change"
+              accessibilityRole="button"
               style={[styles.bulkTagCancelBtn, { borderColor: theme.colors.border, marginTop: theme.spacing.sm }]}
               onPress={() => setBulkLaundryModalVisible(false)}
             >

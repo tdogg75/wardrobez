@@ -972,7 +972,7 @@ export default function ProfileScreen() {
     open: boolean;
     onPress: () => void;
   }) => (
-    <Pressable style={styles.menuRow} onPress={onPress}>
+    <Pressable style={styles.menuRow} onPress={onPress} accessibilityRole="button" accessibilityLabel={`${open ? "Collapse" : "Expand"} ${label}`}>
       <View style={styles.menuLeft}>
         <Ionicons
           name={icon}
@@ -1050,6 +1050,8 @@ export default function ProfileScreen() {
               profileTab === tab.key && styles.profileTabBtnActive,
             ]}
             onPress={() => setProfileTab(tab.key)}
+            accessibilityRole="button"
+            accessibilityLabel={`${tab.label} tab`}
           >
             <Ionicons
               name={tab.icon as any}
@@ -1179,6 +1181,8 @@ export default function ProfileScreen() {
                   key={item.id}
                   style={styles.listItem}
                   onPress={() => router.push({ pathname: "/edit-item", params: { id: item.id } })}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Edit ${item.name}, cost per wear ${fmt(cpw)}`}
                 >
                   <View style={styles.listItemLeft}>
                     <Text style={styles.listItemName} numberOfLines={1}>
@@ -1222,6 +1226,8 @@ export default function ProfileScreen() {
                   key={item.id}
                   style={styles.listItem}
                   onPress={() => router.push({ pathname: "/edit-item", params: { id: item.id } })}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Edit ${item.name}, worn ${item.wearCount} times`}
                 >
                   <View style={styles.listItemLeft}>
                     <Text style={styles.listItemName} numberOfLines={1}>
@@ -1252,6 +1258,8 @@ export default function ProfileScreen() {
                   key={category}
                   style={styles.listItem}
                   onPress={() => router.push({ pathname: "/edit-item", params: { id: item.id } })}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Edit ${item.name}, most worn in ${CATEGORY_LABELS[category]}`}
                 >
                   <View style={styles.listItemLeft}>
                     <Text style={styles.listItemName} numberOfLines={1}>
@@ -1290,6 +1298,8 @@ export default function ProfileScreen() {
                     key={item.id}
                     style={styles.listItem}
                     onPress={() => router.push({ pathname: "/edit-item", params: { id: item.id } })}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Edit ${item.name}, ${detail}`}
                   >
                     <View style={styles.listItemLeft}>
                       <Text style={styles.listItemName} numberOfLines={1}>
@@ -1329,6 +1339,8 @@ export default function ProfileScreen() {
                     key={item.id}
                     style={styles.listItem}
                     onPress={() => router.push({ pathname: "/edit-item", params: { id: item.id } })}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Edit ${item.name}, ${detail}`}
                   >
                     <View style={styles.listItemLeft}>
                       <Text style={styles.listItemName} numberOfLines={1}>
@@ -1478,6 +1490,8 @@ export default function ProfileScreen() {
                   key={wItem.id}
                   style={styles.wishlistRow}
                   onPress={() => openWlEditModal(wItem)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Edit wishlist item ${wItem.name}`}
                 >
                   {wItem.imageUri ? (
                     <Image source={{ uri: wItem.imageUri }} style={styles.wlThumb} />
@@ -1501,6 +1515,8 @@ export default function ProfileScreen() {
                           safeOpenURL(wItem.url!);
                         }}
                         hitSlop={4}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Open product URL for ${wItem.name}`}
                       >
                         <Text style={styles.wlUrlLink} numberOfLines={1}>
                           {wItem.url}
@@ -1512,6 +1528,8 @@ export default function ProfileScreen() {
                     style={styles.wlMoveBtn}
                     onPress={() => handleMoveToWardrobe(wItem)}
                     hitSlop={8}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Move ${wItem.name} to wardrobe`}
                   >
                     <Ionicons name="bag-add-outline" size={16} color={theme.colors.primary} />
                   </Pressable>
@@ -1519,6 +1537,8 @@ export default function ProfileScreen() {
                     style={styles.wishlistDeleteBtn}
                     onPress={() => handleDeleteWishlistItem(wItem)}
                     hitSlop={8}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Remove ${wItem.name} from wishlist`}
                   >
                     <Ionicons name="trash-outline" size={16} color={theme.colors.error} />
                   </Pressable>
@@ -1529,6 +1549,8 @@ export default function ProfileScreen() {
             <Pressable
               style={styles.addWishlistBtn}
               onPress={openWlAddModal}
+              accessibilityRole="button"
+              accessibilityLabel="Add to wishlist"
             >
               <Ionicons name="add-circle-outline" size={18} color={theme.colors.primary} />
               <Text style={styles.addWishlistBtnText}>Add to Wishlist</Text>
@@ -1551,14 +1573,14 @@ export default function ProfileScreen() {
               <Text style={styles.modalTitle}>
                 {wlEditingItem ? "Edit Wishlist Item" : "Add to Wishlist"}
               </Text>
-              <Pressable hitSlop={12} onPress={() => { setWishlistModalVisible(false); resetWlForm(); }}>
+              <Pressable hitSlop={12} onPress={() => { setWishlistModalVisible(false); resetWlForm(); }} accessibilityRole="button" accessibilityLabel="Close wishlist modal">
                 <Ionicons name="close" size={24} color={theme.colors.text} />
               </Pressable>
             </View>
 
             <ScrollView style={styles.modalScroll} showsVerticalScrollIndicator={false}>
               {/* Photo thumbnail */}
-              <Pressable style={styles.wlPhotoRow} onPress={handleWlPickImage}>
+              <Pressable style={styles.wlPhotoRow} onPress={handleWlPickImage} accessibilityRole="button" accessibilityLabel="Pick wishlist item photo">
                 {wlImageUri ? (
                   <Image source={{ uri: wlImageUri }} style={styles.wlPhotoPreview} />
                 ) : (
@@ -1581,11 +1603,14 @@ export default function ProfileScreen() {
                   placeholderTextColor={theme.colors.textLight}
                   keyboardType="url"
                   autoCapitalize="none"
+                  accessibilityLabel="Wishlist item product URL"
                 />
                 <Pressable
                   style={[styles.wlFetchBtn, wlFetchingUrl && styles.wlFetchBtnDisabled]}
                   onPress={handleWlFetchUrl}
                   disabled={wlFetchingUrl}
+                  accessibilityRole="button"
+                  accessibilityLabel="Fetch product details from URL"
                 >
                   {wlFetchingUrl ? (
                     <ActivityIndicator size="small" color="#FFFFFF" />
@@ -1602,6 +1627,7 @@ export default function ProfileScreen() {
                 onChangeText={setWlName}
                 placeholder="Item name"
                 placeholderTextColor={theme.colors.textLight}
+                accessibilityLabel="Wishlist item name"
               />
 
               <Text style={styles.modalLabel}>Brand</Text>
@@ -1611,6 +1637,7 @@ export default function ProfileScreen() {
                 onChangeText={setWlBrand}
                 placeholder="Brand (optional)"
                 placeholderTextColor={theme.colors.textLight}
+                accessibilityLabel="Wishlist item brand"
               />
 
               <Text style={styles.modalLabel}>Estimated Price</Text>
@@ -1621,6 +1648,7 @@ export default function ProfileScreen() {
                 placeholder="0.00"
                 placeholderTextColor={theme.colors.textLight}
                 keyboardType="decimal-pad"
+                accessibilityLabel="Wishlist item estimated price"
               />
 
               <Text style={styles.modalLabel}>Category</Text>
@@ -1637,6 +1665,8 @@ export default function ProfileScreen() {
                       wlCategory === cat && styles.categoryChipActive,
                     ]}
                     onPress={() => setWlCategory(wlCategory === cat ? "" : cat)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${CATEGORY_LABELS[cat]} category${wlCategory === cat ? ", selected" : ""}`}
                   >
                     <Text
                       style={[
@@ -1659,6 +1689,7 @@ export default function ProfileScreen() {
                 placeholderTextColor={theme.colors.textLight}
                 multiline
                 numberOfLines={3}
+                accessibilityLabel="Wishlist item notes"
               />
 
               {/* Move to Wardrobe button (only in edit mode) */}
@@ -1670,6 +1701,8 @@ export default function ProfileScreen() {
                     handleMoveToWardrobe(wlEditingItem);
                     resetWlForm();
                   }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Move to wardrobe"
                 >
                   <Ionicons name="bag-add-outline" size={18} color={theme.colors.primary} />
                   <Text style={styles.wlMoveToWardrobeBtnText}>Move to Wardrobe</Text>
@@ -1677,7 +1710,7 @@ export default function ProfileScreen() {
               )}
             </ScrollView>
 
-            <Pressable style={styles.modalSaveBtn} onPress={handleSaveWishlistItem}>
+            <Pressable style={styles.modalSaveBtn} onPress={handleSaveWishlistItem} accessibilityRole="button" accessibilityLabel={wlEditingItem ? "Save wishlist changes" : "Add wishlist item"}>
               <Text style={styles.modalSaveBtnText}>
                 {wlEditingItem ? "Save Changes" : "Add Item"}
               </Text>
@@ -1708,6 +1741,8 @@ export default function ProfileScreen() {
                   key={item.id}
                   style={styles.listItem}
                   onPress={() => router.push({ pathname: "/edit-item", params: { id: item.id } })}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Edit archived item ${item.name}`}
                 >
                   <View style={styles.listItemLeft}>
                     <Text style={styles.listItemName} numberOfLines={1}>
@@ -1725,6 +1760,8 @@ export default function ProfileScreen() {
                   <Pressable
                     style={styles.unarchiveBtn}
                     onPress={() => handleUnarchive(item)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Unarchive ${item.name}`}
                   >
                     <Ionicons name="arrow-undo-outline" size={14} color={theme.colors.primary} />
                     <Text style={styles.unarchiveBtnText}>Unarchive</Text>
@@ -1759,6 +1796,8 @@ export default function ProfileScreen() {
                   key={item.id}
                   style={styles.listItem}
                   onPress={() => router.push({ pathname: "/edit-item", params: { id: item.id } })}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Edit favourite item ${item.name}`}
                 >
                   <Ionicons
                     name="heart"
@@ -1790,6 +1829,8 @@ export default function ProfileScreen() {
         <Pressable
           style={styles.gmailSection}
           onPress={() => router.push("/gmail-purchases")}
+          accessibilityRole="button"
+          accessibilityLabel="Import from Gmail"
         >
           <View style={styles.menuLeft}>
             <Ionicons
@@ -1824,11 +1865,11 @@ export default function ProfileScreen() {
           <Text style={styles.menuLabel}>Backup & Restore</Text>
         </View>
         <View style={styles.backupButtons}>
-          <Pressable style={styles.backupBtn} onPress={handleExport}>
+          <Pressable style={styles.backupBtn} onPress={handleExport} accessibilityRole="button" accessibilityLabel="Export backup">
             <Ionicons name="download-outline" size={18} color={theme.colors.primary} />
             <Text style={styles.backupBtnText}>Export Backup</Text>
           </Pressable>
-          <Pressable style={styles.backupBtn} onPress={handleImport}>
+          <Pressable style={styles.backupBtn} onPress={handleImport} accessibilityRole="button" accessibilityLabel="Import backup">
             <Ionicons name="push-outline" size={18} color={theme.colors.primary} />
             <Text style={styles.backupBtnText}>Import Backup</Text>
           </Pressable>
@@ -1899,6 +1940,8 @@ export default function ProfileScreen() {
                         key={item.id}
                         style={{ marginBottom: 10 }}
                         onPress={() => router.push({ pathname: "/edit-item", params: { id: item.id } })}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Edit ${item.name}, ${fmt(cpw)} per wear`}
                       >
                         <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 2 }}>
                           <Text style={styles.listItemName} numberOfLines={1}>
@@ -1964,7 +2007,7 @@ export default function ProfileScreen() {
                 <Divider />
                 <SubHeading>Consider Refreshing ({itemsOver3Years.length} items)</SubHeading>
                 {itemsOver3Years.slice(0, 5).map((item) => (
-                  <Pressable key={item.id} style={styles.listItem} onPress={() => router.push({ pathname: "/edit-item", params: { id: item.id } })}>
+                  <Pressable key={item.id} style={styles.listItem} onPress={() => router.push({ pathname: "/edit-item", params: { id: item.id } })} accessibilityRole="button" accessibilityLabel={`Edit ${item.name}`}>
                     <View style={styles.listItemLeft}>
                       <Text style={styles.listItemName} numberOfLines={1}>{item.name}</Text>
                       <Text style={styles.listItemSub}>{CATEGORY_LABELS[item.category]}</Text>
@@ -2039,7 +2082,7 @@ export default function ProfileScreen() {
       {/*  DARK MODE TOGGLE (#39)                                        */}
       {/* ============================================================ */}
       <View style={styles.card}>
-        <Pressable style={styles.menuRow} onPress={toggleTheme}>
+        <Pressable style={styles.menuRow} onPress={toggleTheme} accessibilityRole="button" accessibilityLabel={`Toggle dark mode, currently ${isDark ? "on" : "off"}`}>
           <View style={styles.menuLeft}>
             <Ionicons name={isDark ? "moon" : "moon-outline"} size={20} color={theme.colors.primary} style={styles.menuIcon} />
             <Text style={styles.menuLabel}>Dark Mode</Text>
@@ -2145,6 +2188,7 @@ export default function ProfileScreen() {
               placeholder="e.g., Paris, Cancún, NYC"
               placeholderTextColor={theme.colors.textLight}
               autoCapitalize="words"
+              accessibilityLabel="Trip destination"
             />
 
             <Text style={styles.barLabel}>Trip Duration (days)</Text>
@@ -2155,6 +2199,7 @@ export default function ProfileScreen() {
               keyboardType="number-pad"
               placeholder="5"
               placeholderTextColor={theme.colors.textLight}
+              accessibilityLabel="Trip duration in days"
             />
 
             <Text style={styles.barLabel}>Climate</Text>
@@ -2171,7 +2216,7 @@ export default function ProfileScreen() {
               ))}
             </View>
 
-            <Pressable style={styles.packingGenerateBtn} onPress={generatePackingList}>
+            <Pressable style={styles.packingGenerateBtn} onPress={generatePackingList} accessibilityRole="button" accessibilityLabel="Generate packing list">
               <Ionicons name="briefcase-outline" size={18} color="#FFFFFF" />
               <Text style={styles.packingGenerateBtnText}>Generate Packing List</Text>
             </Pressable>
@@ -2185,6 +2230,8 @@ export default function ProfileScreen() {
                     key={`${item.category}-${item.name}-${idx}`}
                     style={styles.packingItemRow}
                     onPress={() => togglePackingItem(idx)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${item.checked ? "Uncheck" : "Check"} ${item.name}`}
                   >
                     <Ionicons
                       name={item.checked ? "checkbox" : "square-outline"}
@@ -2323,6 +2370,7 @@ export default function ProfileScreen() {
               keyboardType="decimal-pad"
               placeholder="e.g. 250"
               placeholderTextColor={theme.colors.textLight}
+              accessibilityLabel="Splurge item price"
             />
 
             <Text style={[styles.barLabel, { marginTop: theme.spacing.sm }]}>Category</Text>
@@ -2335,6 +2383,8 @@ export default function ProfileScreen() {
                     splurgeCategory === cat && styles.splurgeChipActive,
                   ]}
                   onPress={() => setSplurgeCategory(cat)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${CATEGORY_LABELS[cat]}${splurgeCategory === cat ? ", selected" : ""}`}
                 >
                   <Text
                     style={[
@@ -2348,7 +2398,7 @@ export default function ProfileScreen() {
               ))}
             </View>
 
-            <Pressable style={[styles.packingGenerateBtn, { marginTop: theme.spacing.md }]} onPress={calculateSplurge}>
+            <Pressable style={[styles.packingGenerateBtn, { marginTop: theme.spacing.md }]} onPress={calculateSplurge} accessibilityRole="button" accessibilityLabel="Calculate splurge">
               <Ionicons name="calculator-outline" size={18} color="#FFFFFF" />
               <Text style={styles.packingGenerateBtnText}>Calculate</Text>
             </Pressable>
@@ -2404,6 +2454,8 @@ export default function ProfileScreen() {
                     key={item.id}
                     style={styles.listItem}
                     onPress={() => router.push({ pathname: "/edit-item", params: { id: item.id } })}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Edit ${item.name}, estimated resale ${fmt(estimate)}`}
                   >
                     <View style={styles.listItemLeft}>
                       <Text style={styles.listItemName} numberOfLines={1}>{item.name}</Text>
@@ -2466,6 +2518,8 @@ export default function ProfileScreen() {
                   setInspirationPins(pins);
                 }
               }}
+              accessibilityRole="button"
+              accessibilityLabel="Add inspiration photo"
             >
               <Ionicons name="add-outline" size={18} color="#FFFFFF" />
               <Text style={styles.packingGenerateBtnText}>Add Inspiration</Text>
@@ -2497,6 +2551,8 @@ export default function ProfileScreen() {
                             },
                           ]);
                         }}
+                        accessibilityRole="button"
+                        accessibilityLabel="Delete inspiration pin"
                       >
                         <Ionicons name="close-circle" size={20} color={theme.colors.error} />
                       </Pressable>
@@ -2519,6 +2575,8 @@ export default function ProfileScreen() {
           <Pressable
             style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 10 }}
             onPress={handleExport}
+            accessibilityRole="button"
+            accessibilityLabel="Export backup"
           >
             <Ionicons name="download-outline" size={20} color={theme.colors.primary} />
             <Text style={{ fontSize: theme.fontSize.md, color: theme.colors.text }}>Export Backup</Text>
@@ -2526,6 +2584,8 @@ export default function ProfileScreen() {
           <Pressable
             style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 10 }}
             onPress={() => handleImport()}
+            accessibilityRole="button"
+            accessibilityLabel="Import backup"
           >
             <Ionicons name="cloud-upload-outline" size={20} color={theme.colors.primary} />
             <Text style={{ fontSize: theme.fontSize.md, color: theme.colors.text }}>Import Backup</Text>
@@ -2533,6 +2593,8 @@ export default function ProfileScreen() {
           <Pressable
             style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 10 }}
             onPress={() => router.push("/gmail-purchases")}
+            accessibilityRole="button"
+            accessibilityLabel="Import from Gmail"
           >
             <Ionicons name="mail-outline" size={20} color={theme.colors.primary} />
             <Text style={{ fontSize: theme.fontSize.md, color: theme.colors.text }}>Import from Gmail</Text>

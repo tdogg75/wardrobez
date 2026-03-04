@@ -99,7 +99,7 @@ export function ClothingCard({ item, onPress, onToggleFavorite, onQuickLogWear, 
 
   if (photoOnly) {
     return (
-      <Pressable style={[styles.card, { backgroundColor: theme.colors.surface }]} onPress={onPress}>
+      <Pressable style={[styles.card, { backgroundColor: theme.colors.surface }]} onPress={onPress} accessibilityRole="button" accessibilityLabel={`View ${item.name}`}>
         <View style={[styles.imageContainer, { height: imageHeight }]}>
           {item.imageUris?.length > 0 ? (
             <Image source={{ uri: item.imageUris[0] }} style={styles.image} />
@@ -114,7 +114,7 @@ export function ClothingCard({ item, onPress, onToggleFavorite, onQuickLogWear, 
   }
 
   return (
-    <Pressable style={[styles.card, { backgroundColor: theme.colors.surface }]} onPress={onPress}>
+    <Pressable style={[styles.card, { backgroundColor: theme.colors.surface }]} onPress={onPress} accessibilityRole="button" accessibilityLabel={`View ${item.name}`}>
       <View style={[styles.imageContainer, { height: imageHeight }]}>
         {item.imageUris?.length > 0 ? (
           <Image source={{ uri: item.imageUris[0] }} style={styles.image} />
@@ -168,6 +168,8 @@ export function ClothingCard({ item, onPress, onToggleFavorite, onQuickLogWear, 
           <Pressable
             style={[styles.favoriteBtn, { width: favBtnSize, height: favBtnSize, borderRadius: favBtnSize / 2 }]}
             onPress={onToggleFavorite}
+            accessibilityRole="button"
+            accessibilityLabel={item.favorite ? "Remove from favorites" : "Add to favorites"}
           >
             <Ionicons
               name={item.favorite ? "heart" : "heart-outline"}
@@ -179,7 +181,7 @@ export function ClothingCard({ item, onPress, onToggleFavorite, onQuickLogWear, 
 
         {/* Quick-log wear button (bottom-right, non-compact only) */}
         {!compact && onQuickLogWear && (
-          <Pressable style={[styles.quickLogBtn, { backgroundColor: theme.colors.primary }]} onPress={onQuickLogWear}>
+          <Pressable style={[styles.quickLogBtn, { backgroundColor: theme.colors.primary }]} onPress={onQuickLogWear} accessibilityRole="button" accessibilityLabel="Log wear">
             <Ionicons name="shirt-outline" size={13} color="#FFFFFF" />
             <Text style={styles.quickLogPlus}>+</Text>
           </Pressable>

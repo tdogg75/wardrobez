@@ -56,6 +56,8 @@ export default function BrandItemsScreen() {
           <Pressable
             style={styles.card}
             onPress={() => router.push({ pathname: "/item-detail", params: { id: item.id } })}
+            accessibilityRole="button"
+            accessibilityLabel={`View ${item.name}`}
           >
             {item.imageUris?.length > 0 ? (
               <Image source={{ uri: item.imageUris[0] }} style={styles.cardImage} />

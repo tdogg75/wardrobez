@@ -313,7 +313,7 @@ function cropImage(sx,sy,sw,sh) {
 
         {/* Header */}
         <View style={styles.header}>
-          <Pressable onPress={onCancel} hitSlop={12}>
+          <Pressable onPress={onCancel} hitSlop={12} accessibilityRole="button" accessibilityLabel="Close cropper">
             <Ionicons name="close" size={28} color="#FFF" />
           </Pressable>
           <Text style={styles.headerTitle}>Crop Image</Text>
@@ -367,13 +367,15 @@ function cropImage(sx,sy,sw,sh) {
 
         {/* Footer */}
         <View style={styles.footer}>
-          <Pressable style={styles.cancelBtn} onPress={onCancel}>
+          <Pressable style={styles.cancelBtn} onPress={onCancel} accessibilityRole="button" accessibilityLabel="Cancel crop">
             <Text style={styles.cancelText}>Cancel</Text>
           </Pressable>
           <Pressable
             style={[styles.applyBtn, applying && { opacity: 0.5 }]}
             onPress={handleApply}
             disabled={applying}
+            accessibilityRole="button"
+            accessibilityLabel="Apply crop"
           >
             <Ionicons name="checkmark" size={20} color="#FFF" />
             <Text style={styles.applyText}>

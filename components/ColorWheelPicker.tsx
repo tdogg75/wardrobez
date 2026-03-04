@@ -100,7 +100,7 @@ export function ColorWheelPicker({ hue, saturation, lightness, size, onColorChan
   const selectedHex = hslToHex(hue, saturation, lightness);
 
   return (
-    <View style={[styles.container, { width: size, height: size }]} {...panResponder.panHandlers}>
+    <View style={[styles.container, { width: size, height: size }]} {...panResponder.panHandlers} accessibilityRole="adjustable" accessibilityLabel="Color wheel picker">
       {rings}
       {/* White center dot */}
       <View

@@ -163,6 +163,8 @@ export const MoodBoard = React.forwardRef<View, MoodBoardProps>(
             <CellWrapper
               key={item.id}
               onPress={onItemPress ? () => onItemPress(item) : undefined}
+              accessibilityRole={onItemPress ? "button" : undefined}
+              accessibilityLabel={onItemPress ? `View ${item.name}` : undefined}
               style={[
                 styles.cell,
                 {
@@ -202,6 +204,8 @@ export const MoodBoard = React.forwardRef<View, MoodBoardProps>(
           <Pressable
             style={[styles.overflowBadge, { backgroundColor: theme.colors.primary }]}
             onPress={onOverflowPress}
+            accessibilityRole="button"
+            accessibilityLabel={`Show ${items.length - 8} more items`}
           >
             <Text style={styles.overflowText}>+{items.length - 8}</Text>
           </Pressable>

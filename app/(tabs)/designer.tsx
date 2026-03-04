@@ -281,6 +281,8 @@ export default function DesignerScreen() {
             <Pressable
               style={[styles.itemRow, isSelected && styles.itemRowSelected]}
               onPress={() => toggleItem(item.id)}
+              accessibilityRole="button"
+              accessibilityLabel={`${isSelected ? "Deselect" : "Select"} ${item.name}`}
             >
               {item.imageUris?.length > 0 ? (
                 <Image source={{ uri: item.imageUris[0] }} style={styles.itemThumb} />
@@ -314,12 +316,15 @@ export default function DesignerScreen() {
                   placeholderTextColor={theme.colors.textLight}
                   value={outfitName}
                   onChangeText={setOutfitName}
+                  accessibilityLabel="Outfit name"
                 />
                 {selectedItems.length > 0 && (
                   <Pressable
                     style={styles.nameGenBtn}
                     onPress={() => setOutfitName(generateOutfitName(selectedItems))}
                     hitSlop={8}
+                    accessibilityRole="button"
+                    accessibilityLabel="Generate outfit name"
                   >
                     <Ionicons name="sparkles-outline" size={18} color={theme.colors.primary} />
                   </Pressable>
@@ -329,6 +334,8 @@ export default function DesignerScreen() {
                     style={styles.nameGenBtn}
                     onPress={() => setOutfitName("")}
                     hitSlop={8}
+                    accessibilityRole="button"
+                    accessibilityLabel="Clear outfit name"
                   >
                     <Ionicons name="close-circle-outline" size={18} color={theme.colors.textLight} />
                   </Pressable>
@@ -364,7 +371,7 @@ export default function DesignerScreen() {
 
             {/* Template buttons */}
             <View style={styles.templateRow}>
-              <Pressable style={styles.templateBtn} onPress={handleSaveAsTemplate}>
+              <Pressable style={styles.templateBtn} onPress={handleSaveAsTemplate} accessibilityRole="button" accessibilityLabel="Save as template">
                 <Ionicons name="albums-outline" size={16} color={theme.colors.primary} />
                 <Text style={styles.templateBtnText}>Save as Template</Text>
               </Pressable>
@@ -374,6 +381,8 @@ export default function DesignerScreen() {
                   loadTemplates();
                   setTemplateModalVisible(true);
                 }}
+                accessibilityRole="button"
+                accessibilityLabel="Load template"
               >
                 <Ionicons name="download-outline" size={16} color={theme.colors.primary} />
                 <Text style={styles.templateBtnText}>Load Template</Text>
@@ -386,13 +395,15 @@ export default function DesignerScreen() {
 
       {/* Bottom Actions */}
       <View style={styles.bottomBar}>
-        <Pressable style={styles.clearBtn} onPress={handleClear}>
+        <Pressable style={styles.clearBtn} onPress={handleClear} accessibilityRole="button" accessibilityLabel="Clear selection">
           <Text style={styles.clearBtnText}>Clear</Text>
         </Pressable>
         <Pressable
           style={[styles.saveBtn, selectedItems.length === 0 && styles.saveBtnDisabled]}
           onPress={handleSave}
           disabled={selectedItems.length === 0}
+          accessibilityRole="button"
+          accessibilityLabel="Save outfit"
         >
           <Ionicons name="bookmark-outline" size={18} color="#FFFFFF" />
           <Text style={styles.saveBtnText}>Save Outfit</Text>
@@ -419,11 +430,14 @@ export default function DesignerScreen() {
               autoFocus
               returnKeyType="done"
               onSubmitEditing={confirmSaveTemplate}
+              accessibilityLabel="Template name"
             />
             <View style={styles.saveTemplateBtnRow}>
               <Pressable
                 style={styles.saveTemplateCancelBtn}
                 onPress={() => setSaveTemplateModalVisible(false)}
+                accessibilityRole="button"
+                accessibilityLabel="Cancel saving template"
               >
                 <Text style={styles.saveTemplateCancelText}>Cancel</Text>
               </Pressable>
@@ -431,6 +445,8 @@ export default function DesignerScreen() {
                 style={[styles.saveTemplateSaveBtn, !templateNameInput.trim() && { opacity: 0.4 }]}
                 onPress={confirmSaveTemplate}
                 disabled={!templateNameInput.trim()}
+                accessibilityRole="button"
+                accessibilityLabel="Confirm save template"
               >
                 <Text style={styles.saveTemplateSaveText}>Save</Text>
               </Pressable>
@@ -449,7 +465,7 @@ export default function DesignerScreen() {
         <View style={[styles.modalContainer, { backgroundColor: theme.colors.background }]}>
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>Load Template</Text>
-            <Pressable onPress={() => setTemplateModalVisible(false)} hitSlop={8}>
+            <Pressable onPress={() => setTemplateModalVisible(false)} hitSlop={8} accessibilityRole="button" accessibilityLabel="Close template modal">
               <Ionicons name="close" size={24} color={theme.colors.text} />
             </Pressable>
           </View>
@@ -471,6 +487,8 @@ export default function DesignerScreen() {
                 <Pressable
                   style={styles.templateCard}
                   onPress={() => handleLoadTemplate(template)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Load template ${template.name}`}
                 >
                   <View style={styles.templateCardContent}>
                     <Text style={styles.templateCardName}>{template.name}</Text>
@@ -492,6 +510,8 @@ export default function DesignerScreen() {
                     onPress={() => handleDeleteTemplate(template)}
                     hitSlop={8}
                     style={styles.templateDeleteBtn}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Delete template ${template.name}`}
                   >
                     <Ionicons name="trash-outline" size={18} color={theme.colors.error} />
                   </Pressable>
