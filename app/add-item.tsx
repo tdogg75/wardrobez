@@ -277,6 +277,54 @@ export default function AddItemScreen() {
     }
   };
 
+  // Batch image import (#66) — select multiple photos, create one item per photo
+  const pickMultipleImages = async () => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"],
+      allowsMultipleSelection: true,
+      quality: 0.8,
+    });
+    if (result.canceled || !result.assets || result.assets.length === 0) return;
+    if (result.assets.length === 1) {
+      setImageUris((prev) => [...prev, result.assets[0].uri]);
+      return;
+    }
+    // Multiple photos — create one item per photo with the current form defaults
+    if (!name.trim()) {
+      Alert.alert(
+        "Enter a base name",
+        "Please enter a name first. Each item will be named 'Name 1', 'Name 2', etc.",
+        [{ text: "OK" }]
+      );
+      return;
+    }
+    const parsedCost = cost.trim() ? parseFloat(cost.trim()) : undefined;
+    let created = 0;
+    for (let i = 0; i < result.assets.length; i++) {
+      await addOrUpdate({
+        id: generateId(),
+        name: `${name.trim()} ${i + 1}`,
+        category,
+        subCategory: subCategory || undefined,
+        color,
+        colorName,
+        fabricType,
+        imageUris: [result.assets[i].uri],
+        wearCount: 0,
+        wearDates: [],
+        archived: false,
+        favorite: false,
+        createdAt: Date.now() + i,
+        cost: parsedCost,
+        seasons: selectedSeasons,
+      });
+      created++;
+    }
+    Alert.alert("Batch Import Complete", `Created ${created} items.`, [
+      { text: "OK", onPress: () => router.back() },
+    ]);
+  };
+
   const removeImage = (index: number) => {
     setImageUris((prev) => prev.filter((_, i) => i !== index));
   };
@@ -545,6 +593,16 @@ export default function AddItemScreen() {
           >
             <Ionicons name="camera-outline" size={28} color={theme.colors.textLight} />
             <Text style={[styles.addPhotoLabel, { fontSize: theme.fontSize.xs, color: theme.colors.textLight }]}>Add Photo</Text>
+          </Pressable>
+          {/* Batch import (#66) */}
+          <Pressable
+            style={[styles.addPhotoBtn, { borderRadius: theme.borderRadius.sm, backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border }]}
+            onPress={pickMultipleImages}
+            accessibilityRole="button"
+            accessibilityLabel="Batch import multiple photos"
+          >
+            <Ionicons name="images-outline" size={28} color={theme.colors.textLight} />
+            <Text style={[styles.addPhotoLabel, { fontSize: theme.fontSize.xs, color: theme.colors.textLight }]}>Batch</Text>
           </Pressable>
         </ScrollView>
 

@@ -91,6 +91,13 @@ function AppContent() {
               headerTitle: "Gmail Purchases",
             }}
           />
+          <Stack.Screen
+            name="virtual-tryon"
+            options={{
+              presentation: "modal",
+              headerShown: false,
+            }}
+          />
         </Stack>
       </OutfitsProvider>
     </ClothingItemsProvider>
