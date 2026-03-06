@@ -10,7 +10,9 @@
     "build:apk": "eas build --platform android --profile preview",
     "build:apk:local": "eas build --platform android --profile local-apk --local",
     "build:aab": "eas build --platform android --profile production",
-    "generate-icons": "node scripts/generate-icons.js"
+    "generate-icons": "node scripts/generate-icons.js",
+    "lint": "eslint . --ext .ts,.tsx --max-warnings 50",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "expo": "~52.0.0",
@@ -46,7 +48,12 @@
     "@babel/core": "^7.25.0",
     "@types/react": "~18.3.0",
     "@types/uuid": "^9.0.0",
-    "typescript": "~5.3.0"
+    "typescript": "~5.3.0",
+    "eslint": "^8.57.0",
+    "eslint-plugin-react": "^7.35.0",
+    "eslint-plugin-react-hooks": "^4.6.2",
+    "@typescript-eslint/eslint-plugin": "^7.0.0",
+    "@typescript-eslint/parser": "^7.0.0"
   },
   "private": true
 }

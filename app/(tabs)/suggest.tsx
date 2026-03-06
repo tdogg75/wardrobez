@@ -67,6 +67,29 @@ export default function SuggestScreen() {
   const [quickPicks, setQuickPicks] = useState<SuggestionResult[]>([]);
   const [activeQuickPick, setActiveQuickPick] = useState(0);
   const quickPickScrollRef = useRef<ScrollView>(null);
+
+  // Memoize suggestion engine results (#40) — avoid recomputing when inputs haven't changed
+  const suggestionCacheRef = useRef<{
+    items: typeof occasionFilteredItems | null;
+    season: Season | undefined;
+    ratedOutfits: typeof ratedOutfits;
+    results: SuggestionResult[];
+  }>({ items: null, season: undefined, ratedOutfits: [], results: [] });
+
+  const getCachedSuggestions = useCallback((maxResults: number): SuggestionResult[] => {
+    const cache = suggestionCacheRef.current;
+    if (
+      cache.items === occasionFilteredItems &&
+      cache.season === season &&
+      cache.ratedOutfits === ratedOutfits &&
+      cache.results.length >= maxResults
+    ) {
+      return cache.results.slice(0, maxResults);
+    }
+    const results = suggestOutfits(occasionFilteredItems, { season, maxResults, ratedOutfits });
+    suggestionCacheRef.current = { items: occasionFilteredItems, season, ratedOutfits, results };
+    return results;
+  }, [occasionFilteredItems, season, ratedOutfits]);
   const quickPickFadeAnim = useRef(new Animated.Value(0)).current;
 
   // Save modal state — lets user pick occasions/seasons before saving
@@ -238,20 +261,20 @@ export default function SuggestScreen() {
       );
       return;
     }
-    const results = suggestOutfits(occasionFilteredItems, { season, maxResults: 6, ratedOutfits });
+    const results = getCachedSuggestions(6);
     setSuggestions(results);
     setGenerated(true);
     setQuickPickMode(false);
     setCustomNames({});
     setLockedNames({});
-  }, [occasionFilteredItems, season, ratedOutfits]);
+  }, [occasionFilteredItems, season, ratedOutfits, getCachedSuggestions]);
 
   const handleSurpriseMe = useCallback(() => {
     if (occasionFilteredItems.length < 2) {
       Alert.alert("Not enough items", "Add at least 2 items first.");
       return;
     }
-    const results = suggestOutfits(occasionFilteredItems, { season, maxResults: 10, ratedOutfits });
+    const results = getCachedSuggestions(10);
     if (results.length === 0) {
       Alert.alert("No luck!", "Couldn't assemble an outfit. Try adding more items.");
       return;
@@ -262,14 +285,14 @@ export default function SuggestScreen() {
     setQuickPickMode(false);
     setCustomNames({});
     setLockedNames({});
-  }, [occasionFilteredItems, season]);
+  }, [occasionFilteredItems, season, getCachedSuggestions]);
 
   const handleQuickPick = useCallback(() => {
     if (occasionFilteredItems.length < 2) {
       Alert.alert("Not enough items", "Add at least 2 items first.");
       return;
     }
-    const results = suggestOutfits(occasionFilteredItems, { season, maxResults: 10, ratedOutfits });
+    const results = getCachedSuggestions(10);
     if (results.length === 0) {
       Alert.alert("No luck!", "Couldn't assemble an outfit. Try adding more items.");
       return;
@@ -291,7 +314,7 @@ export default function SuggestScreen() {
       duration: 300,
       useNativeDriver: true,
     }).start();
-  }, [occasionFilteredItems, season, quickPickFadeAnim]);
+  }, [occasionFilteredItems, season, getCachedSuggestions, quickPickFadeAnim]);
 
   const openSaveModal = (suggestion: SuggestionResult, idx: number) => {
     setSaveModalSuggestion({ suggestion, idx });

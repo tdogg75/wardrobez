@@ -4,6 +4,7 @@ import { StatusBar } from "expo-status-bar";
 import { ClothingItemsProvider } from "@/hooks/useClothingItems";
 import { OutfitsProvider } from "@/hooks/useOutfits";
 import { ThemeProvider, useTheme } from "@/hooks/useTheme";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import {
   requestNotificationPermission,
   scheduleDailyReminder,
@@ -22,6 +23,7 @@ function AppContent() {
   }, []);
 
   return (
+    <ErrorBoundary>
     <ClothingItemsProvider>
       <OutfitsProvider>
         <StatusBar style={isDark ? "light" : "dark"} />
@@ -92,6 +94,7 @@ function AppContent() {
         </Stack>
       </OutfitsProvider>
     </ClothingItemsProvider>
+    </ErrorBoundary>
   );
 }
 

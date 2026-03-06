@@ -100,6 +100,15 @@ export default function OutfitsScreen() {
     });
   }, [outfits, seasonFilter, occasionFilter]);
 
+  // Memoize outfit item resolution (#31) — avoids recomputing on every render
+  const outfitItemsMap = useMemo(() => {
+    const map = new Map<string, ClothingItem[]>();
+    for (const outfit of filteredOutfits) {
+      map.set(outfit.id, outfit.itemIds.map((id) => getById(id)).filter(Boolean) as ClothingItem[]);
+    }
+    return map;
+  }, [filteredOutfits, getById]);
+
   // Build calendar data: map date string -> outfits worn that day
   const calendarData = useMemo(() => {
     const map: Record<string, Outfit[]> = {};
@@ -1108,9 +1117,7 @@ export default function OutfitsScreen() {
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.list}
           renderItem={({ item: outfit }) => {
-            const outfitItems = outfit.itemIds
-              .map((id) => getById(id))
-              .filter(Boolean) as ClothingItem[];
+            const outfitItems = outfitItemsMap.get(outfit.id) ?? [];
 
             const totalCost = outfitItems.reduce(
               (sum, i) => sum + (i.cost ?? 0),
