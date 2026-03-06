@@ -45,6 +45,7 @@ import {
 import * as FileSystem from "expo-file-system";
 import * as Sharing from "expo-sharing";
 import * as DocumentPicker from "expo-document-picker";
+import { v4 as uuidv4 } from "uuid";
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                            */
@@ -283,7 +284,7 @@ export default function ProfileScreen() {
   ];
 
   const gapInsights = useMemo(() => {
-    const catCounts: Record<ClothingCategory, number> = {} as any;
+    const catCounts = {} as Record<ClothingCategory, number>;
     for (const cat of ALL_CATEGORIES) {
       catCounts[cat] = 0;
     }
@@ -755,7 +756,7 @@ export default function ProfileScreen() {
       return;
     }
     const itemData: WishlistItem = {
-      id: wlEditingItem?.id ?? (Date.now().toString(36) + Math.random().toString(36).slice(2, 9)),
+      id: wlEditingItem?.id ?? uuidv4(),
       name: wlName.trim(),
       brand: wlBrand.trim() || undefined,
       url: wlUrl.trim() || undefined,
@@ -1054,7 +1055,7 @@ export default function ProfileScreen() {
             accessibilityLabel={`${tab.label} tab`}
           >
             <Ionicons
-              name={tab.icon as any}
+              name={tab.icon as React.ComponentProps<typeof Ionicons>["name"]}
               size={16}
               color={profileTab === tab.key ? theme.colors.primary : theme.colors.textLight}
             />
@@ -2508,7 +2509,7 @@ export default function ProfileScreen() {
                 });
                 if (!result.canceled && result.assets[0]) {
                   const pin = {
-                    id: Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
+                    id: uuidv4(),
                     imageUri: result.assets[0].uri,
                     createdAt: Date.now(),
                   };

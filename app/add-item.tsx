@@ -67,8 +67,10 @@ import {
 } from "@/models/types";
 import type { SizeSystem } from "@/models/types";
 
+import { v4 as uuidv4 } from "uuid";
+
 function generateId(): string {
-  return Date.now().toString(36) + Math.random().toString(36).slice(2, 9);
+  return uuidv4();
 }
 
 /** Subcategories that should default isOpen to true */

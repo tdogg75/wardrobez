@@ -42,6 +42,7 @@ import type {
   InspirationPin,
   PackingList,
 } from "@/models/types";
+import { v4 as uuidv4 } from "uuid";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -96,10 +97,7 @@ export interface DeltaSyncPayload {
 async function getDeviceId(): Promise<string> {
   let deviceId = await AsyncStorage.getItem(SYNC_KEYS.DEVICE_ID);
   if (!deviceId) {
-    deviceId =
-      "device_" +
-      Date.now().toString(36) +
-      Math.random().toString(36).slice(2, 9);
+    deviceId = "device_" + uuidv4();
     await AsyncStorage.setItem(SYNC_KEYS.DEVICE_ID, deviceId);
   }
   return deviceId;

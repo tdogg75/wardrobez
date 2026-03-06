@@ -8,9 +8,9 @@ import {
   Alert,
   ActivityIndicator,
   Animated,
-  Dimensions,
   Modal,
   TextInput,
+  useWindowDimensions,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
@@ -31,17 +31,20 @@ import { useTheme } from "@/hooks/useTheme";
 import type { Season, Occasion } from "@/models/types";
 import { SEASON_LABELS, CATEGORY_LABELS, OCCASION_LABELS } from "@/models/types";
 
-const SCREEN_WIDTH = Dimensions.get("window").width;
-const QUICK_PICK_CARD_WIDTH = SCREEN_WIDTH - 64;
+// SCREEN_WIDTH is now computed dynamically inside the component via useWindowDimensions()
 
 const OCCASIONS: Occasion[] = ["casual", "work", "fancy", "party", "vacation"];
 
+import { v4 as uuidv4 } from "uuid";
+
 function generateId(): string {
-  return Date.now().toString(36) + Math.random().toString(36).slice(2, 9);
+  return uuidv4();
 }
 
 export default function SuggestScreen() {
   const { theme } = useTheme();
+  const { width: screenWidth } = useWindowDimensions();
+  const quickPickCardWidth = screenWidth - 64;
   const { items } = useClothingItems();
   const { outfits, addOrUpdate: saveOutfit } = useOutfits();
 
@@ -80,6 +83,9 @@ export default function SuggestScreen() {
   // Track custom names per suggestion index
   const [customNames, setCustomNames] = useState<Record<number, string>>({});
 
+  // Track whether the user has manually selected a season (prevents weather override)
+  const userSelectedSeasonRef = useRef(false);
+
   // Track locked names per suggestion index (generated names locked on first generation)
   const [lockedNames, setLockedNames] = useState<Record<number, string>>({});
 
@@ -96,8 +102,8 @@ export default function SuggestScreen() {
         if (!mounted) return;
         if (savedSeason) setSeason(savedSeason as Season);
         if (savedOccasion) setSelectedOccasion(savedOccasion as Occasion);
-      } catch (_) {
-        // ignore storage errors
+      } catch (err) {
+        console.warn("[suggest] Failed to load saved filters:", err);
       }
     })();
     return () => {
@@ -115,8 +121,10 @@ export default function SuggestScreen() {
         setWeather(w);
         if (w) {
           setWeatherTips(getWeatherTips(w));
-          // Weather-detected season always overrides stored/manual selection
-          setSeason(weatherToSeason(w));
+          // Only apply weather season if the user hasn't manually selected one
+          if (!userSelectedSeasonRef.current) {
+            setSeason(weatherToSeason(w));
+          }
         }
       })
       .finally(() => mounted && setLoadingWeather(false));
@@ -170,13 +178,32 @@ export default function SuggestScreen() {
     return items;
   }, [items, selectedOccasion]);
 
+  // Lock generated names after render so setState is never called during render.
+  useEffect(() => {
+    setLockedNames((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      suggestions.forEach((s, idx) => {
+        if (next[idx] === undefined) {
+          next[idx] = generateOutfitName(s.items);
+          changed = true;
+        }
+      });
+      quickPicks.forEach((s, idx) => {
+        const key = idx + 1000;
+        if (next[key] === undefined) {
+          next[key] = generateOutfitName(s.items);
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+  }, [suggestions, quickPicks]);
+
   const getSuggestedName = (suggestion: SuggestionResult, idx: number): string => {
     if (customNames[idx] !== undefined) return customNames[idx];
-    if (lockedNames[idx] !== undefined) return lockedNames[idx];
-    // Generate and lock the name on first access
-    const name = generateOutfitName(suggestion.items);
-    setLockedNames((prev) => ({ ...prev, [idx]: name }));
-    return name;
+    // Return locked name or fall back to deterministic generation (before effect fires)
+    return lockedNames[idx] ?? generateOutfitName(suggestion.items);
   };
 
   const handleResetName = (idx: number) => {
@@ -327,7 +354,7 @@ export default function SuggestScreen() {
 
   const handleQuickPickScroll = (event: any) => {
     const offsetX = event.nativeEvent.contentOffset.x;
-    const index = Math.round(offsetX / (QUICK_PICK_CARD_WIDTH + 16));
+    const index = Math.round(offsetX / (quickPickCardWidth + 16));
     setActiveQuickPick(Math.max(0, Math.min(index, quickPicks.length - 1)));
   };
 
@@ -575,7 +602,7 @@ export default function SuggestScreen() {
           paddingHorizontal: 16,
         },
         quickPickCard: {
-          width: QUICK_PICK_CARD_WIDTH,
+          width: quickPickCardWidth,
           backgroundColor: theme.colors.surface,
           borderRadius: theme.borderRadius.lg,
           padding: theme.spacing.md,
@@ -667,7 +694,7 @@ export default function SuggestScreen() {
           marginTop: 2,
         },
       }),
-    [theme]
+    [theme, quickPickCardWidth]
   );
 
   if (items.length < 2) {
@@ -700,7 +727,7 @@ export default function SuggestScreen() {
         <View style={dynamicStyles.weatherCard}>
           <View style={dynamicStyles.weatherHeader}>
             <Ionicons
-              name={weather.icon as any}
+              name={weather.icon as React.ComponentProps<typeof Ionicons>["name"]}
               size={28}
               color={theme.colors.primary}
             />
@@ -744,7 +771,10 @@ export default function SuggestScreen() {
             key={s}
             label={SEASON_LABELS[s]}
             selected={season === s}
-            onPress={() => setSeason(season === s ? undefined : s)}
+            onPress={() => {
+              userSelectedSeasonRef.current = true;
+              setSeason(season === s ? undefined : s);
+            }}
           />
         ))}
       </View>
@@ -784,7 +814,7 @@ export default function SuggestScreen() {
             ref={quickPickScrollRef}
             horizontal
             pagingEnabled={false}
-            snapToInterval={QUICK_PICK_CARD_WIDTH + 16}
+            snapToInterval={quickPickCardWidth + 16}
             snapToAlignment="start"
             decelerationRate="fast"
             showsHorizontalScrollIndicator={false}

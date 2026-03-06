@@ -24,8 +24,10 @@ import { getOutfitTemplates, saveOutfitTemplate, deleteOutfitTemplate } from "@/
 import type { ClothingItem, ClothingCategory, Occasion, Season, OutfitTemplate } from "@/models/types";
 import { CATEGORY_LABELS, OCCASION_LABELS, SEASON_LABELS } from "@/models/types";
 
+import { v4 as uuidv4 } from "uuid";
+
 function generateId(): string {
-  return Date.now().toString(36) + Math.random().toString(36).slice(2, 9);
+  return uuidv4();
 }
 
 const CATEGORY_ORDER: ClothingCategory[] = [

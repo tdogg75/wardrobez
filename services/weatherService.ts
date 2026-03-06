@@ -66,7 +66,8 @@ export async function getCurrentWeather(): Promise<WeatherData | null> {
       isWindy: windSpeed > 30,
       city: city ?? "",
     };
-  } catch {
+  } catch (err) {
+    console.warn("[weatherService] Failed to fetch weather:", err);
     return null;
   }
 }

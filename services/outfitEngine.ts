@@ -11,6 +11,18 @@ import { hexToHSL } from "@/constants/colors";
 import { getOutfitFlags, saveOutfitFlag } from "@/services/storage";
 import { v4 as uuidv4 } from "uuid";
 
+// --- Circular Mean for Hue (0–360°) ---
+// Simple linear averaging of hue angles is wrong for circular data:
+// e.g., red at 350° and red at 10° would average to 180° (cyan) instead of 0° (red).
+// The correct approach uses the mean unit-vector on the circle.
+function circularMeanHue(hues: number[]): number {
+  if (hues.length === 0) return 0;
+  const rad = Math.PI / 180;
+  const sinMean = hues.reduce((s, h) => s + Math.sin(h * rad), 0) / hues.length;
+  const cosMean = hues.reduce((s, h) => s + Math.cos(h * rad), 0) / hues.length;
+  return (Math.atan2(sinMean, cosMean) / rad + 360) % 360;
+}
+
 // --- Advanced Color Harmony Rules ---
 
 function isNeutral(hex: string): boolean {
@@ -1317,16 +1329,12 @@ export function getNextItemSuggestion(currentItems: ClothingItem[], allItems: Cl
   const hasSilverHardware = currentItems.some((i) => i.hardwareColour === "silver" || i.hardwareColour === "gunmetal");
 
   const outfitColors = currentItems.map((i) => i.color);
-  const avgHSL = outfitColors.reduce(
-    (acc, hex) => {
-      const hsl = hexToHSL(hex);
-      return { h: acc.h + hsl.h, s: acc.s + hsl.s, l: acc.l + hsl.l };
-    },
-    { h: 0, s: 0, l: 0 }
-  );
-  avgHSL.h /= outfitColors.length;
-  avgHSL.s /= outfitColors.length;
-  avgHSL.l /= outfitColors.length;
+  const outfitHSLs = outfitColors.map((hex) => hexToHSL(hex));
+  const avgHSL = {
+    h: circularMeanHue(outfitHSLs.map((c) => c.h)),
+    s: outfitHSLs.reduce((s, c) => s + c.s, 0) / outfitHSLs.length,
+    l: outfitHSLs.reduce((s, c) => s + c.l, 0) / outfitHSLs.length,
+  };
 
   // Suggest based on what's missing
   if (!hasTops && !hasDress) {
@@ -1541,7 +1549,7 @@ function getColorMood(items: ClothingItem[]): string {
   const colors = items.map((i) => hexToHSL(i.color));
   const avgL = colors.reduce((s, c) => s + c.l, 0) / colors.length;
   const avgS = colors.reduce((s, c) => s + c.s, 0) / colors.length;
-  const avgH = colors.reduce((s, c) => s + c.h, 0) / colors.length;
+  const avgH = circularMeanHue(colors.map((c) => c.h));
 
   if (avgL < 25) return "dark";
   if (avgL > 80 && avgS < 20) return "light_neutral";

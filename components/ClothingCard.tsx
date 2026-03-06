@@ -1,16 +1,18 @@
-import React from "react";
-import { View, Text, Pressable, Image, StyleSheet } from "react-native";
+import React, { useState } from "react";
+import { View, Text, Pressable, Image, StyleSheet, Modal, ScrollView, TouchableWithoutFeedback } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import type { ClothingItem, ItemFlag, LaundryStatus } from "@/models/types";
-import { CATEGORY_LABELS, SUBCATEGORIES, ITEM_FLAG_LABELS } from "@/models/types";
+import { CATEGORY_LABELS, SUBCATEGORIES, ITEM_FLAG_LABELS, LAUNDRY_STATUS_ICONS } from "@/models/types";
 import { ColorDot } from "./ColorDot";
 import { useTheme } from "@/hooks/useTheme";
 
 interface ClothingCardProps {
   item: ClothingItem;
   onPress: () => void;
+  onLongPress?: () => void;
   onToggleFavorite?: () => void;
   onQuickLogWear?: () => void;
+  onLaundryToggle?: () => void;
   compact?: boolean;
   /** Photo-only mode: show just the image, no text */
   photoOnly?: boolean;
@@ -75,7 +77,8 @@ function getCostPerWear(item: ClothingItem): string | null {
   return null;
 }
 
-export function ClothingCard({ item, onPress, onToggleFavorite, onQuickLogWear, compact, photoOnly }: ClothingCardProps) {
+export function ClothingCard({ item, onPress, onLongPress, onToggleFavorite, onQuickLogWear, onLaundryToggle, compact, photoOnly }: ClothingCardProps) {
+  const [previewVisible, setPreviewVisible] = useState(false);
   const { theme } = useTheme();
   const imageHeight = photoOnly ? 120 : compact ? 80 : 160;
   const iconSize = compact ? 24 : 40;
@@ -113,8 +116,50 @@ export function ClothingCard({ item, onPress, onToggleFavorite, onQuickLogWear, 
     );
   }
 
+  const handleLongPress = () => {
+    setPreviewVisible(true);
+    if (onLongPress) onLongPress();
+  };
+
   return (
-    <Pressable style={[styles.card, { backgroundColor: theme.colors.surface }]} onPress={onPress} accessibilityRole="button" accessibilityLabel={`View ${item.name}`}>
+    <>
+      {/* Long-press quick-look modal (#14) */}
+      <Modal visible={previewVisible} transparent animationType="fade" onRequestClose={() => setPreviewVisible(false)}>
+        <TouchableWithoutFeedback onPress={() => setPreviewVisible(false)}>
+          <View style={styles.previewOverlay}>
+            <TouchableWithoutFeedback>
+              <View style={[styles.previewCard, { backgroundColor: theme.colors.surface }]}>
+                {item.imageUris?.length > 0 ? (
+                  <Image source={{ uri: item.imageUris[0] }} style={styles.previewImage} />
+                ) : (
+                  <View style={[styles.previewImagePlaceholder, { backgroundColor: item.color + "30" }]}>
+                    <Ionicons name="shirt-outline" size={64} color={item.color} />
+                  </View>
+                )}
+                <ScrollView style={styles.previewBody} contentContainerStyle={{ paddingBottom: 8 }}>
+                  <Text style={[styles.previewName, { color: theme.colors.text }]}>{item.name}</Text>
+                  {item.brand ? (
+                    <Text style={[styles.previewMeta, { color: theme.colors.textSecondary }]}>{item.brand}</Text>
+                  ) : null}
+                  <View style={styles.previewColorRow}>
+                    <ColorDot color={item.color} size={18} />
+                    {item.secondaryColor && <ColorDot color={item.secondaryColor} size={18} />}
+                    <Text style={[styles.previewMeta, { color: theme.colors.textSecondary }]}>{item.colorName}</Text>
+                  </View>
+                  <Text style={[styles.previewMeta, { color: theme.colors.textSecondary }]}>
+                    {CATEGORY_LABELS[item.category]} · Worn {item.wearCount}×
+                  </Text>
+                  {lastWornLabel ? (
+                    <Text style={[styles.previewMeta, { color: theme.colors.textSecondary }]}>Last worn: {lastWornLabel}</Text>
+                  ) : null}
+                </ScrollView>
+              </View>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
+
+    <Pressable style={[styles.card, { backgroundColor: theme.colors.surface }]} onPress={onPress} onLongPress={handleLongPress} accessibilityRole="button" accessibilityLabel={`View ${item.name}`}>
       <View style={[styles.imageContainer, { height: imageHeight }]}>
         {item.imageUris?.length > 0 ? (
           <Image source={{ uri: item.imageUris[0] }} style={styles.image} />
@@ -186,6 +231,27 @@ export function ClothingCard({ item, onPress, onToggleFavorite, onQuickLogWear, 
             <Text style={styles.quickLogPlus}>+</Text>
           </Pressable>
         )}
+
+        {/* Laundry quick-toggle (#23) */}
+        {!compact && !photoOnly && onLaundryToggle && (
+          <Pressable
+            style={[styles.laundryToggleBtn, { backgroundColor: "rgba(255,255,255,0.9)" }]}
+            onPress={onLaundryToggle}
+            accessibilityRole="button"
+            accessibilityLabel={`Laundry status: ${item.laundryStatus ?? "clean"}`}
+          >
+            <Ionicons
+              name={LAUNDRY_STATUS_ICONS[item.laundryStatus ?? "clean"] as React.ComponentProps<typeof Ionicons>["name"]}
+              size={14}
+              color={
+                item.laundryStatus === "in_wash" ? "#3B82F6"
+                : item.laundryStatus === "worn" ? "#F59E0B"
+                : item.laundryStatus === "dry_cleaning" ? "#8B5CF6"
+                : "#22C55E"
+              }
+            />
+          </Pressable>
+        )}
       </View>
       {!compact ? (
         <View style={{ padding: theme.spacing.sm }}>
@@ -224,6 +290,7 @@ export function ClothingCard({ item, onPress, onToggleFavorite, onQuickLogWear, 
         </View>
       )}
     </Pressable>
+    </>
   );
 }
 
@@ -378,5 +445,61 @@ const styles = StyleSheet.create({
   compactName: {
     fontSize: 9,
     fontWeight: "600",
+  },
+  // Laundry quick-toggle button (#23)
+  laundryToggleBtn: {
+    position: "absolute",
+    bottom: 8,
+    left: 8,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  // Long-press preview modal styles (#14)
+  previewOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.55)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 24,
+  },
+  previewCard: {
+    width: "100%",
+    maxWidth: 360,
+    borderRadius: 16,
+    overflow: "hidden",
+  },
+  previewImage: {
+    width: "100%",
+    height: 260,
+    resizeMode: "contain",
+    backgroundColor: "#F5F5F5",
+  },
+  previewImagePlaceholder: {
+    width: "100%",
+    height: 200,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  previewBody: {
+    padding: 16,
+    maxHeight: 180,
+  },
+  previewName: {
+    fontSize: 18,
+    fontWeight: "700",
+    marginBottom: 4,
+  },
+  previewMeta: {
+    fontSize: 14,
+    marginTop: 4,
+  },
+  previewColorRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 6,
   },
 });

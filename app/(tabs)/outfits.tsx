@@ -29,6 +29,7 @@ import {
 } from "@/models/types";
 import type { ClothingItem, Season, Occasion, Outfit, PlannedOutfit, SavedWeekPlan } from "@/models/types";
 import { getPlannedOutfits, savePlannedOutfit, deletePlannedOutfit, getSavedWeekPlans, saveWeekPlan, deleteWeekPlan } from "@/services/storage";
+import { v4 as uuidv4 } from "uuid";
 
 const SEASONS: Season[] = ["spring", "summer", "fall", "winter"];
 const OCCASIONS: Occasion[] = ["casual", "work", "fancy", "party", "vacation"];
@@ -262,7 +263,7 @@ export default function OutfitsScreen() {
     }
     try {
       const plan: SavedWeekPlan = {
-        id: Date.now().toString(36) + Math.random().toString(36).slice(2, 9),
+        id: uuidv4(),
         name,
         days: { ...weekPlan },
         createdAt: Date.now(),
