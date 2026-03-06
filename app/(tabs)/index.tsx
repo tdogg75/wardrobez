@@ -17,6 +17,7 @@ import {
   NativeSyntheticEvent,
   NativeScrollEvent,
 } from "react-native";
+import { FlashList } from "@shopify/flash-list";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -192,7 +193,7 @@ export default function WardrobeScreen() {
   const [seasonBannerDismissed, setSeasonBannerDismissed] = useState(false);
 
   // Scroll-to-top button state (#28)
-  const listRef = useRef<FlatList<ClothingItem>>(null);
+  const listRef = useRef<FlashList<ClothingItem>>(null);
   const sectionListRef = useRef<SectionList<ClothingItem[]>>(null);
   const [showScrollTop, setShowScrollTop] = useState(false);
 
@@ -1104,13 +1105,13 @@ export default function WardrobeScreen() {
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.colors.primary} />}
         />
       ) : (
-        <FlatList
+        <FlashList
           ref={listRef}
           key={`grid-${numColumns}`}
           data={filtered}
           keyExtractor={(item) => item.id}
           numColumns={numColumns}
-          columnWrapperStyle={[styles.row, { gap: itemGap }]}
+          estimatedItemSize={compact ? 100 : 220}
           contentContainerStyle={styles.list}
           renderItem={({ item }) => renderCard(item)}
           onScroll={handleScroll}

@@ -1,0 +1,10 @@
+appId: com.wardrobez.app
+---
+# E2E test: Suggest an outfit
+- launchApp
+- tapOn: "Suggest"
+- assertVisible: "Get Outfit Ideas"
+- tapOn: "Generate"
+- assertVisible:
+    text: "Score:"
+    optional: true
