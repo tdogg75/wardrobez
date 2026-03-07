@@ -1,6 +1,6 @@
 import * as FileSystem from "expo-file-system";
 import type { ClothingCategory, FabricType } from "@/models/types";
-import { PRESET_COLORS, findClosestPresetIndex } from "@/constants/colors";
+import { findClosestPresetIndex } from "@/constants/colors";
 
 export interface ProductSearchResult {
   category?: ClothingCategory;

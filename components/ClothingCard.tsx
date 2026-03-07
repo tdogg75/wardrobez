@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { View, Text, Pressable, Image, StyleSheet, Modal, ScrollView, TouchableWithoutFeedback } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import type { ClothingItem, ItemFlag, LaundryStatus } from "@/models/types";
+import type { ClothingItem, ItemFlag } from "@/models/types";
 import { CATEGORY_LABELS, SUBCATEGORIES, ITEM_FLAG_LABELS, LAUNDRY_STATUS_ICONS } from "@/models/types";
 import { ColorDot } from "./ColorDot";
 import { useTheme } from "@/hooks/useTheme";

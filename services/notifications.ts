@@ -1,4 +1,4 @@
-import { Platform, Alert } from "react-native";
+import { Platform } from "react-native";
 
 /**
  * Simplified notification scheduling for daily outfit reminders.

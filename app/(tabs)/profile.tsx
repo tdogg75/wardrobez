@@ -10,7 +10,6 @@ import {
   TextInput,
   Image,
   ActivityIndicator,
-  Linking,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { useFocusEffect } from "expo-router";
@@ -30,17 +29,12 @@ import {
 import { fetchProductFromUrl } from "@/services/productSearch";
 import * as ImagePicker from "expo-image-picker";
 import { useTheme } from "@/hooks/useTheme";
-import { hexToHSL } from "@/constants/colors";
 import { CATEGORY_LABELS, ARCHIVE_REASON_LABELS } from "@/models/types";
 import type { ClothingCategory, ClothingItem, WishlistItem, InspirationPin } from "@/models/types";
-import { MoodBoard } from "@/components/MoodBoard";
 import {
   getInspirationPins,
   saveInspirationPin,
   deleteInspirationPin,
-  getPackingLists,
-  savePackingList,
-  deletePackingList,
 } from "@/services/storage";
 import * as FileSystem from "expo-file-system";
 import * as Sharing from "expo-sharing";
@@ -991,7 +985,7 @@ export default function ProfileScreen() {
     </Pressable>
   );
 
-  const SubHeading = ({ children }: { children: string }) => (
+  const SubHeading = ({ children }: { children: React.ReactNode }) => (
     <Text style={styles.subHeading}>{children}</Text>
   );
 

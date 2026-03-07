@@ -1,4 +1,4 @@
-import type { ClothingItem, Outfit } from "@/models/types";
+import type { ClothingItem } from "@/models/types";
 import { hexToHSL } from "@/constants/colors";
 
 export interface StyleAnalysisResult {
@@ -85,7 +85,7 @@ export function analyzeOutfitStyle(items: ClothingItem[]): StyleAnalysisResult {
 
 function analyzeColorHarmony(items: ClothingItem[]): { score: number; note: string } {
   const hsls = items.map((i) => hexToHSL(i.color));
-  const hues = hsls.map((h) => h.h);
+  const _hues = hsls.map((h) => h.h);
 
   // Check for neutrals (low saturation)
   const neutralCount = hsls.filter((h) => h.s < 15).length;

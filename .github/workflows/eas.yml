@@ -29,5 +29,16 @@ jobs:
       - name: Install dependencies
         run: npm ci --legacy-peer-deps
 
+      - name: Verify EXPO_TOKEN
+        run: |
+          if [ -z "$EXPO_TOKEN" ]; then
+            echo "::error::EXPO_TOKEN secret is not set."
+            echo "::error::Add it under: GitHub repo → Settings → Secrets and variables → Actions → New repository secret"
+            echo "::error::Get a token from: https://expo.dev/accounts/[your-username]/settings/access-tokens"
+            exit 1
+          fi
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+
       - name: Build (preview APK)
         run: eas build --platform android --profile preview --non-interactive

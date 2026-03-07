@@ -10,7 +10,6 @@ import {
   Alert,
   Modal,
   ActivityIndicator,
-  Linking,
   Switch,
 } from "react-native";
 import { fetchProductFromUrl } from "@/services/productSearch";

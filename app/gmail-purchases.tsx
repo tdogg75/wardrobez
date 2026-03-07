@@ -11,7 +11,6 @@ import {
   TextInput,
   Modal,
   Linking,
-  FlatList,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -357,8 +356,8 @@ export default function GmailPurchasesScreen() {
           2. Create a project (or select existing){"\n"}
           3. Enable the Gmail API{"\n"}
           4. Go to Credentials → Create OAuth 2.0 Client ID{"\n"}
-          5. Select <Text style={{ fontWeight: "700" }}>"Desktop app"</Text> as the application type{"\n"}
-          6. Give it any name (e.g. "Wardrobez"){"\n"}
+          5. Select <Text style={{ fontWeight: "700" }}>&quot;Desktop app&quot;</Text> as the application type{"\n"}
+          6. Give it any name (e.g. {'"'}Wardrobez{'"'}){"\n"}
           7. Click Create — no redirect URIs needed for Desktop apps{"\n"}
           8. Copy the <Text style={{ fontWeight: "700" }}>Client ID</Text> and paste it below
         </Text>
@@ -932,7 +931,7 @@ export default function GmailPurchasesScreen() {
           <Ionicons name="search-outline" size={64} color={theme.colors.textLight} />
           <Text style={styles.title}>No Purchases Found</Text>
           <Text style={styles.subtitle}>
-            We couldn't find any fashion-related purchase emails in the last 2 years.
+            {"We couldn't find any fashion-related purchase emails in the last 2 years."}
           </Text>
           <Pressable style={styles.primaryBtn} onPress={() => router.back()} accessibilityRole="button" accessibilityLabel="Go back">
             <Text style={styles.primaryBtnText}>Go Back</Text>

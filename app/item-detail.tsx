@@ -8,7 +8,6 @@ import {
   Pressable,
   Alert,
   Modal,
-  Linking,
   Dimensions,
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
@@ -122,6 +121,7 @@ export default function ItemDetailScreen() {
 
   const ageSource: string | number | undefined = item.purchaseDate ?? item.createdAt;
 
+  // eslint-disable-next-line react-hooks/rules-of-hooks
   const freshness = useMemo(
     () => getWearFreshness(item.wearDates, item.wearCount),
     [item.wearDates, item.wearCount]

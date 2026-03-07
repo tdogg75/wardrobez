@@ -10,7 +10,6 @@ import {
   Alert,
   ActivityIndicator,
   Modal,
-  Linking,
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
@@ -328,8 +327,8 @@ export default function AddItemScreen() {
         name: `${name.trim()} ${i + 1}`,
         category,
         subCategory: subCategory || undefined,
-        color,
-        colorName,
+        color: finalColor,
+        colorName: finalColorName,
         fabricType,
         imageUris: [result.assets[i].uri],
         wearCount: 0,
@@ -338,7 +337,6 @@ export default function AddItemScreen() {
         favorite: false,
         createdAt: Date.now() + i,
         cost: parsedCost,
-        seasons: selectedSeasons,
       });
       created++;
     }
@@ -1791,19 +1789,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 16,
-    gap: 4,
-  },
-  quickModeText: {
-    fontSize: 12,
-    fontWeight: "600",
-  },
-  quickModeToggle: {
-    flexDirection: "row",
-    alignItems: "center",
-    alignSelf: "flex-end",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
     gap: 4,
   },
   quickModeText: {

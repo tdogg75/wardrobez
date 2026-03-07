@@ -27,7 +27,7 @@ import {
   OCCASION_LABELS,
   CATEGORY_LABELS,
 } from "@/models/types";
-import type { ClothingItem, Season, Occasion, Outfit, PlannedOutfit, SavedWeekPlan } from "@/models/types";
+import type { ClothingItem, Season, Occasion, Outfit, SavedWeekPlan } from "@/models/types";
 import { getPlannedOutfits, savePlannedOutfit, deletePlannedOutfit, getSavedWeekPlans, saveWeekPlan, deleteWeekPlan } from "@/services/storage";
 import { v4 as uuidv4 } from "uuid";
 
@@ -572,7 +572,7 @@ export default function OutfitsScreen() {
               <View style={[styles.savePlanContent, { backgroundColor: theme.colors.background }]}>
                 <Text style={[styles.savePlanTitle, { color: theme.colors.text }]}>Save Week Plan</Text>
                 <Text style={[styles.savePlanSubtitle, { color: theme.colors.textSecondary }]}>
-                  Give this week's plan a name to reuse later
+                  {"Give this week's plan a name to reuse later"}
                 </Text>
                 <TextInput
                   style={[styles.savePlanInput, { backgroundColor: theme.colors.surface, color: theme.colors.text, borderColor: theme.colors.border }]}
@@ -1401,7 +1401,7 @@ const styles = StyleSheet.create({
     marginBottom: 6,
     lineHeight: 16,
   },
-  ratingRow: { flexDirection: "row", alignItems: "center", gap: 2 },
+  ratingRow: { flexDirection: "row", alignItems: "center", gap: 2, marginLeft: 4 },
   itemCount: {
     fontSize: 11,
     marginLeft: 8,
@@ -1417,11 +1417,6 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     borderWidth: 1,
     borderColor: "rgba(0,0,0,0.1)",
-  },
-  ratingRow: {
-    flexDirection: "row",
-    gap: 1,
-    marginLeft: 4,
   },
   metaRow: {
     flexDirection: "row",

@@ -28,7 +28,7 @@ import { ColorDot } from "@/components/ColorDot";
 import { MoodBoard } from "@/components/MoodBoard";
 import { EmptyState } from "@/components/EmptyState";
 import { useTheme } from "@/hooks/useTheme";
-import type { Season, Occasion } from "@/models/types";
+import type { Season, Occasion, ClothingItem as ClothingItemType } from "@/models/types";
 import { SEASON_LABELS, CATEGORY_LABELS, OCCASION_LABELS } from "@/models/types";
 
 // SCREEN_WIDTH is now computed dynamically inside the component via useWindowDimensions()
@@ -68,28 +68,6 @@ export default function SuggestScreen() {
   const [activeQuickPick, setActiveQuickPick] = useState(0);
   const quickPickScrollRef = useRef<ScrollView>(null);
 
-  // Memoize suggestion engine results (#40) — avoid recomputing when inputs haven't changed
-  const suggestionCacheRef = useRef<{
-    items: typeof occasionFilteredItems | null;
-    season: Season | undefined;
-    ratedOutfits: typeof ratedOutfits;
-    results: SuggestionResult[];
-  }>({ items: null, season: undefined, ratedOutfits: [], results: [] });
-
-  const getCachedSuggestions = useCallback((maxResults: number): SuggestionResult[] => {
-    const cache = suggestionCacheRef.current;
-    if (
-      cache.items === occasionFilteredItems &&
-      cache.season === season &&
-      cache.ratedOutfits === ratedOutfits &&
-      cache.results.length >= maxResults
-    ) {
-      return cache.results.slice(0, maxResults);
-    }
-    const results = suggestOutfits(occasionFilteredItems, { season, maxResults, ratedOutfits });
-    suggestionCacheRef.current = { items: occasionFilteredItems, season, ratedOutfits, results };
-    return results;
-  }, [occasionFilteredItems, season, ratedOutfits]);
   const quickPickFadeAnim = useRef(new Animated.Value(0)).current;
 
   // Save modal state — lets user pick occasions/seasons before saving
@@ -200,6 +178,29 @@ export default function SuggestScreen() {
     // Otherwise include all items so the engine has enough to work with
     return items;
   }, [items, selectedOccasion]);
+
+  // Memoize suggestion engine results (#40) — avoid recomputing when inputs haven't changed
+  const suggestionCacheRef = useRef<{
+    items: ClothingItemType[] | null;
+    season: Season | undefined;
+    ratedOutfits: typeof ratedOutfits;
+    results: SuggestionResult[];
+  }>({ items: null, season: undefined, ratedOutfits: [], results: [] });
+
+  const getCachedSuggestions = useCallback((maxResults: number): SuggestionResult[] => {
+    const cache = suggestionCacheRef.current;
+    if (
+      cache.items === occasionFilteredItems &&
+      cache.season === season &&
+      cache.ratedOutfits === ratedOutfits &&
+      cache.results.length >= maxResults
+    ) {
+      return cache.results.slice(0, maxResults);
+    }
+    const results = suggestOutfits(occasionFilteredItems, { season, maxResults, ratedOutfits });
+    suggestionCacheRef.current = { items: occasionFilteredItems, season, ratedOutfits, results };
+    return results;
+  }, [occasionFilteredItems, season, ratedOutfits]);
 
   // Lock generated names after render so setState is never called during render.
   useEffect(() => {
@@ -1100,7 +1101,7 @@ export default function SuggestScreen() {
           <Pressable style={{ backgroundColor: theme.colors.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, paddingBottom: 40 }} onPress={() => {}} accessibilityRole="button" accessibilityLabel="Flag modal content">
             <Text style={{ fontSize: 18, fontWeight: "700", color: theme.colors.text, marginBottom: 8 }}>Flag Outfit</Text>
             <Text style={{ fontSize: 14, color: theme.colors.textSecondary, marginBottom: 16 }}>
-              Tell us why this outfit doesn't work and we won't suggest it again.
+              {"Tell us why this outfit doesn't work and we won't suggest it again."}
             </Text>
 
             {flagSuggestion && (
