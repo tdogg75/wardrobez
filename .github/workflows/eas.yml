@@ -40,5 +40,14 @@ jobs:
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
 
+      - name: Verify EAS project is configured
+        run: |
+          PROJECT_ID=$(node -e "const a=require('./app.json'); console.log(a.expo?.extra?.eas?.projectId||'')" 2>/dev/null || echo "")
+          if [ -z "$PROJECT_ID" ]; then
+            echo "::error::EAS projectId is not set in app.json."
+            echo "::error::Run 'eas init' locally, then commit the updated app.json."
+            exit 1
+          fi
+
       - name: Build (preview APK)
         run: eas build --platform android --profile preview --non-interactive
