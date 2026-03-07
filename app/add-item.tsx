@@ -36,6 +36,7 @@ import {
   fetchSearchResult,
 } from "@/services/productSearch";
 import type { WebSearchResult } from "@/services/productSearch";
+import { recognizeClothing, hasApiKey } from "@/services/aiRecognition";
 import type {
   ClothingCategory,
   FabricType,
@@ -111,6 +112,7 @@ export default function AddItemScreen() {
   const [colorIdx, setColorIdx] = useState(0);
   const [fabricType, setFabricType] = useState<FabricType>("cotton");
   const [imageUris, setImageUris] = useState<string[]>([]);
+  const [aiRecognizing, setAiRecognizing] = useState(false);
   const [brand, setBrand] = useState("");
   const [productUrl, setProductUrl] = useState("");
   const [fetchingUrl, setFetchingUrl] = useState(false);
@@ -273,7 +275,27 @@ export default function AddItemScreen() {
       quality: 0.8,
     });
     if (!result.canceled && result.assets[0]) {
-      setImageUris((prev) => [...prev, result.assets[0].uri]);
+      const uri = result.assets[0].uri;
+      setImageUris((prev) => [...prev, uri]);
+
+      // AI recognition (#81) — only if API key is available and fields not yet filled
+      const hasKey = await hasApiKey();
+      if (hasKey && !name.trim()) {
+        setAiRecognizing(true);
+        try {
+          const recognition = await recognizeClothing(uri);
+          if (recognition.confidence !== "low" && !recognition.error) {
+            if (recognition.name && !name.trim()) setName(recognition.name);
+            if (recognition.category) setCategory(recognition.category);
+            if (recognition.fabricType) setFabricType(recognition.fabricType);
+            // Color will be applied via preset matching
+          }
+        } catch (err) {
+          console.warn("[add-item] AI recognition error:", err);
+        } finally {
+          setAiRecognizing(false);
+        }
+      }
     }
   };
 
@@ -591,8 +613,14 @@ export default function AddItemScreen() {
             accessibilityRole="button"
             accessibilityLabel="Add photo"
           >
-            <Ionicons name="camera-outline" size={28} color={theme.colors.textLight} />
-            <Text style={[styles.addPhotoLabel, { fontSize: theme.fontSize.xs, color: theme.colors.textLight }]}>Add Photo</Text>
+            {aiRecognizing ? (
+              <ActivityIndicator size="small" color={theme.colors.primary} />
+            ) : (
+              <Ionicons name="camera-outline" size={28} color={theme.colors.textLight} />
+            )}
+            <Text style={[styles.addPhotoLabel, { fontSize: theme.fontSize.xs, color: theme.colors.textLight }]}>
+              {aiRecognizing ? "AI..." : "Add Photo"}
+            </Text>
           </Pressable>
           {/* Batch import (#66) */}
           <Pressable

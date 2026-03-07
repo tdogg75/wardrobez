@@ -2600,6 +2600,24 @@ export default function ProfileScreen() {
             <Ionicons name="mail-outline" size={20} color={theme.colors.primary} />
             <Text style={{ fontSize: theme.fontSize.md, color: theme.colors.text }}>Import from Gmail</Text>
           </Pressable>
+          <Pressable
+            style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 10 }}
+            onPress={() => router.push("/analytics")}
+            accessibilityRole="button"
+            accessibilityLabel="Open analytics dashboard"
+          >
+            <Ionicons name="bar-chart-outline" size={20} color={theme.colors.primary} />
+            <Text style={{ fontSize: theme.fontSize.md, color: theme.colors.text }}>Analytics Dashboard</Text>
+          </Pressable>
+          <Pressable
+            style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 10 }}
+            onPress={() => router.push("/virtual-tryon")}
+            accessibilityRole="button"
+            accessibilityLabel="Open virtual try-on"
+          >
+            <Ionicons name="person-outline" size={20} color={theme.colors.primary} />
+            <Text style={{ fontSize: theme.fontSize.md, color: theme.colors.text }}>Virtual Try-On</Text>
+          </Pressable>
         </View>
         <Text style={{ fontSize: theme.fontSize.xs, color: theme.colors.textLight, marginTop: theme.spacing.sm }}>Wardrobez v1.0.0</Text>
       </View>

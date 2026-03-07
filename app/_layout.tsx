@@ -98,6 +98,13 @@ function AppContent() {
               headerShown: false,
             }}
           />
+          <Stack.Screen
+            name="analytics"
+            options={{
+              presentation: "modal",
+              headerShown: false,
+            }}
+          />
         </Stack>
       </OutfitsProvider>
     </ClothingItemsProvider>
