@@ -11,6 +11,7 @@ import { useRouter, useLocalSearchParams, useNavigation } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useClothingItems } from "@/hooks/useClothingItems";
 import { useTheme } from "@/hooks/useTheme";
+import { Theme } from "@/constants/theme";
 import { CATEGORY_LABELS } from "@/models/types";
 
 export default function BrandItemsScreen() {
@@ -81,7 +82,7 @@ export default function BrandItemsScreen() {
   );
 }
 
-function makeStyles(theme: any) {
+function makeStyles(theme: typeof Theme) {
   return StyleSheet.create({
     container: {
       flex: 1,

@@ -29,6 +29,7 @@ import {
 import { fetchProductFromUrl } from "@/services/productSearch";
 import * as ImagePicker from "expo-image-picker";
 import { useTheme } from "@/hooks/useTheme";
+import { Theme } from "@/constants/theme";
 import { CATEGORY_LABELS, ARCHIVE_REASON_LABELS } from "@/models/types";
 import type { ClothingCategory, ClothingItem, WishlistItem, InspirationPin } from "@/models/types";
 import {
@@ -50,6 +51,17 @@ const fmt = (n: number) =>
 
 const daysBetween = (a: Date, b: Date) =>
   Math.floor(Math.abs(a.getTime() - b.getTime()) / 86_400_000);
+
+/* ------------------------------------------------------------------ */
+/*  Constants                                                          */
+/* ------------------------------------------------------------------ */
+
+const NEUTRAL_NAMES = ["black", "white", "gray", "grey", "beige", "tan", "brown", "navy"];
+
+const ALL_CATEGORIES: ClothingCategory[] = [
+  "tops", "bottoms", "shorts", "skirts", "dresses", "jumpsuits", "blazers", "jackets",
+  "shoes", "accessories", "purse", "swimwear", "jewelry",
+];
 
 /* ------------------------------------------------------------------ */
 /*  Component                                                          */
@@ -249,8 +261,6 @@ export default function ProfileScreen() {
   );
 
   /* --- Color Palette Analysis --- */
-  const NEUTRAL_NAMES = ["black", "white", "gray", "grey", "beige", "tan", "brown", "navy"];
-
   const colorPalette = useMemo(() => {
     const colorMap: Record<string, { hex: string; name: string; count: number }> = {};
     for (const item of allActive) {
@@ -272,11 +282,6 @@ export default function ProfileScreen() {
   }, [allActive]);
 
   /* --- Wardrobe Gap Analysis --- */
-  const ALL_CATEGORIES: ClothingCategory[] = [
-    "tops", "bottoms", "shorts", "skirts", "dresses", "jumpsuits", "blazers", "jackets",
-    "shoes", "accessories", "purse", "swimwear", "jewelry",
-  ];
-
   const gapInsights = useMemo(() => {
     const catCounts = {} as Record<ClothingCategory, number>;
     for (const cat of ALL_CATEGORIES) {
@@ -2624,7 +2629,7 @@ export default function ProfileScreen() {
 /*  Styles                                                              */
 /* ------------------------------------------------------------------ */
 
-function createStyles(t: any) { return StyleSheet.create({
+function createStyles(t: typeof Theme) { return StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: t.colors.background,

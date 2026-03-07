@@ -12,6 +12,7 @@ import {
   type GestureResponderEvent,
 } from "react-native";
 import { WebView } from "react-native-webview";
+import type { WebViewMessageEvent } from "react-native-webview";
 import { Ionicons } from "@expo/vector-icons";
 import * as FileSystem from "expo-file-system";
 import { Theme } from "@/constants/theme";
@@ -168,7 +169,7 @@ export function ImageColorDropper({
   });
 
   // Handle messages from the WebView
-  const handleWebViewMessage = useCallback((event: any) => {
+  const handleWebViewMessage = useCallback((event: WebViewMessageEvent) => {
     try {
       const data = JSON.parse(event.nativeEvent.data);
       if (data.type === "ready") {

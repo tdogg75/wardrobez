@@ -11,6 +11,8 @@ import {
   Modal,
   TextInput,
   useWindowDimensions,
+  NativeSyntheticEvent,
+  NativeScrollEvent,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
@@ -267,7 +269,7 @@ export default function SuggestScreen() {
     setQuickPickMode(false);
     setCustomNames({});
     setLockedNames({});
-  }, [occasionFilteredItems, season, ratedOutfits, getCachedSuggestions]);
+  }, [occasionFilteredItems, getCachedSuggestions]);
 
   const handleSurpriseMe = useCallback(() => {
     if (occasionFilteredItems.length < 2) {
@@ -285,7 +287,7 @@ export default function SuggestScreen() {
     setQuickPickMode(false);
     setCustomNames({});
     setLockedNames({});
-  }, [occasionFilteredItems, season, getCachedSuggestions]);
+  }, [occasionFilteredItems, getCachedSuggestions]);
 
   const handleQuickPick = useCallback(() => {
     if (occasionFilteredItems.length < 2) {
@@ -314,7 +316,7 @@ export default function SuggestScreen() {
       duration: 300,
       useNativeDriver: true,
     }).start();
-  }, [occasionFilteredItems, season, getCachedSuggestions, quickPickFadeAnim]);
+  }, [occasionFilteredItems, getCachedSuggestions, quickPickFadeAnim]);
 
   const openSaveModal = (suggestion: SuggestionResult, idx: number) => {
     setSaveModalSuggestion({ suggestion, idx });
@@ -375,7 +377,7 @@ export default function SuggestScreen() {
     Alert.alert("Flagged", "This type of outfit won't be suggested again.");
   };
 
-  const handleQuickPickScroll = (event: any) => {
+  const handleQuickPickScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const offsetX = event.nativeEvent.contentOffset.x;
     const index = Math.round(offsetX / (quickPickCardWidth + 16));
     setActiveQuickPick(Math.max(0, Math.min(index, quickPicks.length - 1)));

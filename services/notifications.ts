@@ -1,5 +1,3 @@
-import { Platform } from "react-native";
-
 /**
  * Simplified notification scheduling for daily outfit reminders.
  * Uses expo-notifications if available, otherwise falls back to a no-op.
@@ -8,7 +6,13 @@ import { Platform } from "react-native";
  * For now, this provides the scheduling structure that the app calls.
  */
 
-let Notifications: any = null;
+interface NotificationsModule {
+  requestPermissionsAsync(): Promise<{ status: string }>;
+  scheduleNotificationAsync(options: { content: object; trigger: object }): Promise<void>;
+  cancelAllScheduledNotificationsAsync(): Promise<void>;
+}
+
+let Notifications: NotificationsModule | null = null;
 
 async function loadNotifications() {
   try {

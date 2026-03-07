@@ -111,6 +111,8 @@ function ensureMigrated(): Promise<void> {
 
 // --- Data Migration ---
 
+type RawPersistedItem = Record<string, unknown>;
+
 const WEIGHT_TO_FABRIC: Record<string, FabricType> = {
   light: "cotton",
   medium: "polyester",
@@ -125,11 +127,11 @@ const JEWELRY_SUBCATEGORIES = new Set([
   "rings",
 ]);
 
-function migrateClothingItem(item: any): ClothingItem {
-  const migrated = { ...item };
+function migrateClothingItem(item: RawPersistedItem): ClothingItem {
+  const migrated: RawPersistedItem = { ...item };
 
   if (!migrated.fabricType && migrated.fabricWeight) {
-    migrated.fabricType = WEIGHT_TO_FABRIC[migrated.fabricWeight] ?? "other";
+    migrated.fabricType = WEIGHT_TO_FABRIC[migrated.fabricWeight as string] ?? "other";
     delete migrated.fabricWeight;
   }
 
@@ -154,7 +156,7 @@ function migrateClothingItem(item: any): ClothingItem {
   if (
     migrated.category === "accessories" &&
     migrated.subCategory &&
-    JEWELRY_SUBCATEGORIES.has(migrated.subCategory)
+    JEWELRY_SUBCATEGORIES.has(migrated.subCategory as string)
   ) {
     migrated.category = "jewelry";
   }
@@ -217,7 +219,7 @@ function migrateClothingItem(item: any): ClothingItem {
   }
 
   if (Array.isArray(migrated.occasions)) {
-    migrated.occasions = migrated.occasions
+    migrated.occasions = (migrated.occasions as string[])
       .map((o: string) => {
         if (o === "formal") return "fancy";
         if (o === "date_night") return "party";
@@ -240,24 +242,24 @@ function migrateClothingItem(item: any): ClothingItem {
     migrated.wearDates = migrated.wearDates ?? [];
   }
 
-  return migrated as ClothingItem;
+  return migrated as unknown as ClothingItem;
 }
 
-function migrateOutfit(outfit: any): Outfit {
-  const migrated = { ...outfit };
+function migrateOutfit(outfit: RawPersistedItem): Outfit {
+  const migrated: RawPersistedItem = { ...outfit };
   if (!Array.isArray(migrated.seasons)) migrated.seasons = [];
   if (!Array.isArray(migrated.occasions)) migrated.occasions = [];
   if (!Array.isArray(migrated.wornDates)) migrated.wornDates = [];
   if (typeof migrated.hasRemovedItems !== "boolean") migrated.hasRemovedItems = false;
   if (!Array.isArray(migrated.tags)) migrated.tags = [];
-  return migrated as Outfit;
+  return migrated as unknown as Outfit;
 }
 
 // --- Clothing Items ---
 
 export async function getClothingItems(): Promise<ClothingItem[]> {
   await ensureMigrated();
-  const data = await readJsonFile<any[]>(FILES.CLOTHING_ITEMS);
+  const data = await readJsonFile<RawPersistedItem[]>(FILES.CLOTHING_ITEMS);
   if (!data) return [];
   return data.map(migrateClothingItem);
 }
@@ -367,7 +369,7 @@ export async function unarchiveItem(id: string): Promise<void> {
 
 export async function getOutfits(): Promise<Outfit[]> {
   await ensureMigrated();
-  const data = await readJsonFile<any[]>(FILES.OUTFITS);
+  const data = await readJsonFile<RawPersistedItem[]>(FILES.OUTFITS);
   if (!data) return [];
   return data.map(migrateOutfit);
 }
@@ -653,20 +655,21 @@ async function saveBase64Image(base64: string, filename: string): Promise<string
 
 export async function exportAllData(): Promise<string> {
   await ensureMigrated();
-  const items = await readJsonFile<any[]>(FILES.CLOTHING_ITEMS) ?? [];
-  const outfits = await readJsonFile<any[]>(FILES.OUTFITS) ?? [];
-  const wishlist = await readJsonFile<any[]>(FILES.WISHLIST) ?? [];
+  const items = await readJsonFile<RawPersistedItem[]>(FILES.CLOTHING_ITEMS) ?? [];
+  const outfits = await readJsonFile<RawPersistedItem[]>(FILES.OUTFITS) ?? [];
+  const wishlist = await readJsonFile<RawPersistedItem[]>(FILES.WISHLIST) ?? [];
 
   // Collect all encoding tasks and run them in parallel
   const encodingTasks: Promise<void>[] = [];
   const photos: Record<string, string> = {};
 
   for (const item of items) {
-    if (Array.isArray(item.imageUris)) {
-      for (let i = 0; i < item.imageUris.length; i++) {
-        const uri = item.imageUris[i];
+    const imageUris = item.imageUris as string[] | undefined;
+    if (Array.isArray(imageUris)) {
+      for (let i = 0; i < imageUris.length; i++) {
+        const uri = imageUris[i];
         if (uri && !uri.startsWith("http")) {
-          const key = `${item.id}_${i}`;
+          const key = `${item.id as string}_${i}`;
           encodingTasks.push(
             encodeImageToBase64(uri).then((b64) => {
               if (b64) photos[key] = b64;
@@ -678,11 +681,12 @@ export async function exportAllData(): Promise<string> {
   }
 
   for (const outfit of outfits) {
-    if (Array.isArray(outfit.wornEntries)) {
-      for (let i = 0; i < outfit.wornEntries.length; i++) {
-        const entry = outfit.wornEntries[i];
+    const wornEntries = outfit.wornEntries as Array<{ selfieUri?: string }> | undefined;
+    if (Array.isArray(wornEntries)) {
+      for (let i = 0; i < wornEntries.length; i++) {
+        const entry = wornEntries[i];
         if (entry.selfieUri && !entry.selfieUri.startsWith("http")) {
-          const key = `selfie_${outfit.id}_${i}`;
+          const key = `selfie_${outfit.id as string}_${i}`;
           encodingTasks.push(
             encodeImageToBase64(entry.selfieUri).then((b64) => {
               if (b64) photos[key] = b64;
@@ -780,7 +784,7 @@ export async function importAllData(jsonString: string): Promise<void> {
   // Remap selfie URIs
   for (const outfit of data.outfits) {
     if (Array.isArray(outfit.wornEntries)) {
-      outfit.wornEntries = outfit.wornEntries.map((entry: any, i: number) => {
+      outfit.wornEntries = outfit.wornEntries.map((entry: Record<string, unknown>, i: number) => {
         const key = `selfie_${outfit.id}_${i}`;
         if (photoKeyToUri[key]) {
           return { ...entry, selfieUri: photoKeyToUri[key] };

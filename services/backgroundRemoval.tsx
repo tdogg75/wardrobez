@@ -21,6 +21,7 @@
 import React, { useRef, useCallback, useEffect } from "react";
 import { View, StyleSheet } from "react-native";
 import { WebView } from "react-native-webview";
+import type { WebViewMessageEvent } from "react-native-webview";
 import * as FileSystem from "expo-file-system";
 
 // ---------------------------------------------------------------------------
@@ -307,7 +308,7 @@ export function BackgroundRemover() {
     };
   }, []);
 
-  const handleMessage = useCallback(async (event: any) => {
+  const handleMessage = useCallback(async (event: WebViewMessageEvent) => {
     try {
       const msg = JSON.parse(event.nativeEvent.data);
 

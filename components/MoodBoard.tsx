@@ -1,4 +1,4 @@
-import React from "react";
+import React, { ComponentProps } from "react";
 import { View, Image, StyleSheet, Text, Pressable } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import type { ClothingItem, ClothingCategory } from "@/models/types";
@@ -184,7 +184,7 @@ export const MoodBoard = React.forwardRef<View, MoodBoardProps>(
               ) : (
                 <View style={[styles.cellPlaceholder, { backgroundColor: item.color + "40" }]}>
                   <Ionicons
-                    name={iconName as any}
+                    name={iconName as ComponentProps<typeof Ionicons>["name"]}
                     size={Math.max(16, Math.round(size * 0.06))}
                     color={item.color}
                   />

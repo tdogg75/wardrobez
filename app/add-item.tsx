@@ -990,8 +990,8 @@ export default function AddItemScreen() {
             <Chip
               key={`custom-${cp}`}
               label={cp}
-              selected={pattern === cp as any}
-              onPress={() => setPattern(cp as any)}
+              selected={pattern === cp as Pattern}
+              onPress={() => setPattern(cp as Pattern)}
             />
           ))}
           <Pressable
@@ -1016,7 +1016,7 @@ export default function AddItemScreen() {
                 const trimmed = patternInput.trim();
                 if (trimmed && !customPatterns.includes(trimmed)) {
                   setCustomPatterns((prev) => [...prev, trimmed]);
-                  setPattern(trimmed as any);
+                  setPattern(trimmed as Pattern);
                 }
                 setPatternInput("");
                 setShowPatternAdd(false);
@@ -1378,7 +1378,7 @@ export default function AddItemScreen() {
                 saturation={hslAdjust?.s ?? 50}
                 lightness={hslAdjust?.l ?? 50}
                 size={240}
-                onColorChange={(h, s, l) => setHslAdjust({ h, s, l: hslAdjust?.l ?? 50 })}
+                onColorChange={(h, s, _l) => setHslAdjust({ h, s, l: hslAdjust?.l ?? 50 })}
               />
             </View>
 

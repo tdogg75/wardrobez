@@ -286,7 +286,7 @@ function extractJsonLdProductType(html: string): string {
   return parts.join(" ");
 }
 
-function findLdCategory(data: any): string | null {
+function findLdCategory(data: unknown): string | null {
   if (!data) return null;
   if (Array.isArray(data)) {
     for (const item of data) {
@@ -295,14 +295,15 @@ function findLdCategory(data: any): string | null {
     }
     return null;
   }
-  if (typeof data === "object") {
-    if (typeof data.category === "string") return data.category;
-    if (Array.isArray(data.category)) return data.category.join(" ");
-    if (typeof data.productType === "string") return data.productType;
-    if (Array.isArray(data.productType)) return data.productType.join(" ");
-    if (typeof data.name === "string" && data["@type"] === "Product") return data.name;
-    if (data["@graph"]) return findLdCategory(data["@graph"]);
-    if (data.offers) return findLdCategory(data.offers);
+  if (typeof data === "object" && data !== null) {
+    const obj = data as Record<string, unknown>;
+    if (typeof obj.category === "string") return obj.category;
+    if (Array.isArray(obj.category)) return (obj.category as string[]).join(" ");
+    if (typeof obj.productType === "string") return obj.productType;
+    if (Array.isArray(obj.productType)) return (obj.productType as string[]).join(" ");
+    if (typeof obj.name === "string" && obj["@type"] === "Product") return obj.name;
+    if (obj["@graph"]) return findLdCategory(obj["@graph"]);
+    if (obj.offers) return findLdCategory(obj.offers);
   }
   return null;
 }
@@ -351,7 +352,7 @@ function extractPrice(html: string): number | null {
   return null;
 }
 
-function findPriceInLd(data: any): number | null {
+function findPriceInLd(data: unknown): number | null {
   if (!data) return null;
   if (Array.isArray(data)) {
     for (const item of data) {
@@ -360,14 +361,15 @@ function findPriceInLd(data: any): number | null {
     }
     return null;
   }
-  if (typeof data === "object") {
-    if (data.price != null) {
-      const p = parseFloat(String(data.price));
+  if (typeof data === "object" && data !== null) {
+    const obj = data as Record<string, unknown>;
+    if (obj.price != null) {
+      const p = parseFloat(String(obj.price));
       if (!isNaN(p)) return p;
     }
-    if (data.offers) return findPriceInLd(data.offers);
-    if (data.lowPrice != null) {
-      const p = parseFloat(String(data.lowPrice));
+    if (obj.offers) return findPriceInLd(obj.offers);
+    if (obj.lowPrice != null) {
+      const p = parseFloat(String(obj.lowPrice));
       if (!isNaN(p)) return p;
     }
   }
@@ -405,7 +407,7 @@ function extractProductImage(html: string): string | null {
   return null;
 }
 
-function findImageInLd(data: any): string | null {
+function findImageInLd(data: unknown): string | null {
   if (!data) return null;
   if (Array.isArray(data)) {
     for (const item of data) {
@@ -414,16 +416,20 @@ function findImageInLd(data: any): string | null {
     }
     return null;
   }
-  if (typeof data === "object") {
-    if (typeof data.image === "string" && data.image.startsWith("http")) {
-      return data.image;
+  if (typeof data === "object" && data !== null) {
+    const obj = data as Record<string, unknown>;
+    if (typeof obj.image === "string" && obj.image.startsWith("http")) {
+      return obj.image;
     }
-    if (Array.isArray(data.image) && data.image.length > 0) {
-      const first = data.image[0];
+    if (Array.isArray(obj.image) && obj.image.length > 0) {
+      const first = obj.image[0] as unknown;
       if (typeof first === "string" && first.startsWith("http")) return first;
-      if (typeof first === "object" && first.url) return first.url;
+      if (typeof first === "object" && first !== null && (first as Record<string, unknown>).url) {
+        return (first as Record<string, unknown>).url as string;
+      }
     }
-    if (data.image?.url) return data.image.url;
+    const img = obj.image as Record<string, unknown> | undefined;
+    if (img?.url) return img.url as string;
   }
   return null;
 }
@@ -543,7 +549,7 @@ async function downloadImage(url: string): Promise<string | undefined> {
     if (result.status === 200) {
       // Verify the file has actual content (not an error page)
       const info = await FileSystem.getInfoAsync(result.uri);
-      if (info.exists && (info as any).size > 500) {
+      if (info.exists && info.size > 500) {
         return result.uri;
       }
     }

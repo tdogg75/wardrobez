@@ -61,14 +61,14 @@ export default function DesignerScreen() {
   const [saveTemplateModalVisible, setSaveTemplateModalVisible] = useState(false);
   const [templateNameInput, setTemplateNameInput] = useState("");
 
-  useEffect(() => {
-    loadTemplates();
-  }, []);
-
   const loadTemplates = useCallback(async () => {
     const loaded = await getOutfitTemplates();
     setTemplates(loaded);
   }, []);
+
+  useEffect(() => {
+    loadTemplates();
+  }, [loadTemplates]);
 
   const selectedItems = useMemo(
     () => items.filter((i) => selectedIds.has(i.id)),

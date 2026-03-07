@@ -12,8 +12,17 @@ import { Ionicons } from "@expo/vector-icons";
 import { useTheme } from "@/hooks/useTheme";
 import { lookupBarcode } from "@/services/barcodeService";
 
-let CameraView: any = null;
-let useCameraPermissions: any = null;
+type CameraPermission = { granted: boolean } | null;
+type CameraViewComponent = React.ComponentType<{
+  style?: object;
+  facing?: string;
+  barcodeScannerSettings?: { barcodeTypes: string[] };
+  onBarcodeScanned?: (result: { type: string; data: string }) => void;
+}>;
+type UseCameraPermissions = () => [CameraPermission, (() => Promise<void>) | null];
+
+let CameraView: CameraViewComponent | null = null;
+let useCameraPermissions: UseCameraPermissions | null = null;
 
 try {
   // eslint-disable-next-line @typescript-eslint/no-var-requires

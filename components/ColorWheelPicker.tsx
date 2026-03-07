@@ -1,5 +1,5 @@
 import React, { useCallback, useRef } from "react";
-import { View, StyleSheet, PanResponder, Dimensions } from "react-native";
+import { View, StyleSheet, PanResponder } from "react-native";
 import { hslToHex } from "@/constants/colors";
 
 interface Props {

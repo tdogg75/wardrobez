@@ -12,6 +12,7 @@ import {
   type PanResponderGestureState,
 } from "react-native";
 import { WebView } from "react-native-webview";
+import type { WebViewMessageEvent } from "react-native-webview";
 import * as FileSystem from "expo-file-system";
 import { Ionicons } from "@expo/vector-icons";
 import { Theme } from "@/constants/theme";
@@ -244,7 +245,7 @@ function cropImage(sx,sy,sw,sh) {
   }, [dataUri]);
 
   const handleWebViewMessage = useCallback(
-    async (event: any) => {
+    async (event: WebViewMessageEvent) => {
       try {
         const data = JSON.parse(event.nativeEvent.data);
         if (data.type === "ready" && data.naturalWidth && data.naturalHeight) {

@@ -494,7 +494,7 @@ export default function EditItemScreen() {
 
   // Intercept back navigation to prompt save
   useEffect(() => {
-    const unsubscribe = navigation.addListener("beforeRemove", (e: any) => {
+    const unsubscribe = navigation.addListener("beforeRemove", (e: { preventDefault(): void; data: { action: { type: string; [key: string]: unknown } } }) => {
       if (!hasChanges) return;
       e.preventDefault();
       Alert.alert("Unsaved Changes", "Do you want to save your changes?", [
@@ -927,8 +927,8 @@ export default function EditItemScreen() {
             <Chip
               key={`custom-${cp}`}
               label={cp}
-              selected={pattern === cp as any}
-              onPress={() => { setPattern(cp as any); markChanged(); }}
+              selected={pattern === cp as Pattern}
+              onPress={() => { setPattern(cp as Pattern); markChanged(); }}
             />
           ))}
           <Pressable
@@ -954,7 +954,7 @@ export default function EditItemScreen() {
                 const trimmed = patternInput.trim();
                 if (trimmed && !customPatterns.includes(trimmed)) {
                   setCustomPatterns((prev) => [...prev, trimmed]);
-                  setPattern(trimmed as any);
+                  setPattern(trimmed as Pattern);
                   markChanged();
                 }
                 setPatternInput("");
@@ -1362,7 +1362,7 @@ export default function EditItemScreen() {
                 saturation={hslAdjust?.s ?? 50}
                 lightness={hslAdjust?.l ?? 50}
                 size={240}
-                onColorChange={(h, s, l) => setHslAdjust({ h, s, l: hslAdjust?.l ?? 50 })}
+                onColorChange={(h, s, _l) => setHslAdjust({ h, s, l: hslAdjust?.l ?? 50 })}
               />
             </View>
 

@@ -323,7 +323,7 @@ export function resolvePixelLayout(
 }[] {
   return layout.slots.map((slot) => ({
     name: slot.name,
-    item: (slot as any).item,
+    item: slot.item,
     pixelX: (slot.x / 100) * containerWidth,
     pixelY: (slot.y / 100) * containerHeight,
     pixelWidth: (slot.width / 100) * containerWidth,

@@ -59,7 +59,7 @@ export default function OutfitDetailScreen() {
   const [showStyleAnalysis, setShowStyleAnalysis] = useState(false);
   const [showRemixModal, setShowRemixModal] = useState(false);
   const [remixItemId, setRemixItemId] = useState<string | null>(null);
-  const moodBoardRef = useRef<any>(null);
+  const moodBoardRef = useRef<ViewShot>(null);
 
   // Build dynamic styles based on the current theme
   const styles = useMemo(() => makeStyles(theme), [theme]);
@@ -73,7 +73,7 @@ export default function OutfitDetailScreen() {
         [{ text: "OK", onPress: () => markNotified(outfit.id) }]
       );
     }
-  }, [outfit?.id, outfit?.hasRemovedItems, outfit?.removedItemNotified]);
+  }, [outfit?.id, outfit?.hasRemovedItems, outfit?.removedItemNotified, markNotified]);
 
   const outfitItems = useMemo(
     () => (outfit?.itemIds ?? []).map((itemId) => getById(itemId)).filter(Boolean) as ClothingItem[],
