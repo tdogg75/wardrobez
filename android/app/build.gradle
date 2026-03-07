@@ -86,7 +86,7 @@ android {
     buildToolsVersion rootProject.ext.buildToolsVersion
     compileSdk rootProject.ext.compileSdkVersion
 
-    namespace "com.wardrobez"
+    namespace "com.wardrobez.app"
     buildFeatures {
         // AGP 8.x disables BuildConfig generation by default. Re-enable it so
         // Expo modules that reference BuildConfig continue to compile.
