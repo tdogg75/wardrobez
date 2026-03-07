@@ -42,7 +42,7 @@ import type {
   InspirationPin,
   PackingList,
 } from "@/models/types";
-import { v4 as uuidv4 } from "uuid";
+import { randomUUID } from "expo-crypto";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -97,7 +97,7 @@ export interface DeltaSyncPayload {
 async function getDeviceId(): Promise<string> {
   let deviceId = await AsyncStorage.getItem(SYNC_KEYS.DEVICE_ID);
   if (!deviceId) {
-    deviceId = "device_" + uuidv4();
+    deviceId = "device_" + randomUUID();
     await AsyncStorage.setItem(SYNC_KEYS.DEVICE_ID, deviceId);
   }
   return deviceId;

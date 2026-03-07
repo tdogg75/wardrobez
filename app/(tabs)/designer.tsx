@@ -23,10 +23,10 @@ import { getOutfitTemplates, saveOutfitTemplate, deleteOutfitTemplate } from "@/
 import type { ClothingItem, ClothingCategory, Occasion, Season, OutfitTemplate } from "@/models/types";
 import { CATEGORY_LABELS, OCCASION_LABELS, SEASON_LABELS } from "@/models/types";
 
-import { v4 as uuidv4 } from "uuid";
+import { randomUUID } from "expo-crypto";
 
 function generateId(): string {
-  return uuidv4();
+  return randomUUID();
 }
 
 const CATEGORY_ORDER: ClothingCategory[] = [

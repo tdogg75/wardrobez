@@ -39,7 +39,7 @@ import {
 import * as FileSystem from "expo-file-system";
 import * as Sharing from "expo-sharing";
 import * as DocumentPicker from "expo-document-picker";
-import { v4 as uuidv4 } from "uuid";
+import { randomUUID } from "expo-crypto";
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                            */
@@ -750,7 +750,7 @@ export default function ProfileScreen() {
       return;
     }
     const itemData: WishlistItem = {
-      id: wlEditingItem?.id ?? uuidv4(),
+      id: wlEditingItem?.id ?? randomUUID(),
       name: wlName.trim(),
       brand: wlBrand.trim() || undefined,
       url: wlUrl.trim() || undefined,
@@ -2503,7 +2503,7 @@ export default function ProfileScreen() {
                 });
                 if (!result.canceled && result.assets[0]) {
                   const pin = {
-                    id: uuidv4(),
+                    id: randomUUID(),
                     imageUri: result.assets[0].uri,
                     createdAt: Date.now(),
                   };

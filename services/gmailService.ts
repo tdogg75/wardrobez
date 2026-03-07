@@ -2,7 +2,7 @@ import * as AuthSession from "expo-auth-session";
 import * as WebBrowser from "expo-web-browser";
 import * as FileSystem from "expo-file-system";
 import * as SecureStore from "expo-secure-store";
-import { v4 as uuidv4 } from "uuid";
+import { randomUUID } from "expo-crypto";
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -1059,7 +1059,7 @@ export async function scanGmailForPurchases(
       if (item.imageUrl) {
         try {
           const ext = item.imageUrl.match(/\.(jpg|jpeg|png|webp)/i)?.[1] ?? "jpg";
-          const localPath = `${imgDir}${purchase.id}_${uuidv4().slice(0, 8)}.${ext}`;
+          const localPath = `${imgDir}${purchase.id}_${randomUUID().slice(0, 8)}.${ext}`;
           const result = await FileSystem.downloadAsync(
             item.imageUrl,
             localPath

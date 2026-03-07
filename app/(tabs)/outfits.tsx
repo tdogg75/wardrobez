@@ -29,7 +29,7 @@ import {
 } from "@/models/types";
 import type { ClothingItem, Season, Occasion, Outfit, SavedWeekPlan } from "@/models/types";
 import { getPlannedOutfits, savePlannedOutfit, deletePlannedOutfit, getSavedWeekPlans, saveWeekPlan, deleteWeekPlan } from "@/services/storage";
-import { v4 as uuidv4 } from "uuid";
+import { randomUUID } from "expo-crypto";
 
 const SEASONS: Season[] = ["spring", "summer", "fall", "winter"];
 const OCCASIONS: Occasion[] = ["casual", "work", "fancy", "party", "vacation"];
@@ -272,7 +272,7 @@ export default function OutfitsScreen() {
     }
     try {
       const plan: SavedWeekPlan = {
-        id: uuidv4(),
+        id: randomUUID(),
         name,
         days: { ...weekPlan },
         createdAt: Date.now(),
