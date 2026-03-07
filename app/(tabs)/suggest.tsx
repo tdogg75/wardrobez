@@ -30,12 +30,11 @@ import { EmptyState } from "@/components/EmptyState";
 import { useTheme } from "@/hooks/useTheme";
 import type { Season, Occasion, ClothingItem as ClothingItemType } from "@/models/types";
 import { SEASON_LABELS, CATEGORY_LABELS, OCCASION_LABELS } from "@/models/types";
+import { randomUUID } from "expo-crypto";
 
 // SCREEN_WIDTH is now computed dynamically inside the component via useWindowDimensions()
 
 const OCCASIONS: Occasion[] = ["casual", "work", "fancy", "party", "vacation"];
-
-import { randomUUID } from "expo-crypto";
 
 function generateId(): string {
   return randomUUID();
