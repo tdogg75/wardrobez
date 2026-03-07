@@ -67,10 +67,10 @@ import {
 } from "@/models/types";
 import type { SizeSystem } from "@/models/types";
 
-import { v4 as uuidv4 } from "uuid";
+import { randomUUID } from "expo-crypto";
 
 function generateId(): string {
-  return uuidv4();
+  return randomUUID();
 }
 
 /** Subcategories that should default isOpen to true */
