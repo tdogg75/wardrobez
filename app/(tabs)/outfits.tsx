@@ -1401,7 +1401,7 @@ const styles = StyleSheet.create({
     marginBottom: 6,
     lineHeight: 16,
   },
-  ratingRow: { flexDirection: "row", alignItems: "center", gap: 2 },
+  ratingRow: { flexDirection: "row", alignItems: "center", gap: 2, marginLeft: 4 },
   itemCount: {
     fontSize: 11,
     marginLeft: 8,
@@ -1417,11 +1417,6 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     borderWidth: 1,
     borderColor: "rgba(0,0,0,0.1)",
-  },
-  ratingRow: {
-    flexDirection: "row",
-    gap: 1,
-    marginLeft: 4,
   },
   metaRow: {
     flexDirection: "row",

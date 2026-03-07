@@ -194,6 +194,7 @@ export default function WardrobeScreen() {
 
   // Scroll-to-top button state (#28)
   const listRef = useRef<FlashList<ClothingItem>>(null);
+  const photoListRef = useRef<FlatList<ClothingItem>>(null);
   const sectionListRef = useRef<SectionList<ClothingItem[]>>(null);
   const [showScrollTop, setShowScrollTop] = useState(false);
 
@@ -303,6 +304,7 @@ export default function WardrobeScreen() {
 
   const scrollToTop = useCallback(() => {
     listRef.current?.scrollToOffset?.({ offset: 0, animated: true });
+    photoListRef.current?.scrollToOffset?.({ offset: 0, animated: true });
     sectionListRef.current?.scrollToLocation?.({
       sectionIndex: 0,
       itemIndex: 0,
@@ -681,7 +683,7 @@ export default function WardrobeScreen() {
   const renderSectionHeader = ({
     section,
   }: {
-    section: { title: string };
+    section: { title: string; data: ClothingItem[][] };
   }) => (
     <View style={styles.sectionHeader}>
       <Text style={[styles.sectionHeaderText, { color: theme.colors.text }]}>
@@ -1070,7 +1072,7 @@ export default function WardrobeScreen() {
       ) : photoOnlyMode ? (
         /* Photo-only grid view */
         <FlatList
-          ref={listRef}
+          ref={photoListRef}
           key="photo-grid"
           data={filtered}
           keyExtractor={(item) => item.id}

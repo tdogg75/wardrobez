@@ -28,7 +28,7 @@ import { ColorDot } from "@/components/ColorDot";
 import { MoodBoard } from "@/components/MoodBoard";
 import { EmptyState } from "@/components/EmptyState";
 import { useTheme } from "@/hooks/useTheme";
-import type { Season, Occasion } from "@/models/types";
+import type { Season, Occasion, ClothingItem as ClothingItemType } from "@/models/types";
 import { SEASON_LABELS, CATEGORY_LABELS, OCCASION_LABELS } from "@/models/types";
 
 // SCREEN_WIDTH is now computed dynamically inside the component via useWindowDimensions()
@@ -70,7 +70,7 @@ export default function SuggestScreen() {
 
   // Memoize suggestion engine results (#40) — avoid recomputing when inputs haven't changed
   const suggestionCacheRef = useRef<{
-    items: typeof occasionFilteredItems | null;
+    items: ClothingItemType[] | null;
     season: Season | undefined;
     ratedOutfits: typeof ratedOutfits;
     results: SuggestionResult[];

@@ -991,7 +991,7 @@ export default function ProfileScreen() {
     </Pressable>
   );
 
-  const SubHeading = ({ children }: { children: string }) => (
+  const SubHeading = ({ children }: { children: React.ReactNode }) => (
     <Text style={styles.subHeading}>{children}</Text>
   );
 

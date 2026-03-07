@@ -328,8 +328,8 @@ export default function AddItemScreen() {
         name: `${name.trim()} ${i + 1}`,
         category,
         subCategory: subCategory || undefined,
-        color,
-        colorName,
+        color: finalColor,
+        colorName: finalColorName,
         fabricType,
         imageUris: [result.assets[i].uri],
         wearCount: 0,
@@ -338,7 +338,6 @@ export default function AddItemScreen() {
         favorite: false,
         createdAt: Date.now() + i,
         cost: parsedCost,
-        seasons: selectedSeasons,
       });
       created++;
     }
