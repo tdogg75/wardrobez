@@ -446,8 +446,6 @@ export default function AddItemScreen() {
     setFetchingResult(result.url);
     try {
       const product = await fetchSearchResult(result);
-      setShowSearchResults(false);
-      setSearchResults([]);
       if (product) {
         if (product.name) setName(product.name);
         if (product.brand) setBrand(product.brand);
@@ -468,13 +466,15 @@ export default function AddItemScreen() {
         setProductUrl(result.url);
         Alert.alert("Auto-filled!", "Product info has been applied. Review and adjust as needed.");
       } else {
-        Alert.alert("Could not parse", "We found the page but couldn't extract product info. The URL has been saved — you can fill in the rest manually.");
         setProductUrl(result.url);
+        Alert.alert("Could not parse", "We found the page but couldn't extract product info. The URL has been saved — you can fill in the rest manually.");
       }
     } catch {
       Alert.alert("Fetch failed", "Something went wrong loading that product. Please try again.");
     } finally {
       setFetchingResult(null);
+      setShowSearchResults(false);
+      setSearchResults([]);
     }
   };
 
@@ -522,39 +522,43 @@ export default function AddItemScreen() {
 
     const parsedCost = cost.trim() ? parseFloat(cost.trim()) : undefined;
 
-    await addOrUpdate({
-      id: generateId(),
-      name: name.trim(),
-      category,
-      subCategory,
-      color: finalColor,
-      colorName: finalColorName,
-      secondaryColor,
-      secondaryColorName,
-      fabricType,
-      imageUris,
-      brand: brand.trim() || undefined,
-      productUrl: productUrl.trim() || undefined,
-      cost: parsedCost && !isNaN(parsedCost) ? parsedCost : undefined,
-      purchaseDate: purchaseDate.trim() || undefined,
-      favorite: false,
-      wearCount: 0,
-      archived: false,
-      createdAt: Date.now(),
-      isOpen,
-      hardwareColour,
-      notes: notes.trim() || undefined,
-      originalAutoColor,
-      itemFlags: itemFlags.length > 0 ? itemFlags : undefined,
-      careInstructions: careInstructions.length > 0 ? careInstructions : undefined,
-      sustainable: sustainable || undefined,
-      pattern: pattern !== "solid" ? pattern : undefined,
-      occasions: occasions.length > 0 ? occasions : undefined,
-      size: size.trim() || undefined,
-      tags: tags.length > 0 ? tags : undefined,
-    });
-
-    router.back();
+    try {
+      await addOrUpdate({
+        id: generateId(),
+        name: name.trim(),
+        category,
+        subCategory,
+        color: finalColor,
+        colorName: finalColorName,
+        secondaryColor,
+        secondaryColorName,
+        fabricType,
+        imageUris,
+        brand: brand.trim() || undefined,
+        productUrl: productUrl.trim() || undefined,
+        cost: parsedCost && !isNaN(parsedCost) ? parsedCost : undefined,
+        purchaseDate: purchaseDate.trim() || undefined,
+        favorite: false,
+        wearCount: 0,
+        archived: false,
+        createdAt: Date.now(),
+        isOpen,
+        hardwareColour,
+        notes: notes.trim() || undefined,
+        originalAutoColor,
+        itemFlags: itemFlags.length > 0 ? itemFlags : undefined,
+        careInstructions: careInstructions.length > 0 ? careInstructions : undefined,
+        sustainable: sustainable || undefined,
+        pattern: pattern !== "solid" ? pattern : undefined,
+        occasions: occasions.length > 0 ? occasions : undefined,
+        size: size.trim() || undefined,
+        tags: tags.length > 0 ? tags : undefined,
+      });
+      router.back();
+    } catch (err) {
+      Alert.alert("Save failed", "Could not save the item. Please try again.");
+      console.error("[add-item] handleSave error:", err);
+    }
   };
 
   const subcats = SUBCATEGORIES[category];
