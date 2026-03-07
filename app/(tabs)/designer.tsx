@@ -2,7 +2,6 @@ import React, { useState, useMemo, useEffect, useCallback } from "react";
 import {
   View,
   Text,
-  ScrollView,
   Pressable,
   Image,
   TextInput,
@@ -477,7 +476,7 @@ export default function DesignerScreen() {
               <Ionicons name="albums-outline" size={48} color={theme.colors.textLight} />
               <Text style={styles.emptyStateText}>No templates yet</Text>
               <Text style={styles.emptyStateSubtext}>
-                Select items and tap "Save as Template" to create one.
+                {'Select items and tap "Save as Template" to create one.'}
               </Text>
             </View>
           ) : (

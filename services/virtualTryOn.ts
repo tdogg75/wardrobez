@@ -267,7 +267,7 @@ export function computeTryOnLayout(items: ClothingItem[]): TryOnLayout {
 
     // If this slot is already occupied, stack the new item slightly offset
     if (occupiedRegions.has(key)) {
-      const existing = occupiedRegions.get(key)!;
+      const _existing = occupiedRegions.get(key)!;
       // Layer on top (slightly offset for visual depth)
       const stacked: BodySlot & { item?: ClothingItem } = {
         ...slot,

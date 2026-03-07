@@ -4,7 +4,6 @@ import type {
   Season,
   FabricType,
   Occasion,
-  Pattern,
   Outfit,
 } from "@/models/types";
 import { hexToHSL } from "@/constants/colors";
@@ -471,7 +470,7 @@ const GRAPHIC_PATTERNS: string[] = ["graphic"];
 export function patternCompatibility(items: ClothingItem[]): { score: number; note: string } {
   const patterns = items.map((i) => i.pattern ?? "solid");
   const nonSolid = patterns.filter((p) => p !== "solid");
-  const solidCount = patterns.length - nonSolid.length;
+  const _solidCount = patterns.length - nonSolid.length;
 
   // All solid — always works
   if (nonSolid.length === 0) {
@@ -1314,7 +1313,7 @@ export function validateOutfit(items: ClothingItem[]): string[] {
  * Given the items already in an outfit, suggest what to add next.
  * Returns styling tips based on colour/vibe matching.
  */
-export function getNextItemSuggestion(currentItems: ClothingItem[], allItems: ClothingItem[]): string | null {
+export function getNextItemSuggestion(currentItems: ClothingItem[], _allItems: ClothingItem[]): string | null {
   if (currentItems.length === 0) return null;
 
   const cats = new Set(currentItems.map((i) => i.category));

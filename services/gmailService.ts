@@ -299,6 +299,7 @@ function getBodyText(payload: GmailMessageDetail["payload"]): string {
   return "";
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function getPlainText(payload: GmailMessageDetail["payload"]): string {
   if (payload.parts) {
     for (const part of payload.parts) {
@@ -503,6 +504,7 @@ const SHIPPING_KEYWORDS = [
 ];
 
 /** Combined list used for initial Gmail query filtering (broad match) */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const ORDER_KEYWORDS = [
   ...ORDER_CONFIRMATION_KEYWORDS,
   ...SHIPPING_KEYWORDS,
@@ -638,7 +640,7 @@ function extractVendor(from: string, subject: string): string {
 
 /* ---------- Line item extraction ---------- */
 
-function extractLineItems(subject: string, body: string, vendor: string): GmailLineItem[] {
+function extractLineItems(subject: string, body: string, _vendor: string): GmailLineItem[] {
   const items: GmailLineItem[] = [];
 
   // Strategy 1: Look for <tr> rows containing product info (common in order emails)

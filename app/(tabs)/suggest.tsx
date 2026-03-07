@@ -1101,7 +1101,7 @@ export default function SuggestScreen() {
           <Pressable style={{ backgroundColor: theme.colors.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, paddingBottom: 40 }} onPress={() => {}} accessibilityRole="button" accessibilityLabel="Flag modal content">
             <Text style={{ fontSize: 18, fontWeight: "700", color: theme.colors.text, marginBottom: 8 }}>Flag Outfit</Text>
             <Text style={{ fontSize: 14, color: theme.colors.textSecondary, marginBottom: 16 }}>
-              Tell us why this outfit doesn't work and we won't suggest it again.
+              {"Tell us why this outfit doesn't work and we won't suggest it again."}
             </Text>
 
             {flagSuggestion && (

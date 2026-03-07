@@ -27,7 +27,7 @@ import {
   OCCASION_LABELS,
   CATEGORY_LABELS,
 } from "@/models/types";
-import type { ClothingItem, Season, Occasion, Outfit, PlannedOutfit, SavedWeekPlan } from "@/models/types";
+import type { ClothingItem, Season, Occasion, Outfit, SavedWeekPlan } from "@/models/types";
 import { getPlannedOutfits, savePlannedOutfit, deletePlannedOutfit, getSavedWeekPlans, saveWeekPlan, deleteWeekPlan } from "@/services/storage";
 import { v4 as uuidv4 } from "uuid";
 
@@ -572,7 +572,7 @@ export default function OutfitsScreen() {
               <View style={[styles.savePlanContent, { backgroundColor: theme.colors.background }]}>
                 <Text style={[styles.savePlanTitle, { color: theme.colors.text }]}>Save Week Plan</Text>
                 <Text style={[styles.savePlanSubtitle, { color: theme.colors.textSecondary }]}>
-                  Give this week's plan a name to reuse later
+                  {"Give this week's plan a name to reuse later"}
                 </Text>
                 <TextInput
                   style={[styles.savePlanInput, { backgroundColor: theme.colors.surface, color: theme.colors.text, borderColor: theme.colors.border }]}

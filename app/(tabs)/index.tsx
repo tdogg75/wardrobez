@@ -29,8 +29,8 @@ import { Chip } from "@/components/Chip";
 import { EmptyState } from "@/components/EmptyState";
 import { useTheme } from "@/hooks/useTheme";
 import { getPlannedOutfits } from "@/services/storage";
-import { suggestOutfits, type SuggestionResult } from "@/services/outfitEngine";
-import type { ClothingCategory, ClothingItem, FabricType, LaundryStatus, PlannedOutfit } from "@/models/types";
+import { suggestOutfits } from "@/services/outfitEngine";
+import type { ClothingCategory, ClothingItem, FabricType, LaundryStatus } from "@/models/types";
 import { CATEGORY_LABELS, LAUNDRY_STATUS_LABELS } from "@/models/types";
 
 const ALL_CATEGORIES: (ClothingCategory | "all" | "favorites" | "laundry")[] = [
@@ -178,7 +178,7 @@ const PHOTO_GRID_COLUMNS = 3;
 export default function WardrobeScreen() {
   const { theme } = useTheme();
   const { width: screenWidth } = useWindowDimensions();
-  const { items, loading, addOrUpdate, getFavorites, remove, archiveItem, logItemWorn, reload, updateLaundryStatus, bulkUpdateLaundryStatus, getAvailableItems } =
+  const { items, loading, addOrUpdate, getFavorites, remove, archiveItem, logItemWorn, reload, updateLaundryStatus, bulkUpdateLaundryStatus } =
     useClothingItems();
   const { outfits } = useOutfits();
   const [filter, setFilter] = useState<
@@ -355,20 +355,6 @@ export default function WardrobeScreen() {
     return counts;
   }, [items, getFavorites]);
 
-  // Wardrobe value summary computations
-  const summary = useMemo(() => {
-    const totalItems = filtered.length;
-    const totalCost = filtered.reduce((sum, i) => sum + (i.cost ?? 0), 0);
-    const itemsWithCpw = filtered.filter(
-      (i) => i.cost != null && i.cost > 0 && i.wearCount > 0
-    );
-    const avgCpw =
-      itemsWithCpw.length > 0
-        ? itemsWithCpw.reduce((sum, i) => sum + i.cost! / i.wearCount, 0) /
-          itemsWithCpw.length
-        : 0;
-    return { totalItems, totalCost, avgCpw };
-  }, [filtered]);
 
   // Seasonal rotation reminder (#79)
   const seasonalRotation = useMemo(() => {

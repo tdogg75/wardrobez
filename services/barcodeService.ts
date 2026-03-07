@@ -1,5 +1,5 @@
 import type { ClothingCategory, FabricType } from "@/models/types";
-import { SUBCATEGORIES, FABRIC_TYPE_LABELS } from "@/models/types";
+import { SUBCATEGORIES } from "@/models/types";
 
 export interface BarcodeProductResult {
   name?: string;

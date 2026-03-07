@@ -11,12 +11,12 @@ import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useTheme } from "@/hooks/useTheme";
 import { lookupBarcode } from "@/services/barcodeService";
-import type { BarcodeProductResult } from "@/services/barcodeService";
 
 let CameraView: any = null;
 let useCameraPermissions: any = null;
 
 try {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
   const mod = require("expo-camera");
   CameraView = mod.CameraView;
   useCameraPermissions = mod.useCameraPermissions;
@@ -31,6 +31,7 @@ export default function BarcodeScannerScreen() {
   const [looking, setLooking] = useState(false);
 
   // Camera permissions — only available if expo-camera is installed
+  // eslint-disable-next-line react-hooks/rules-of-hooks
   const permissionHook = useCameraPermissions ? useCameraPermissions() : [null, null];
   const permission = permissionHook?.[0];
   const requestPermission = permissionHook?.[1];

@@ -27,8 +27,7 @@ import { Chip } from "@/components/Chip";
 import { CATEGORY_LABELS, OCCASION_LABELS, SEASON_LABELS } from "@/models/types";
 import { generateOutfitName, colorCompatibility } from "@/services/outfitEngine";
 import { analyzeOutfitStyle } from "@/services/styleAnalysis";
-import type { StyleAnalysisResult } from "@/services/styleAnalysis";
-import type { ClothingItem, Occasion, Season, WornEntry } from "@/models/types";
+import type { ClothingItem, Occasion, Season } from "@/models/types";
 
 const fmt = (n: number) =>
   n.toLocaleString("en-US", { style: "currency", currency: "USD" });
@@ -76,6 +75,16 @@ export default function OutfitDetailScreen() {
     }
   }, [outfit?.id, outfit?.hasRemovedItems, outfit?.removedItemNotified]);
 
+  const outfitItems = useMemo(
+    () => (outfit?.itemIds ?? []).map((itemId) => getById(itemId)).filter(Boolean) as ClothingItem[],
+    [outfit, getById]
+  );
+
+  const styleAnalysis = useMemo(
+    () => analyzeOutfitStyle(outfitItems),
+    [outfitItems]
+  );
+
   if (!outfit) {
     return (
       <View style={styles.container}>
@@ -84,16 +93,7 @@ export default function OutfitDetailScreen() {
     );
   }
 
-  const outfitItems = outfit.itemIds
-    .map((itemId) => getById(itemId))
-    .filter(Boolean) as ClothingItem[];
-
   const totalCost = outfitItems.reduce((sum, i) => sum + (i.cost ?? 0), 0);
-
-  const styleAnalysis = useMemo(
-    () => analyzeOutfitStyle(outfitItems),
-    [outfitItems]
-  );
 
   const handleDelete = () => {
     Alert.alert("Delete Outfit", "Remove this outfit from your collection?", [
@@ -804,7 +804,9 @@ export default function OutfitDetailScreen() {
 
             // Fallback: share as text
             await Share.share({ message: text, title: outfit.name });
-          } catch {}
+          } catch (_e) {
+            // share failed — fallback handled above
+          }
         }}
       >
         <Ionicons name="share-outline" size={18} color={theme.colors.primary} />
@@ -828,7 +830,7 @@ export default function OutfitDetailScreen() {
           <View style={styles.renameDialog}>
             <Text style={styles.renameTitle}>Log Wear</Text>
             <Text style={styles.logWornSubtitle}>
-              Capture today's outfit with a photo!
+              {"Capture today's outfit with a photo!"}
             </Text>
 
             {logSelfieUri ? (
