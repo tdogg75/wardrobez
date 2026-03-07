@@ -33,7 +33,7 @@ import type { ClothingCategory, FabricType } from "@/models/types";
 import { CATEGORY_LABELS, SUBCATEGORIES, FABRIC_TYPE_LABELS } from "@/models/types";
 import { useClothingItems } from "@/hooks/useClothingItems";
 import { PRESET_COLORS } from "@/constants/colors";
-import { v4 as uuidv4 } from "uuid";
+import { randomUUID } from "expo-crypto";
 
 type ScanState =
   | "idle"
@@ -304,7 +304,7 @@ export default function GmailPurchasesScreen() {
       const cost = parseFloat(item.cost) || undefined;
 
       await addOrUpdate({
-        id: uuidv4(),
+        id: randomUUID(),
         name: item.name,
         category: item.category,
         subCategory: item.subCategory,

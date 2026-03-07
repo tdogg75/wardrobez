@@ -1,6 +1,6 @@
 import * as FileSystem from "expo-file-system";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { v4 as uuidv4 } from "uuid";
+import { randomUUID } from "expo-crypto";
 import type { ClothingItem, Outfit, FabricType, ArchiveReason, LaundryStatus, WishlistItem, OutfitTemplate, PlannedOutfit, SavedWeekPlan, InspirationPin, PackingList } from "@/models/types";
 
 // --- File-System Storage Layer ---
@@ -600,7 +600,7 @@ export async function moveWishlistToWardrobe(wishlistId: string): Promise<Clothi
   if (!item) return null;
 
   const clothingItem: ClothingItem = {
-    id: uuidv4(),
+    id: randomUUID(),
     name: item.name,
     category: item.category || 'tops',
     subCategory: item.subCategory,

@@ -8,7 +8,7 @@ import type {
 } from "@/models/types";
 import { hexToHSL } from "@/constants/colors";
 import { getOutfitFlags, saveOutfitFlag } from "@/services/storage";
-import { v4 as uuidv4 } from "uuid";
+import { randomUUID } from "expo-crypto";
 
 // --- Circular Mean for Hue (0–360°) ---
 // Simple linear averaging of hue angles is wrong for circular data:
@@ -617,7 +617,7 @@ export async function preloadFlags(): Promise<void> {
 
 export async function flagOutfit(pattern: string, reason: string): Promise<void> {
   const flag: OutfitFlag = {
-    id: uuidv4(),
+    id: randomUUID(),
     pattern,
     reason,
     createdAt: Date.now(),
