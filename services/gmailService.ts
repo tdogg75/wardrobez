@@ -953,7 +953,7 @@ export async function scanGmailForPurchases(
   for (let page = 0; page < MAX_PAGES; page++) {
     if (abortSignal?.aborted) break;
 
-    const pageQuery = pageToken
+    const pageQuery: string = pageToken
       ? `messages?q=${query}&maxResults=100&pageToken=${pageToken}`
       : `messages?q=${query}&maxResults=100`;
 

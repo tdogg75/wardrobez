@@ -1796,19 +1796,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "600",
   },
-  quickModeToggle: {
-    flexDirection: "row",
-    alignItems: "center",
-    alignSelf: "flex-end",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-    gap: 4,
-  },
-  quickModeText: {
-    fontSize: 12,
-    fontWeight: "600",
-  },
   // Modal styles
   modalContainer: {
     flex: 1,

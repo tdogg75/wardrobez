@@ -683,7 +683,7 @@ export default function WardrobeScreen() {
   const renderSectionHeader = ({
     section,
   }: {
-    section: { title: string; data: ClothingItem[][] };
+    section: { title?: string; data: ClothingItem[][] };
   }) => (
     <View style={styles.sectionHeader}>
       <Text style={[styles.sectionHeaderText, { color: theme.colors.text }]}>

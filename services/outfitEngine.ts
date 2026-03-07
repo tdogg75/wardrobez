@@ -633,7 +633,7 @@ function matchesFlagPattern(items: ClothingItem[], flags: OutfitFlag[]): boolean
   const itemCats = new Set(items.map((i) => i.category));
   for (const flag of flags) {
     const parts = flag.pattern.split("+").map((p) => p.trim());
-    const allMatch = parts.every((p) => itemSubs.has(p) || itemCats.has(p));
+    const allMatch = parts.every((p) => itemSubs.has(p) || itemCats.has(p as ClothingCategory));
     if (allMatch) return true;
   }
   return false;

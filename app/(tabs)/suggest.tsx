@@ -68,28 +68,6 @@ export default function SuggestScreen() {
   const [activeQuickPick, setActiveQuickPick] = useState(0);
   const quickPickScrollRef = useRef<ScrollView>(null);
 
-  // Memoize suggestion engine results (#40) — avoid recomputing when inputs haven't changed
-  const suggestionCacheRef = useRef<{
-    items: ClothingItemType[] | null;
-    season: Season | undefined;
-    ratedOutfits: typeof ratedOutfits;
-    results: SuggestionResult[];
-  }>({ items: null, season: undefined, ratedOutfits: [], results: [] });
-
-  const getCachedSuggestions = useCallback((maxResults: number): SuggestionResult[] => {
-    const cache = suggestionCacheRef.current;
-    if (
-      cache.items === occasionFilteredItems &&
-      cache.season === season &&
-      cache.ratedOutfits === ratedOutfits &&
-      cache.results.length >= maxResults
-    ) {
-      return cache.results.slice(0, maxResults);
-    }
-    const results = suggestOutfits(occasionFilteredItems, { season, maxResults, ratedOutfits });
-    suggestionCacheRef.current = { items: occasionFilteredItems, season, ratedOutfits, results };
-    return results;
-  }, [occasionFilteredItems, season, ratedOutfits]);
   const quickPickFadeAnim = useRef(new Animated.Value(0)).current;
 
   // Save modal state — lets user pick occasions/seasons before saving
@@ -200,6 +178,29 @@ export default function SuggestScreen() {
     // Otherwise include all items so the engine has enough to work with
     return items;
   }, [items, selectedOccasion]);
+
+  // Memoize suggestion engine results (#40) — avoid recomputing when inputs haven't changed
+  const suggestionCacheRef = useRef<{
+    items: ClothingItemType[] | null;
+    season: Season | undefined;
+    ratedOutfits: typeof ratedOutfits;
+    results: SuggestionResult[];
+  }>({ items: null, season: undefined, ratedOutfits: [], results: [] });
+
+  const getCachedSuggestions = useCallback((maxResults: number): SuggestionResult[] => {
+    const cache = suggestionCacheRef.current;
+    if (
+      cache.items === occasionFilteredItems &&
+      cache.season === season &&
+      cache.ratedOutfits === ratedOutfits &&
+      cache.results.length >= maxResults
+    ) {
+      return cache.results.slice(0, maxResults);
+    }
+    const results = suggestOutfits(occasionFilteredItems, { season, maxResults, ratedOutfits });
+    suggestionCacheRef.current = { items: occasionFilteredItems, season, ratedOutfits, results };
+    return results;
+  }, [occasionFilteredItems, season, ratedOutfits]);
 
   // Lock generated names after render so setState is never called during render.
   useEffect(() => {
