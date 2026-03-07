@@ -27,8 +27,9 @@
       "versionCode": 1,
       "jsEngine": "hermes",
       "permissions": [
-        "CAMERA",
-        "READ_MEDIA_IMAGES"
+        "android.permission.CAMERA",
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.RECORD_AUDIO"
       ]
     },
     "web": {
@@ -58,7 +59,13 @@
       "./plugins/fix-android-namespace"
     ],
     "extra": {
-      "eas": {}
-    }
+      "eas": {
+        "projectId": "d644a78b-f6a5-492f-87ee-79d2dc6bc958"
+      },
+      "router": {
+        "origin": false
+      }
+    },
+    "owner": "tdogg75"
   }
 }
