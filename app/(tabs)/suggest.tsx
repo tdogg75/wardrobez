@@ -35,10 +35,10 @@ import { SEASON_LABELS, CATEGORY_LABELS, OCCASION_LABELS } from "@/models/types"
 
 const OCCASIONS: Occasion[] = ["casual", "work", "fancy", "party", "vacation"];
 
-import { v4 as uuidv4 } from "uuid";
+import { randomUUID } from "expo-crypto";
 
 function generateId(): string {
-  return uuidv4();
+  return randomUUID();
 }
 
 export default function SuggestScreen() {
