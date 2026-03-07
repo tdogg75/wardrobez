@@ -21,6 +21,17 @@ export default function TabLayout() {
           fontSize: theme.fontSize.xs,
           fontWeight: "600",
         },
+        tabBarActiveLabelStyle: {
+          fontWeight: "800",
+          color: theme.colors.primary,
+        },
+        tabBarItemStyle: {
+          borderTopWidth: 2,
+          borderTopColor: "transparent",
+        },
+        tabBarActiveTabStyle: {
+          borderTopColor: theme.colors.primary,
+        },
         headerStyle: {
           backgroundColor: theme.colors.background,
         },

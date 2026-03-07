@@ -69,6 +69,30 @@ export const DarkTheme = {
   colors: darkColors,
 } as const;
 
+// OLED dark theme (#65) — pure black for OLED battery savings
+const oledColors = {
+  ...darkColors,
+  background: "#000000",
+  surface: "#0A0A0A",
+  surfaceAlt: "#111111",
+  border: "#1A1A1A",
+  shadow: "rgba(0, 0, 0, 0.5)",
+};
+
+export const OledTheme = {
+  ...Theme,
+  colors: oledColors,
+} as const;
+
+export type ThemeMode = "light" | "dark" | "oled";
+
+export const ICON_SIZES = {
+  sm: 16,
+  md: 20,
+  lg: 24,
+  xl: 32,
+} as const;
+
 export type ThemeColors = typeof lightColors;
 
 export function getTheme(isDark: boolean) {

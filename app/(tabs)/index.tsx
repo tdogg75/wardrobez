@@ -9,13 +9,15 @@ import {
   ActivityIndicator,
   Alert,
   Image,
-  Dimensions,
+  useWindowDimensions,
   RefreshControl,
   TextInput,
   Modal,
+  Keyboard,
   NativeSyntheticEvent,
   NativeScrollEvent,
 } from "react-native";
+import { FlashList } from "@shopify/flash-list";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -172,10 +174,10 @@ function isSeasonFabric(fabric: FabricType, season: SeasonName): boolean {
 }
 
 const PHOTO_GRID_COLUMNS = 3;
-const screenWidth = Dimensions.get("window").width;
 
 export default function WardrobeScreen() {
   const { theme } = useTheme();
+  const { width: screenWidth } = useWindowDimensions();
   const { items, loading, addOrUpdate, getFavorites, remove, archiveItem, logItemWorn, reload, updateLaundryStatus, bulkUpdateLaundryStatus, getAvailableItems } =
     useClothingItems();
   const { outfits } = useOutfits();
@@ -191,8 +193,8 @@ export default function WardrobeScreen() {
   const [seasonBannerDismissed, setSeasonBannerDismissed] = useState(false);
 
   // Scroll-to-top button state (#28)
-  const listRef = useRef<FlatList>(null);
-  const sectionListRef = useRef<SectionList>(null);
+  const listRef = useRef<FlashList<ClothingItem>>(null);
+  const sectionListRef = useRef<SectionList<ClothingItem[]>>(null);
   const [showScrollTop, setShowScrollTop] = useState(false);
 
   // Bulk selection state
@@ -288,7 +290,7 @@ export default function WardrobeScreen() {
       }
     })();
     return () => { cancelled = true; };
-  }, [loading, items.length, outfits.length]);
+  }, [loading, items, outfits]);
 
   // Scroll handler for scroll-to-top button (#28)
   const handleScroll = useCallback(
@@ -450,7 +452,9 @@ export default function WardrobeScreen() {
         {
           text: "Archive All",
           onPress: async () => {
-            const ids = Array.from(selectedIds);
+            // Validate IDs against current items to avoid stale refs
+            const currentIds = new Set(items.map((i) => i.id));
+            const ids = Array.from(selectedIds).filter((id) => currentIds.has(id));
             for (const id of ids) {
               await archiveItem(id, "donated");
             }
@@ -459,7 +463,7 @@ export default function WardrobeScreen() {
         },
       ]
     );
-  }, [selectedIds, archiveItem, exitSelectionMode]);
+  }, [selectedIds, items, archiveItem, exitSelectionMode]);
 
   const handleBulkDelete = useCallback(() => {
     if (selectedIds.size === 0) return;
@@ -472,7 +476,9 @@ export default function WardrobeScreen() {
           text: "Delete",
           style: "destructive",
           onPress: async () => {
-            const ids = Array.from(selectedIds);
+            // Validate IDs against current items to avoid stale refs
+            const currentIds = new Set(items.map((i) => i.id));
+            const ids = Array.from(selectedIds).filter((id) => currentIds.has(id));
             for (const id of ids) {
               await remove(id);
             }
@@ -481,7 +487,7 @@ export default function WardrobeScreen() {
         },
       ]
     );
-  }, [selectedIds, remove, exitSelectionMode]);
+  }, [selectedIds, items, remove, exitSelectionMode]);
 
   // Bulk laundry status
   const [bulkLaundryModalVisible, setBulkLaundryModalVisible] = useState(false);
@@ -533,7 +539,7 @@ export default function WardrobeScreen() {
     SORT_OPTIONS.find((o) => o.value === sortBy)?.label ?? "Newest";
 
   const renderCard = (item: ClothingItem) => (
-    <View style={{ width: cardWidthPct as any }}>
+    <View style={{ width: cardWidthPct }}>
       <Pressable
         accessibilityLabel={selectionMode ? `Select ${item.name}` : `View ${item.name}`}
         accessibilityRole="button"
@@ -582,6 +588,19 @@ export default function WardrobeScreen() {
                         { text: "Log It", onPress: () => logItemWorn(item.id) },
                       ]
                     );
+                  }
+            }
+            onLaundryToggle={
+              selectionMode || compact
+                ? undefined
+                : () => {
+                    const cycle: Record<string, import("@/models/types").LaundryStatus> = {
+                      clean: "worn",
+                      worn: "in_wash",
+                      in_wash: "clean",
+                      dry_cleaning: "clean",
+                    };
+                    updateLaundryStatus(item.id, cycle[item.laundryStatus ?? "clean"] ?? "worn");
                   }
             }
           />
@@ -1051,7 +1070,7 @@ export default function WardrobeScreen() {
       ) : photoOnlyMode ? (
         /* Photo-only grid view */
         <FlatList
-          ref={listRef as any}
+          ref={listRef}
           key="photo-grid"
           data={filtered}
           keyExtractor={(item) => item.id}
@@ -1063,11 +1082,13 @@ export default function WardrobeScreen() {
           renderItem={renderPhotoTile}
           onScroll={handleScroll}
           scrollEventThrottle={16}
+          keyboardShouldPersistTaps="handled"
+          onScrollBeginDrag={() => Keyboard.dismiss()}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.colors.primary} />}
         />
       ) : filter === "all" ? (
         <SectionList
-          ref={sectionListRef as any}
+          ref={sectionListRef}
           key={`section-grid-${numColumns}`}
           sections={sections}
           keyExtractor={(item, index) =>
@@ -1079,20 +1100,24 @@ export default function WardrobeScreen() {
           stickySectionHeadersEnabled={false}
           onScroll={handleScroll}
           scrollEventThrottle={16}
+          keyboardShouldPersistTaps="handled"
+          onScrollBeginDrag={() => Keyboard.dismiss()}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.colors.primary} />}
         />
       ) : (
-        <FlatList
-          ref={listRef as any}
+        <FlashList
+          ref={listRef}
           key={`grid-${numColumns}`}
           data={filtered}
           keyExtractor={(item) => item.id}
           numColumns={numColumns}
-          columnWrapperStyle={[styles.row, { gap: itemGap }]}
+          estimatedItemSize={compact ? 100 : 220}
           contentContainerStyle={styles.list}
           renderItem={({ item }) => renderCard(item)}
           onScroll={handleScroll}
           scrollEventThrottle={16}
+          keyboardShouldPersistTaps="handled"
+          onScrollBeginDrag={() => Keyboard.dismiss()}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.colors.primary} />}
         />
       )}

@@ -29,6 +29,7 @@ import {
 } from "@/models/types";
 import type { ClothingItem, Season, Occasion, Outfit, PlannedOutfit, SavedWeekPlan } from "@/models/types";
 import { getPlannedOutfits, savePlannedOutfit, deletePlannedOutfit, getSavedWeekPlans, saveWeekPlan, deleteWeekPlan } from "@/services/storage";
+import { v4 as uuidv4 } from "uuid";
 
 const SEASONS: Season[] = ["spring", "summer", "fall", "winter"];
 const OCCASIONS: Occasion[] = ["casual", "work", "fancy", "party", "vacation"];
@@ -98,6 +99,15 @@ export default function OutfitsScreen() {
       return true;
     });
   }, [outfits, seasonFilter, occasionFilter]);
+
+  // Memoize outfit item resolution (#31) — avoids recomputing on every render
+  const outfitItemsMap = useMemo(() => {
+    const map = new Map<string, ClothingItem[]>();
+    for (const outfit of filteredOutfits) {
+      map.set(outfit.id, outfit.itemIds.map((id) => getById(id)).filter(Boolean) as ClothingItem[]);
+    }
+    return map;
+  }, [filteredOutfits, getById]);
 
   // Build calendar data: map date string -> outfits worn that day
   const calendarData = useMemo(() => {
@@ -262,7 +272,7 @@ export default function OutfitsScreen() {
     }
     try {
       const plan: SavedWeekPlan = {
-        id: Date.now().toString(36) + Math.random().toString(36).slice(2, 9),
+        id: uuidv4(),
         name,
         days: { ...weekPlan },
         createdAt: Date.now(),
@@ -1107,9 +1117,7 @@ export default function OutfitsScreen() {
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.list}
           renderItem={({ item: outfit }) => {
-            const outfitItems = outfit.itemIds
-              .map((id) => getById(id))
-              .filter(Boolean) as ClothingItem[];
+            const outfitItems = outfitItemsMap.get(outfit.id) ?? [];
 
             const totalCost = outfitItems.reduce(
               (sum, i) => sum + (i.cost ?? 0),

@@ -4,6 +4,7 @@ import { StatusBar } from "expo-status-bar";
 import { ClothingItemsProvider } from "@/hooks/useClothingItems";
 import { OutfitsProvider } from "@/hooks/useOutfits";
 import { ThemeProvider, useTheme } from "@/hooks/useTheme";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import {
   requestNotificationPermission,
   scheduleDailyReminder,
@@ -22,6 +23,7 @@ function AppContent() {
   }, []);
 
   return (
+    <ErrorBoundary>
     <ClothingItemsProvider>
       <OutfitsProvider>
         <StatusBar style={isDark ? "light" : "dark"} />
@@ -89,9 +91,24 @@ function AppContent() {
               headerTitle: "Gmail Purchases",
             }}
           />
+          <Stack.Screen
+            name="virtual-tryon"
+            options={{
+              presentation: "modal",
+              headerShown: false,
+            }}
+          />
+          <Stack.Screen
+            name="analytics"
+            options={{
+              presentation: "modal",
+              headerShown: false,
+            }}
+          />
         </Stack>
       </OutfitsProvider>
     </ClothingItemsProvider>
+    </ErrorBoundary>
   );
 }
 

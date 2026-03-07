@@ -15,7 +15,8 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.wardrobez.app"
+      "bundleIdentifier": "com.wardrobez.app",
+      "jsEngine": "hermes"
     },
     "android": {
       "adaptiveIcon": {
@@ -24,6 +25,7 @@
       },
       "package": "com.wardrobez.app",
       "versionCode": 1,
+      "jsEngine": "hermes",
       "permissions": [
         "CAMERA",
         "READ_MEDIA_IMAGES"

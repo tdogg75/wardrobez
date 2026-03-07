@@ -1,0 +1,12 @@
+appId: com.wardrobez.app
+---
+# E2E test: Log wear on an item
+- launchApp
+- tapOn: "Wardrobe"
+# Long-press to see quick actions or use quick-log button
+- longPressOn:
+    text: "Test Blue Shirt"
+    optional: true
+- tapOn:
+    text: "Log wear"
+    optional: true

@@ -34,6 +34,7 @@ import type { ClothingCategory, FabricType } from "@/models/types";
 import { CATEGORY_LABELS, SUBCATEGORIES, FABRIC_TYPE_LABELS } from "@/models/types";
 import { useClothingItems } from "@/hooks/useClothingItems";
 import { PRESET_COLORS } from "@/constants/colors";
+import { v4 as uuidv4 } from "uuid";
 
 type ScanState =
   | "idle"
@@ -304,7 +305,7 @@ export default function GmailPurchasesScreen() {
       const cost = parseFloat(item.cost) || undefined;
 
       await addOrUpdate({
-        id: Date.now().toString(36) + Math.random().toString(36).slice(2, 9),
+        id: uuidv4(),
         name: item.name,
         category: item.category,
         subCategory: item.subCategory,

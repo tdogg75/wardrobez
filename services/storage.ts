@@ -57,7 +57,8 @@ async function readJsonFile<T>(path: string): Promise<T | null> {
     if (!info.exists) return null;
     const raw = await FileSystem.readAsStringAsync(path);
     return JSON.parse(raw) as T;
-  } catch {
+  } catch (err) {
+    console.warn("[storage] Failed to read JSON file:", path, err);
     return null;
   }
 }
@@ -93,8 +94,9 @@ async function migrateFromAsyncStorage(): Promise<void> {
     if (!outfitsInfo.exists && rawOutfits) {
       await writeJsonFile(FILES.OUTFITS, JSON.parse(rawOutfits));
     }
-  } catch {
+  } catch (err) {
     // Migration failure is non-fatal — data will be created fresh
+    console.warn("[storage] AsyncStorage migration failed:", err);
   }
 }
 

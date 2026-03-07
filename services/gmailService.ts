@@ -2,6 +2,7 @@ import * as AuthSession from "expo-auth-session";
 import * as WebBrowser from "expo-web-browser";
 import * as FileSystem from "expo-file-system";
 import * as SecureStore from "expo-secure-store";
+import { v4 as uuidv4 } from "uuid";
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -90,7 +91,10 @@ export async function getImportedEmailIds(): Promise<Set<string>> {
     if (!info.exists) return new Set();
     const raw = await FileSystem.readAsStringAsync(IMPORTED_IDS_PATH);
     return new Set(JSON.parse(raw));
-  } catch { return new Set(); }
+  } catch (err) {
+    console.warn("[gmailService] Failed to load imported email IDs:", err);
+    return new Set();
+  }
 }
 
 export async function markEmailImported(id: string): Promise<void> {
@@ -1053,7 +1057,7 @@ export async function scanGmailForPurchases(
       if (item.imageUrl) {
         try {
           const ext = item.imageUrl.match(/\.(jpg|jpeg|png|webp)/i)?.[1] ?? "jpg";
-          const localPath = `${imgDir}${purchase.id}_${Math.random().toString(36).slice(2, 7)}.${ext}`;
+          const localPath = `${imgDir}${purchase.id}_${uuidv4().slice(0, 8)}.${ext}`;
           const result = await FileSystem.downloadAsync(
             item.imageUrl,
             localPath

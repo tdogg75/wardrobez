@@ -1,0 +1,15 @@
+appId: com.wardrobez.app
+---
+# E2E test: Add a clothing item
+- launchApp
+- tapOn: "Wardrobe"
+- tapOn:
+    id: "add-item-btn"
+- assertVisible: "Add Item"
+- tapOn:
+    text: "Name"
+- inputText: "Test Blue Shirt"
+- tapOn:
+    text: "tops"
+- tapOn: "Save"
+- assertVisible: "Test Blue Shirt"

@@ -13,12 +13,13 @@ let Notifications: any = null;
 async function loadNotifications() {
   try {
     Notifications = require("expo-notifications");
-  } catch {
+  } catch (err) {
     // expo-notifications not installed — notifications will be no-ops
+    console.warn("[notifications] expo-notifications unavailable:", err);
   }
 }
 
-loadNotifications();
+loadNotifications().catch((err) => console.warn("[notifications] Failed to load expo-notifications:", err));
 
 export async function requestNotificationPermission(): Promise<boolean> {
   if (!Notifications) return false;

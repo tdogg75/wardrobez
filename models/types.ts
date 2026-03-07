@@ -85,6 +85,7 @@ export interface ClothingItem {
   colorName: string;
   secondaryColor?: string; // hex (optional)
   secondaryColorName?: string;
+  accentColors?: string[]; // up to 2 extra accent hex colors (#59)
   fabricType: FabricType;
   imageUris: string[]; // multiple images (online, personal, etc.)
   brand?: string;

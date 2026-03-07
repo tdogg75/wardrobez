@@ -36,6 +36,7 @@ import {
   fetchSearchResult,
 } from "@/services/productSearch";
 import type { WebSearchResult } from "@/services/productSearch";
+import { recognizeClothing, hasApiKey } from "@/services/aiRecognition";
 import type {
   ClothingCategory,
   FabricType,
@@ -67,8 +68,10 @@ import {
 } from "@/models/types";
 import type { SizeSystem } from "@/models/types";
 
+import { v4 as uuidv4 } from "uuid";
+
 function generateId(): string {
-  return Date.now().toString(36) + Math.random().toString(36).slice(2, 9);
+  return uuidv4();
 }
 
 /** Subcategories that should default isOpen to true */
@@ -109,6 +112,7 @@ export default function AddItemScreen() {
   const [colorIdx, setColorIdx] = useState(0);
   const [fabricType, setFabricType] = useState<FabricType>("cotton");
   const [imageUris, setImageUris] = useState<string[]>([]);
+  const [aiRecognizing, setAiRecognizing] = useState(false);
   const [brand, setBrand] = useState("");
   const [productUrl, setProductUrl] = useState("");
   const [fetchingUrl, setFetchingUrl] = useState(false);
@@ -271,8 +275,76 @@ export default function AddItemScreen() {
       quality: 0.8,
     });
     if (!result.canceled && result.assets[0]) {
-      setImageUris((prev) => [...prev, result.assets[0].uri]);
+      const uri = result.assets[0].uri;
+      setImageUris((prev) => [...prev, uri]);
+
+      // AI recognition (#81) — only if API key is available and fields not yet filled
+      const hasKey = await hasApiKey();
+      if (hasKey && !name.trim()) {
+        setAiRecognizing(true);
+        try {
+          const recognition = await recognizeClothing(uri);
+          if (recognition.confidence !== "low" && !recognition.error) {
+            if (recognition.name && !name.trim()) setName(recognition.name);
+            if (recognition.category) setCategory(recognition.category);
+            if (recognition.fabricType) setFabricType(recognition.fabricType);
+            // Color will be applied via preset matching
+          }
+        } catch (err) {
+          console.warn("[add-item] AI recognition error:", err);
+        } finally {
+          setAiRecognizing(false);
+        }
+      }
     }
+  };
+
+  // Batch image import (#66) — select multiple photos, create one item per photo
+  const pickMultipleImages = async () => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"],
+      allowsMultipleSelection: true,
+      quality: 0.8,
+    });
+    if (result.canceled || !result.assets || result.assets.length === 0) return;
+    if (result.assets.length === 1) {
+      setImageUris((prev) => [...prev, result.assets[0].uri]);
+      return;
+    }
+    // Multiple photos — create one item per photo with the current form defaults
+    if (!name.trim()) {
+      Alert.alert(
+        "Enter a base name",
+        "Please enter a name first. Each item will be named 'Name 1', 'Name 2', etc.",
+        [{ text: "OK" }]
+      );
+      return;
+    }
+    const parsedCost = cost.trim() ? parseFloat(cost.trim()) : undefined;
+    let created = 0;
+    for (let i = 0; i < result.assets.length; i++) {
+      await addOrUpdate({
+        id: generateId(),
+        name: `${name.trim()} ${i + 1}`,
+        category,
+        subCategory: subCategory || undefined,
+        color,
+        colorName,
+        fabricType,
+        imageUris: [result.assets[i].uri],
+        wearCount: 0,
+        wearDates: [],
+        archived: false,
+        favorite: false,
+        createdAt: Date.now() + i,
+        cost: parsedCost,
+        seasons: selectedSeasons,
+      });
+      created++;
+    }
+    Alert.alert("Batch Import Complete", `Created ${created} items.`, [
+      { text: "OK", onPress: () => router.back() },
+    ]);
   };
 
   const removeImage = (index: number) => {
@@ -541,8 +613,24 @@ export default function AddItemScreen() {
             accessibilityRole="button"
             accessibilityLabel="Add photo"
           >
-            <Ionicons name="camera-outline" size={28} color={theme.colors.textLight} />
-            <Text style={[styles.addPhotoLabel, { fontSize: theme.fontSize.xs, color: theme.colors.textLight }]}>Add Photo</Text>
+            {aiRecognizing ? (
+              <ActivityIndicator size="small" color={theme.colors.primary} />
+            ) : (
+              <Ionicons name="camera-outline" size={28} color={theme.colors.textLight} />
+            )}
+            <Text style={[styles.addPhotoLabel, { fontSize: theme.fontSize.xs, color: theme.colors.textLight }]}>
+              {aiRecognizing ? "AI..." : "Add Photo"}
+            </Text>
+          </Pressable>
+          {/* Batch import (#66) */}
+          <Pressable
+            style={[styles.addPhotoBtn, { borderRadius: theme.borderRadius.sm, backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border }]}
+            onPress={pickMultipleImages}
+            accessibilityRole="button"
+            accessibilityLabel="Batch import multiple photos"
+          >
+            <Ionicons name="images-outline" size={28} color={theme.colors.textLight} />
+            <Text style={[styles.addPhotoLabel, { fontSize: theme.fontSize.xs, color: theme.colors.textLight }]}>Batch</Text>
           </Pressable>
         </ScrollView>
 
