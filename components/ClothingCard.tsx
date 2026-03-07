@@ -14,6 +14,8 @@ interface ClothingCardProps {
   onQuickLogWear?: () => void;
   onLaundryToggle?: () => void;
   compact?: boolean;
+  /** Ultra-compact mode (8-col): hide all overlays so image is fully visible */
+  ultraCompact?: boolean;
   /** Photo-only mode: show just the image, no text */
   photoOnly?: boolean;
 }
@@ -77,7 +79,7 @@ function getCostPerWear(item: ClothingItem): string | null {
   return null;
 }
 
-export function ClothingCard({ item, onPress, onLongPress, onToggleFavorite, onQuickLogWear, onLaundryToggle, compact, photoOnly }: ClothingCardProps) {
+export function ClothingCard({ item, onPress, onLongPress, onToggleFavorite, onQuickLogWear, onLaundryToggle, compact, ultraCompact, photoOnly }: ClothingCardProps) {
   const [previewVisible, setPreviewVisible] = useState(false);
   const { theme } = useTheme();
   const imageHeight = photoOnly ? 120 : compact ? 80 : 160;
@@ -170,15 +172,19 @@ export function ClothingCard({ item, onPress, onLongPress, onToggleFavorite, onQ
         )}
 
         {/* Not-worn badge (top-left) */}
-        {notWornBadge && (
-          <View style={[styles.notWornBadge, { backgroundColor: notWornBadge.color }]}>
-            <Text style={styles.notWornBadgeText}>{notWornBadge.label}</Text>
-          </View>
+        {notWornBadge && !ultraCompact && (
+          compact ? (
+            <View style={[styles.notWornDot, { backgroundColor: notWornBadge.color }]} />
+          ) : (
+            <View style={[styles.notWornBadge, { backgroundColor: notWornBadge.color }]}>
+              <Text style={styles.notWornBadgeText}>{notWornBadge.label}</Text>
+            </View>
+          )
         )}
 
         {/* Item flag badges (below not-worn badge, left side) */}
-        {flagBadges.length > 0 && (
-          <View style={[styles.flagBadgeContainer, { top: notWornBadge ? 30 : 8 }]}>
+        {flagBadges.length > 0 && !ultraCompact && (
+          <View style={[styles.flagBadgeContainer, { top: notWornBadge ? (compact ? 22 : 30) : 8 }]}>
             {flagBadges.map((badge, index) => (
               <View key={index} style={[styles.flagBadge, { backgroundColor: badge.color }]}>
                 <Text style={styles.flagBadgeText} numberOfLines={1}>{badge.label}</Text>
@@ -209,7 +215,7 @@ export function ClothingCard({ item, onPress, onLongPress, onToggleFavorite, onQ
           </View>
         )}
 
-        {onToggleFavorite && (
+        {onToggleFavorite && !ultraCompact && (
           <Pressable
             style={[styles.favoriteBtn, { width: favBtnSize, height: favBtnSize, borderRadius: favBtnSize / 2 }]}
             onPress={onToggleFavorite}
@@ -340,6 +346,14 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     minWidth: 20,
     alignItems: "center",
+  },
+  notWornDot: {
+    position: "absolute",
+    top: 6,
+    left: 6,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
   },
   notWornBadgeText: {
     color: "#FFFFFF",

@@ -551,6 +551,7 @@ export default function WardrobeScreen() {
           <ClothingCard
             item={item}
             compact={compact}
+            ultraCompact={numColumns === 8}
             onPress={() => {
               if (selectionMode) {
                 toggleSelection(item.id);

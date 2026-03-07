@@ -335,11 +335,11 @@ function getItemSeasonalFit(item: ClothingItem, season: Season): number {
   }
 
   if (cat === "dresses") {
-    if (sub === "sundress") return season === "summer" ? 1.0 : 0.0;
+    if (sub === "sundress") return season === "summer" ? 1.0 : 0.2;
     if (sub === "work_dress") return 1.0;
-    if (sub === "cover_up") return season === "summer" ? 1.0 : 0.0;
+    if (sub === "cover_up") return season === "summer" ? 1.0 : 0.1;
     if (sub === "casual_dress") {
-      return season === "winter" ? 0.0 : 1.0;
+      return season === "winter" ? 0.2 : 1.0;
     }
     return season === "winter" ? 0.3 : 0.9;
   }
